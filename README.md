@@ -107,6 +107,10 @@ Environment flags:
 - Start full local app:
   - double-click `Open Full App.cmd`
   - or run `powershell -ExecutionPolicy Bypass -File .\scripts\open-blueprint-app.ps1`
+- Start services without keeping PowerShell windows open:
+  - double-click `Open Full App (Background).cmd`
+  - or use `Start API Server (Background).cmd`, `Start Scanner Service (Background).cmd`, and `Start Web App (Background).cmd`
+  - background logs are written to `api-runtime.log`, `scanner-runtime.log`, and `web-runtime.log`
 - Open the separate second app:
   - `powershell -ExecutionPolicy Bypass -File .\scripts\open-second-app.ps1`
 - Open both applications in separate PowerShell windows:

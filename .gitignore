@@ -1,0 +1,14 @@
+﻿node_modules/
+.pnpm-store/
+.next/
+.uploads/
+dist/
+coverage/
+.env
+.env.local
+*.log
+__pycache__/
+.pytest_cache/
+.venv/
+.expo/
+.DS_Store

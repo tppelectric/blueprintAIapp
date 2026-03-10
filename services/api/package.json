@@ -1,0 +1,26 @@
+{
+  "name": "@service/api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "npm --prefix ../../packages/types run build && npm --prefix ../../packages/shared run build && tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "npm run build && node dist/run-tests.js",
+    "typecheck": "npm --prefix ../../packages/types run build && npm --prefix ../../packages/shared run build && tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cors": "10.0.1",
+    "@package/shared": "workspace:*",
+    "@package/types": "workspace:*",
+    "fastify": "5.3.3",
+    "pg": "8.16.0",
+    "zod": "3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.29",
+    "tsx": "4.19.4",
+    "typescript": "5.8.3"
+  }
+}

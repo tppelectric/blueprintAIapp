@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "name": "AI Blueprint Scan",
+    "slug": "ai-blueprint-scan",
+    "scheme": "aiblueprintscan",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "platforms": ["ios", "android", "web"],
+    "plugins": ["expo-router"]
+  }
+}

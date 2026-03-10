@@ -41,20 +41,42 @@ export default function ProjectsPage() {
   }, []);
 
   async function handleCreateProject() {
-    setStatus("Creating project...");
-    const response = await fetch("/api/projects", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form)
-    });
-    const payload = (await response.json()) as { message?: string; project?: Project };
-    if (!response.ok || !payload.project) {
-      setStatus(payload.message ?? "Could not create project.");
+    if (
+      !form.projectName.trim() ||
+      !form.projectAddress.trim() ||
+      !form.city.trim() ||
+      !form.state.trim() ||
+      !form.clientName.trim()
+    ) {
+      setStatus("Complete all project fields before creating the project.");
       return;
     }
-    setForm(DEFAULT_PROJECT);
-    setStatus("Project created.");
-    await loadProjects();
+
+    setStatus("Creating project...");
+    try {
+      const response = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          projectName: form.projectName.trim(),
+          projectAddress: form.projectAddress.trim(),
+          city: form.city.trim(),
+          state: form.state.trim().toUpperCase(),
+          clientName: form.clientName.trim()
+        })
+      });
+      const payload = (await response.json()) as { message?: string; project?: Project };
+      if (!response.ok || !payload.project) {
+        setStatus(payload.message ?? "Could not create project.");
+        return;
+      }
+      setForm(DEFAULT_PROJECT);
+      setStatus("Project created.");
+      await loadProjects();
+    } catch (error) {
+      setStatus((error as Error).message || "Network error while creating project.");
+    }
   }
 
   async function handleSaveProjectId(currentProjectId: string) {
@@ -70,21 +92,25 @@ export default function ProjectsPage() {
     }
 
     setStatus("Updating project ID...");
-    const response = await fetch(`/api/projects/${currentProjectId}/id`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ newId: nextProjectId })
-    });
-    const payload = (await response.json()) as { message?: string; projectId?: string };
-    if (!response.ok || !payload.projectId) {
-      setStatus(payload.message ?? "Could not update project ID.");
-      return;
-    }
+    try {
+      const response = await fetch(`/api/projects/${currentProjectId}/id`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newId: nextProjectId })
+      });
+      const payload = (await response.json()) as { message?: string; projectId?: string };
+      if (!response.ok || !payload.projectId) {
+        setStatus(payload.message ?? "Could not update project ID.");
+        return;
+      }
 
-    setEditingProjectId(null);
-    setEditingProjectIdValue("");
-    setStatus(`Project ID updated to ${payload.projectId}.`);
-    await loadProjects();
+      setEditingProjectId(null);
+      setEditingProjectIdValue("");
+      setStatus(`Project ID updated to ${payload.projectId}.`);
+      await loadProjects();
+    } catch (error) {
+      setStatus((error as Error).message || "Network error while updating project ID.");
+    }
   }
 
   return (

@@ -314,6 +314,14 @@ input[type="submit"]:hover {
   box-shadow: 0 6px 14px rgba(15, 95, 168, 0.28);
 }
 
+button:disabled,
+input[type="submit"]:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 button.secondary,
 .button-link.secondary {
   background: #ffffff;
@@ -464,5 +472,11 @@ textarea:focus {
 
   .content {
     padding-top: 0;
+  }
+
+  table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
   }
 }

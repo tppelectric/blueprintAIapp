@@ -13,52 +13,62 @@ export default function SignInPage() {
   const [busy, setBusy] = useState(false);
 
   async function signIn() {
+    if (!companyId.trim() || !email.trim() || !password) {
+      setStatus("Enter company ID, email, and password.");
+      return;
+    }
+
     setBusy(true);
     setStatus("Signing in...");
 
-    const loginResponse = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        companyId: companyId.trim(),
-        email: email.trim(),
-        password
-      })
-    });
-    const loginPayload = (await loginResponse.json().catch(() => ({}))) as {
-      message?: string;
-      company?: { id: string; displayName: string };
-      user?: { fullName: string; email: string; role: string };
-    };
+    try {
+      const loginResponse = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companyId: companyId.trim(),
+          email: email.trim(),
+          password
+        })
+      });
+      const loginPayload = (await loginResponse.json().catch(() => ({}))) as {
+        message?: string;
+        company?: { id: string; displayName: string };
+        user?: { fullName: string; email: string; role: string };
+      };
 
-    if (!loginResponse.ok || !loginPayload.company || !loginPayload.user) {
+      if (!loginResponse.ok || !loginPayload.company || !loginPayload.user) {
+        setBusy(false);
+        setStatus(loginPayload.message ?? "Sign-in failed.");
+        return;
+      }
+
+      const sessionResponse = await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companyId: loginPayload.company.id,
+          companyName: loginPayload.company.displayName,
+          userName: loginPayload.user.fullName,
+          userRole: loginPayload.user.role,
+          userEmail: loginPayload.user.email
+        })
+      });
+
+      if (!sessionResponse.ok) {
+        const sessionPayload = (await sessionResponse.json().catch(() => ({}))) as { message?: string };
+        setBusy(false);
+        setStatus(sessionPayload.message ?? "Could not start session.");
+        return;
+      }
+
       setBusy(false);
-      setStatus(loginPayload.message ?? "Sign-in failed.");
-      return;
-    }
-
-    const sessionResponse = await fetch("/api/auth/session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        companyId: loginPayload.company.id,
-        companyName: loginPayload.company.displayName,
-        userName: loginPayload.user.fullName,
-        userRole: loginPayload.user.role,
-        userEmail: loginPayload.user.email
-      })
-    });
-
-    if (!sessionResponse.ok) {
-      const sessionPayload = (await sessionResponse.json().catch(() => ({}))) as { message?: string };
+      router.push("/");
+      router.refresh();
+    } catch (error) {
       setBusy(false);
-      setStatus(sessionPayload.message ?? "Could not start session.");
-      return;
+      setStatus((error as Error).message || "Network error while signing in.");
     }
-
-    setBusy(false);
-    router.push("/");
-    router.refresh();
   }
 
   return (

@@ -46,26 +46,40 @@ function AppShellContent({ title, children }: { title: string; children: ReactNo
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
-      const response = await fetch("/api/auth/session", { cache: "no-store" });
-      const payload = (await response.json().catch(() => ({}))) as {
-        signedIn?: boolean;
-        companyId?: string | null;
-        companyName?: string | null;
-        userName?: string | null;
-        userRole?: string | null;
-        userEmail?: string | null;
-      };
-      if (cancelled) {
-        return;
+      try {
+        const response = await fetch("/api/auth/session", { cache: "no-store" });
+        const payload = (await response.json().catch(() => ({}))) as {
+          signedIn?: boolean;
+          companyId?: string | null;
+          companyName?: string | null;
+          userName?: string | null;
+          userRole?: string | null;
+          userEmail?: string | null;
+        };
+        if (cancelled) {
+          return;
+        }
+        setSession({
+          signedIn: Boolean(payload.signedIn),
+          companyId: payload.companyId ?? null,
+          companyName: payload.companyName ?? null,
+          userName: payload.userName ?? null,
+          userRole: payload.userRole ?? null,
+          userEmail: payload.userEmail ?? null
+        });
+      } catch {
+        if (cancelled) {
+          return;
+        }
+        setSession({
+          signedIn: false,
+          companyId: null,
+          companyName: null,
+          userName: null,
+          userRole: null,
+          userEmail: null
+        });
       }
-      setSession({
-        signedIn: Boolean(payload.signedIn),
-        companyId: payload.companyId ?? null,
-        companyName: payload.companyName ?? null,
-        userName: payload.userName ?? null,
-        userRole: payload.userRole ?? null,
-        userEmail: payload.userEmail ?? null
-      });
     };
     void run();
     return () => {
@@ -74,16 +88,19 @@ function AppShellContent({ title, children }: { title: string; children: ReactNo
   }, []);
 
   async function signOut() {
-    await fetch("/api/auth/session", { method: "DELETE" });
-    setSession({
-      signedIn: false,
-      companyId: null,
-      companyName: null,
-      userName: null,
-      userRole: null,
-      userEmail: null
-    });
-    window.location.href = "/auth/sign-in";
+    try {
+      await fetch("/api/auth/session", { method: "DELETE" });
+    } finally {
+      setSession({
+        signedIn: false,
+        companyId: null,
+        companyName: null,
+        userName: null,
+        userRole: null,
+        userEmail: null
+      });
+      window.location.href = "/auth/sign-in";
+    }
   }
 
   const mainSections: NavSection[] = [
@@ -124,7 +141,6 @@ function AppShellContent({ title, children }: { title: string; children: ReactNo
           title: "Job Menu",
           items: [
             { href: `/projects/${activeProjectId}/jobs/${activeJobId}`, label: "Job Workspace", tag: "WS" },
-            { href: `/projects/${activeProjectId}/import`, label: "Plans", tag: "PL" },
             { href: `/projects/${activeProjectId}/import`, label: "Scan Plans", tag: "AI" },
             { href: `/projects/${activeProjectId}/takeoff`, label: "Takeoffs", tag: "TO" },
             { href: `/projects/${activeProjectId}/panel-schedule`, label: "Load Calculations", tag: "LC" },

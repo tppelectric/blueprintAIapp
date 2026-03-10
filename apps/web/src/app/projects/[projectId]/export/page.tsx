@@ -13,18 +13,23 @@ export default function ExportPage() {
   const router = useRouter();
   const [status, setStatus] = useState("Loading export jobs...");
   const [jobs, setJobs] = useState<ExportJob[]>([]);
+  const [busyAction, setBusyAction] = useState<"csv" | "jobtread" | null>(null);
 
   async function loadJobs() {
-    const query = jobId ? `?jobId=${encodeURIComponent(jobId)}` : "";
-    const response = await fetch(`/api/projects/${params.projectId}/exports${query}`, { cache: "no-store" });
-    const payload = (await response.json()) as { message?: string; exports?: ExportJob[] };
-    if (!response.ok || !payload.exports) {
-      setStatus(payload.message ?? "Could not load export jobs.");
-      return;
-    }
+    try {
+      const query = jobId ? `?jobId=${encodeURIComponent(jobId)}` : "";
+      const response = await fetch(`/api/projects/${params.projectId}/exports${query}`, { cache: "no-store" });
+      const payload = (await response.json()) as { message?: string; exports?: ExportJob[] };
+      if (!response.ok || !payload.exports) {
+        setStatus(payload.message ?? "Could not load export jobs.");
+        return;
+      }
 
-    setJobs(payload.exports);
-    setStatus("");
+      setJobs(payload.exports);
+      setStatus("");
+    } catch (error) {
+      setStatus((error as Error).message || "Network error while loading export jobs.");
+    }
   }
 
   useEffect(() => {
@@ -33,21 +38,28 @@ export default function ExportPage() {
 
   async function runExport(action: "csv" | "jobtread") {
     const endpoint = action === "csv" ? "csv" : "jobtread-sync";
-    const response = await fetch(`/api/projects/${params.projectId}/exports/${endpoint}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobId })
-    });
+    setBusyAction(action);
+    try {
+      const response = await fetch(`/api/projects/${params.projectId}/exports/${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId })
+      });
 
-    const payload = (await response.json()) as { message?: string };
-    if (!response.ok) {
-      setStatus(payload.message ?? "Export failed");
-      return;
+      const payload = (await response.json()) as { message?: string };
+      if (!response.ok) {
+        setStatus(payload.message ?? "Export failed");
+        return;
+      }
+
+      setStatus(action === "csv" ? "CSV export completed." : "JobTread sync queued.");
+      await loadJobs();
+      router.refresh();
+    } catch (error) {
+      setStatus((error as Error).message || "Network error while running export.");
+    } finally {
+      setBusyAction(null);
     }
-
-    setStatus(action === "csv" ? "CSV export completed." : "JobTread sync queued.");
-    await loadJobs();
-    router.refresh();
   }
 
   return (
@@ -56,8 +68,12 @@ export default function ExportPage() {
         <h3>Budget Output Options</h3>
         <p className="muted">This release includes direct sync architecture and JobTread-compatible CSV generation flow.</p>
         <div className="row actions">
-          <button type="button" onClick={() => void runExport("csv")}>Generate JobTread CSV</button>
-          <button type="button" className="secondary" onClick={() => void runExport("jobtread")}>Queue Direct JobTread Sync</button>
+          <button type="button" onClick={() => void runExport("csv")} disabled={busyAction !== null}>
+            {busyAction === "csv" ? "Generating CSV..." : "Generate JobTread CSV"}
+          </button>
+          <button type="button" className="secondary" onClick={() => void runExport("jobtread")} disabled={busyAction !== null}>
+            {busyAction === "jobtread" ? "Queueing Sync..." : "Queue Direct JobTread Sync"}
+          </button>
         </div>
         {status && <p className="status-text">{status}</p>}
       </section>

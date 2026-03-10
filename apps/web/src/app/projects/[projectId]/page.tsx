@@ -83,57 +83,93 @@ export default function ProjectDashboardPage() {
   }, [params.projectId]);
 
   async function handleCreateJob() {
-    setStatus("Creating job...");
-    const response = await fetch(`/api/projects/${params.projectId}/jobs`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form)
-    });
-    const payload = (await response.json()) as { message?: string; job?: ProjectJob };
-    if (!response.ok || !payload.job) {
-      setStatus(payload.message ?? "Could not create job.");
+    if (!form.jobName.trim() || !form.description.trim()) {
+      setStatus("Enter a job name and description before creating a job.");
       return;
     }
-    setForm(DEFAULT_JOB);
-    setStatus("Job created.");
-    await loadProject();
+
+    setStatus("Creating job...");
+    try {
+      const response = await fetch(`/api/projects/${params.projectId}/jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          jobName: form.jobName.trim(),
+          description: form.description.trim()
+        })
+      });
+      const payload = (await response.json()) as { message?: string; job?: ProjectJob };
+      if (!response.ok || !payload.job) {
+        setStatus(payload.message ?? "Could not create job.");
+        return;
+      }
+      setForm(DEFAULT_JOB);
+      setStatus("Job created.");
+      await loadProject();
+    } catch (error) {
+      setStatus((error as Error).message || "Network error while creating job.");
+    }
   }
 
   async function handleSaveProject() {
-    setStatus("Saving project changes...");
-    let activeProjectId = params.projectId;
-    if (projectIdInput.trim() && projectIdInput.trim() !== params.projectId) {
-      const idResp = await fetch(`/api/projects/${params.projectId}/id`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ newId: projectIdInput.trim() })
-      });
-      const idPayload = (await idResp.json()) as { message?: string; projectId?: string };
-      if (!idResp.ok || !idPayload.projectId) {
-        setStatus(idPayload.message ?? "Could not update project ID.");
-        return;
-      }
-      activeProjectId = idPayload.projectId;
+    if (
+      !projectIdInput.trim() ||
+      !projectForm.projectName.trim() ||
+      !projectForm.projectAddress.trim() ||
+      !projectForm.city.trim() ||
+      !projectForm.state.trim() ||
+      !projectForm.clientName.trim()
+    ) {
+      setStatus("Complete all project fields before saving.");
+      return;
     }
 
-    const response = await fetch(`/api/projects/${activeProjectId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(projectForm)
-    });
-    const payload = (await response.json()) as { message?: string };
-    if (!response.ok) {
-      setStatus(payload.message ?? "Could not save project changes.");
-      return;
+    setStatus("Saving project changes...");
+    try {
+      let activeProjectId = params.projectId;
+      if (projectIdInput.trim() && projectIdInput.trim() !== params.projectId) {
+        const idResp = await fetch(`/api/projects/${params.projectId}/id`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ newId: projectIdInput.trim() })
+        });
+        const idPayload = (await idResp.json()) as { message?: string; projectId?: string };
+        if (!idResp.ok || !idPayload.projectId) {
+          setStatus(idPayload.message ?? "Could not update project ID.");
+          return;
+        }
+        activeProjectId = idPayload.projectId;
+      }
+
+      const response = await fetch(`/api/projects/${activeProjectId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...projectForm,
+          projectName: projectForm.projectName.trim(),
+          projectAddress: projectForm.projectAddress.trim(),
+          city: projectForm.city.trim(),
+          state: projectForm.state.trim().toUpperCase(),
+          clientName: projectForm.clientName.trim()
+        })
+      });
+      const payload = (await response.json()) as { message?: string };
+      if (!response.ok) {
+        setStatus(payload.message ?? "Could not save project changes.");
+        return;
+      }
+      setIsEditingProject(false);
+      setStatus("Project updated.");
+      if (activeProjectId !== params.projectId) {
+        router.push(`/projects/${activeProjectId}`);
+        router.refresh();
+        return;
+      }
+      await loadProject();
+    } catch (error) {
+      setStatus((error as Error).message || "Network error while saving project changes.");
     }
-    setIsEditingProject(false);
-    setStatus("Project updated.");
-    if (activeProjectId !== params.projectId) {
-      router.push(`/projects/${activeProjectId}`);
-      router.refresh();
-      return;
-    }
-    await loadProject();
   }
 
   async function handleDeleteProject() {
@@ -143,48 +179,65 @@ export default function ProjectDashboardPage() {
     }
 
     setStatus("Deleting project...");
-    const response = await fetch(`/api/projects/${params.projectId}`, { method: "DELETE" });
-    const payload = (await response.json()) as { message?: string };
-    if (!response.ok) {
-      setStatus(payload.message ?? "Could not delete project.");
-      return;
+    try {
+      const response = await fetch(`/api/projects/${params.projectId}`, { method: "DELETE" });
+      const payload = (await response.json()) as { message?: string };
+      if (!response.ok) {
+        setStatus(payload.message ?? "Could not delete project.");
+        return;
+      }
+      router.push("/projects");
+      router.refresh();
+    } catch (error) {
+      setStatus((error as Error).message || "Network error while deleting project.");
     }
-    router.push("/projects");
-    router.refresh();
   }
 
   async function handleSaveJob(jobId: string) {
-    setStatus("Saving job changes...");
-    let activeJobId = jobId;
-    if (editingJobIdInput.trim() && editingJobIdInput.trim() !== jobId) {
-      const idResp = await fetch(`/api/projects/${params.projectId}/jobs/${jobId}/id`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ newId: editingJobIdInput.trim() })
-      });
-      const idPayload = (await idResp.json()) as { message?: string; jobId?: string };
-      if (!idResp.ok || !idPayload.jobId) {
-        setStatus(idPayload.message ?? "Could not update job ID.");
-        return;
-      }
-      activeJobId = idPayload.jobId;
-    }
-
-    const response = await fetch(`/api/projects/${params.projectId}/jobs/${activeJobId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(editingJobForm)
-    });
-    const payload = (await response.json()) as { message?: string };
-    if (!response.ok) {
-      setStatus(payload.message ?? "Could not save job changes.");
+    if (!editingJobIdInput.trim() || !editingJobForm.jobName.trim() || !editingJobForm.description.trim()) {
+      setStatus("Enter a job ID, job name, and description before saving.");
       return;
     }
-    setEditingJobId(null);
-    setEditingJobIdInput("");
-    setEditingJobForm(DEFAULT_JOB);
-    setStatus("Job updated.");
-    await loadProject();
+
+    setStatus("Saving job changes...");
+    try {
+      let activeJobId = jobId;
+      if (editingJobIdInput.trim() && editingJobIdInput.trim() !== jobId) {
+        const idResp = await fetch(`/api/projects/${params.projectId}/jobs/${jobId}/id`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ newId: editingJobIdInput.trim() })
+        });
+        const idPayload = (await idResp.json()) as { message?: string; jobId?: string };
+        if (!idResp.ok || !idPayload.jobId) {
+          setStatus(idPayload.message ?? "Could not update job ID.");
+          return;
+        }
+        activeJobId = idPayload.jobId;
+      }
+
+      const response = await fetch(`/api/projects/${params.projectId}/jobs/${activeJobId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...editingJobForm,
+          jobName: editingJobForm.jobName.trim(),
+          description: editingJobForm.description.trim()
+        })
+      });
+      const payload = (await response.json()) as { message?: string };
+      if (!response.ok) {
+        setStatus(payload.message ?? "Could not save job changes.");
+        return;
+      }
+      setEditingJobId(null);
+      setEditingJobIdInput("");
+      setEditingJobForm(DEFAULT_JOB);
+      setStatus("Job updated.");
+      await loadProject();
+    } catch (error) {
+      setStatus((error as Error).message || "Network error while saving job changes.");
+    }
   }
 
   async function handleDeleteJob(jobId: string) {
@@ -194,14 +247,18 @@ export default function ProjectDashboardPage() {
     }
 
     setStatus("Deleting job...");
-    const response = await fetch(`/api/projects/${params.projectId}/jobs/${jobId}`, { method: "DELETE" });
-    const payload = (await response.json()) as { message?: string };
-    if (!response.ok) {
-      setStatus(payload.message ?? "Could not delete job.");
-      return;
+    try {
+      const response = await fetch(`/api/projects/${params.projectId}/jobs/${jobId}`, { method: "DELETE" });
+      const payload = (await response.json()) as { message?: string };
+      if (!response.ok) {
+        setStatus(payload.message ?? "Could not delete job.");
+        return;
+      }
+      setStatus("Job deleted.");
+      await loadProject();
+    } catch (error) {
+      setStatus((error as Error).message || "Network error while deleting job.");
     }
-    setStatus("Job deleted.");
-    await loadProject();
   }
 
   if (!dashboard) {

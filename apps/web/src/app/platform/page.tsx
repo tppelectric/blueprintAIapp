@@ -30,9 +30,29 @@ export default function PlatformDashboardPage() {
 
       {data && (
         <>
-          <section className="card">
-            <h3>{data.projectName}</h3>
+          <section className="hero-panel">
+            <div>
+            <p className="section-kicker">Platform control room</p>
+            <h2>{data.projectName}</h2>
             <p className="muted">Designed for residential, multifamily, and commercial estimating workflows.</p>
+            </div>
+            <div className="hero-stats">
+              <div className="hero-stat">
+                <span className="hero-stat-label">Total Points</span>
+                <strong>{data.estimates.totalPoints}</strong>
+              </div>
+              <div className="hero-stat">
+                <span className="hero-stat-label">Project Cost</span>
+                <strong>${data.estimates.totalProjectCost}</strong>
+              </div>
+              <div className="hero-stat">
+                <span className="hero-stat-label">Service</span>
+                <strong>{data.loadCalculation.recommendedServiceSize}</strong>
+              </div>
+            </div>
+          </section>
+
+          <section className="card card-accent section-gap">
             <div className="row actions">
               <Link className="button-link secondary" href="/platform/load-calculator">
                 Open Load Calculator
@@ -47,7 +67,13 @@ export default function PlatformDashboardPage() {
           </section>
 
           <section className="card section-gap">
-            <h3>Estimate Metrics</h3>
+            <div className="section-heading">
+              <div>
+                <p className="section-kicker">Commercial snapshot</p>
+                <h3>Estimate Metrics</h3>
+              </div>
+            </div>
+            <div className="table-shell">
             <table>
               <tbody>
                 <tr><td>Total Points</td><td>{data.estimates.totalPoints}</td></tr>
@@ -58,10 +84,17 @@ export default function PlatformDashboardPage() {
                 <tr><td>Price Per Sq Ft</td><td>${data.estimates.pricePerSqFt}</td></tr>
               </tbody>
             </table>
+            </div>
           </section>
 
           <section className="card section-gap">
-            <h3>Load + Service</h3>
+            <div className="section-heading">
+              <div>
+                <p className="section-kicker">Electrical sizing</p>
+                <h3>Load + Service</h3>
+              </div>
+            </div>
+            <div className="table-shell">
             <table>
               <tbody>
                 <tr><td>Total VA</td><td>{data.loadCalculation.totalVa}</td></tr>
@@ -71,10 +104,17 @@ export default function PlatformDashboardPage() {
                 <tr><td>CT Cabinet Required</td><td>{data.serviceDesign.ctCabinetRequired ? "Yes" : "No"}</td></tr>
               </tbody>
             </table>
+            </div>
           </section>
 
           <section className="card section-gap">
-            <h3>Material Pricing (30-day monitor)</h3>
+            <div className="section-heading">
+              <div>
+                <p className="section-kicker">Supplier watch</p>
+                <h3>Material Pricing (30-day monitor)</h3>
+              </div>
+            </div>
+            <div className="table-shell">
             <table>
               <thead>
                 <tr>
@@ -99,15 +139,22 @@ export default function PlatformDashboardPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </section>
 
           <section className="card section-gap">
-            <h3>Compliance Report</h3>
+            <div className="section-heading">
+              <div>
+                <p className="section-kicker">Rules and checks</p>
+                <h3>Compliance Report</h3>
+              </div>
+            </div>
             <ul>
               {data.complianceSummary.references.map((ref) => (
                 <li key={ref}>{ref}</li>
               ))}
             </ul>
+            <div className="table-shell">
             <table>
               <thead>
                 <tr><th>Rule</th><th>Status</th><th>Note</th></tr>
@@ -118,6 +165,7 @@ export default function PlatformDashboardPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </section>
         </>
       )}

@@ -164,8 +164,13 @@ function AppShellContent({ title, children }: { title: string; children: ReactNo
       <aside className="sidebar">
         <div className="sidebar-header">
           <p className="brand-kicker">TPP GENERAL & ELECTRICAL CONTRACTORS, INC</p>
-          <h2>ElectricalEstimator AI</h2>
-          <p className="muted">NEC 2023 + Utility Workflow</p>
+          <h2>Blueprint AI Control</h2>
+          <p className="muted">Estimating, code review, plan scanning, and utility workflow in one surface.</p>
+          <div className="sidebar-banner">
+            <span className="subtle-badge">NEC 2023</span>
+            <span className="subtle-badge">Central Hudson</span>
+            <span className="subtle-badge">NYSEG</span>
+          </div>
         </div>
         <nav className="nav" aria-label="Sidebar Navigation">
           {navSections.map((section) => (
@@ -187,9 +192,11 @@ function AppShellContent({ title, children }: { title: string; children: ReactNo
           ))}
         </nav>
         <div className="sidebar-footer">
+          <p className="muted">Workspace</p>
+          <p>{session.companyName ?? "Local development mode"}</p>
           {activeProjectId && (
             <>
-              <p className="muted">Project</p>
+              <p className="muted section-gap">Project</p>
               <p>{activeProjectId}</p>
               {activeJobId && (
                 <>
@@ -207,8 +214,11 @@ function AppShellContent({ title, children }: { title: string; children: ReactNo
 
       <section className="content">
         <header className="page-header">
-          <h1>{title}</h1>
-          <div className="row">
+          <div className="page-heading">
+            <p className="page-kicker">AI Blueprint Scan App</p>
+            <h1>{title}</h1>
+          </div>
+          <div className="row header-actions">
             {isInJob && activeProjectId && activeJobId && (
               <>
                 <Link className="button-link secondary" href={`/projects/${activeProjectId}/jobs/${activeJobId}`}>
@@ -272,7 +282,7 @@ function AppShellContent({ title, children }: { title: string; children: ReactNo
 
 export function AppShell({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <Suspense fallback={<div className="layout-root"><section className="content"><header className="page-header"><h1>{title}</h1></header>{children}</section></div>}>
+    <Suspense fallback={<div className="layout-root"><section className="content"><header className="page-header"><div className="page-heading"><p className="page-kicker">AI Blueprint Scan App</p><h1>{title}</h1></div></header>{children}</section></div>}>
       <AppShellContent title={title}>{children}</AppShellContent>
     </Suspense>
   );

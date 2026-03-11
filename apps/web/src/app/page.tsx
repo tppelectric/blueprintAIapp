@@ -110,6 +110,31 @@ export default function DashboardPage() {
 
   return (
     <AppShell title="Project Dashboard">
+      <section className="hero-panel">
+        <div>
+          <p className="section-kicker">Live operations</p>
+          <h2>Estimator command view for active blueprint work</h2>
+          <p className="muted">
+            Monitor scanned sheets, review load and material pressure, and jump straight into project actions without
+            hunting through screens.
+          </p>
+        </div>
+        <div className="hero-stats">
+          <div className="hero-stat">
+            <span className="hero-stat-label">Active Project</span>
+            <strong>{dashboard.project.name}</strong>
+          </div>
+          <div className="hero-stat">
+            <span className="hero-stat-label">Service Target</span>
+            <strong>{platform.loadCalculation.recommendedServiceSize}</strong>
+          </div>
+          <div className="hero-stat">
+            <span className="hero-stat-label">Review Queue</span>
+            <strong>{formatCount(reviewCount)}</strong>
+          </div>
+        </div>
+      </section>
+
       <section className="grid stats">
         <StatCard label="Uploaded Plans" value={formatCount(dashboard.sheets.length)} />
         <StatCard label="Detected Rooms" value={formatCount(dashboard.rooms.length)} />
@@ -119,7 +144,7 @@ export default function DashboardPage() {
         <StatCard label="Review Queue" value={formatCount(reviewCount)} tone={reviewCount > 0 ? "warn" : "default"} />
       </section>
 
-      <section className="card section-gap">
+      <section className="card card-accent section-gap">
         <h3>ElectricalEstimator AI Snapshot</h3>
         <p className="muted">{platform.projectName}</p>
         <div className="grid stats">
@@ -148,7 +173,13 @@ export default function DashboardPage() {
       </section>
 
       <section className="card section-gap">
-        <h3>Blueprint Processing History</h3>
+        <div className="section-heading">
+          <div>
+            <p className="section-kicker">Pipeline visibility</p>
+            <h3>Blueprint Processing History</h3>
+          </div>
+        </div>
+        <div className="table-shell">
         <table>
           <thead>
             <tr>
@@ -178,10 +209,17 @@ export default function DashboardPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </section>
 
       <section className="card section-gap">
-        <h3>{dashboard.project.name}</h3>
+        <div className="section-heading">
+          <div>
+            <p className="section-kicker">Current project</p>
+            <h3>{dashboard.project.name}</h3>
+          </div>
+          <span className="subtle-badge">Customer facing estimate flow</span>
+        </div>
         <p className="muted">
           {dashboard.project.customerName} | {dashboard.project.location}
         </p>

@@ -115,9 +115,31 @@ export default function ProjectsPage() {
 
   return (
     <AppShell title="Projects">
-      <section className="card">
-        <h3>Create Project</h3>
-        <p className="muted">Create a project first. Jobs are created inside each project.</p>
+      <section className="hero-panel">
+        <div>
+          <p className="section-kicker">Project pipeline</p>
+          <h2>Launch and organize estimate-ready blueprint projects</h2>
+          <p className="muted">Create a project first. Jobs are created inside each project and stay isolated under that project.</p>
+        </div>
+        <div className="hero-stats">
+          <div className="hero-stat">
+            <span className="hero-stat-label">Projects Loaded</span>
+            <strong>{projects.length}</strong>
+          </div>
+          <div className="hero-stat">
+            <span className="hero-stat-label">Primary State</span>
+            <strong>{form.state || "NY"}</strong>
+          </div>
+        </div>
+      </section>
+
+      <section className="card card-accent section-gap">
+        <div className="section-heading">
+          <div>
+            <p className="section-kicker">New work</p>
+            <h3>Create Project</h3>
+          </div>
+        </div>
         <div className="form-grid">
           <label className="field">
             Project Name
@@ -168,8 +190,15 @@ export default function ProjectsPage() {
       </section>
 
       <section className="card section-gap">
-        <h3>Project List</h3>
+        <div className="section-heading">
+          <div>
+            <p className="section-kicker">Workspace list</p>
+            <h3>Project List</h3>
+          </div>
+          <span className="subtle-badge">Open, rename, and continue active work</span>
+        </div>
         {status && <p className="status-text">{status}</p>}
+        <div className="table-shell">
         <table>
           <thead>
             <tr>
@@ -234,6 +263,7 @@ export default function ProjectsPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </section>
     </AppShell>
   );

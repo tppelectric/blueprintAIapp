@@ -271,15 +271,37 @@ export default function ProjectDashboardPage() {
 
   return (
     <AppShell title="Project Dashboard">
-      <section className="card">
+      <section className="hero-panel">
+        <div>
+          <p className="section-kicker">Project overview</p>
+          <h2>{dashboard.project.name}</h2>
+          <p className="muted">
+            {dashboard.project.clientName ?? dashboard.project.customerName} |{" "}
+            {dashboard.project.projectAddress ?? dashboard.project.location}
+          </p>
+        </div>
+        <div className="hero-stats">
+          <div className="hero-stat">
+            <span className="hero-stat-label">Jobs</span>
+            <strong>{jobs.length}</strong>
+          </div>
+          <div className="hero-stat">
+            <span className="hero-stat-label">Project ID</span>
+            <strong>{dashboard.project.id}</strong>
+          </div>
+          <div className="hero-stat">
+            <span className="hero-stat-label">Type</span>
+            <strong>{dashboard.project.projectType ?? "residential"}</strong>
+          </div>
+        </div>
+      </section>
+
+      <section className="card card-accent section-gap">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
-            <h3>{dashboard.project.name}</h3>
-            <p className="muted">
-              {dashboard.project.clientName ?? dashboard.project.customerName} |{" "}
-              {dashboard.project.projectAddress ?? dashboard.project.location}
-            </p>
-            <p className="muted">Project ID: {dashboard.project.id}</p>
+            <p className="section-kicker">Settings</p>
+            <h3>Project Controls</h3>
+            <p className="muted">Update the project identity, address, customer, and scope type from one place.</p>
           </div>
           <div className="row">
             {!isEditingProject ? (
@@ -387,7 +409,12 @@ export default function ProjectDashboardPage() {
       </section>
 
       <section className="card section-gap">
-        <h3>Create Job</h3>
+        <div className="section-heading">
+          <div>
+            <p className="section-kicker">Job setup</p>
+            <h3>Create Job</h3>
+          </div>
+        </div>
         <div className="form-grid">
           <label className="field">
             Job Name
@@ -419,7 +446,14 @@ export default function ProjectDashboardPage() {
       </section>
 
       <section id="jobs" className="card section-gap">
-        <h3>Jobs</h3>
+        <div className="section-heading">
+          <div>
+            <p className="section-kicker">Active scopes</p>
+            <h3>Jobs</h3>
+          </div>
+          <span className="subtle-badge">Each job keeps its own workspace context</span>
+        </div>
+        <div className="table-shell">
         <table>
           <thead>
             <tr>
@@ -536,10 +570,17 @@ export default function ProjectDashboardPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </section>
 
       <section className="card section-gap">
-        <h3>Recent Activity</h3>
+        <div className="section-heading">
+          <div>
+            <p className="section-kicker">Recent changes</p>
+            <h3>Recent Activity</h3>
+          </div>
+        </div>
+        <div className="table-shell">
         <table>
           <thead>
             <tr>
@@ -561,6 +602,7 @@ export default function ProjectDashboardPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </section>
     </AppShell>
   );

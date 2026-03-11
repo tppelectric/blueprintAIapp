@@ -23,6 +23,10 @@ type CompanyAuthUser = {
   createdAt: string;
 };
 
+type ThemeMode = "dark" | "light";
+
+const THEME_STORAGE_KEY = "blueprint-theme";
+
 function asNumber(value: string): number {
   return Number(value);
 }
@@ -47,8 +51,17 @@ export default function CompanySettingsPage() {
     "Copper Electric Supply": { username: "", encryptedPassword: "", apiToken: "" },
     "HZ Electric Supply": { username: "", encryptedPassword: "", apiToken: "" }
   });
+  const [theme, setTheme] = useState<ThemeMode>("dark");
 
   useEffect(() => {
+    const savedTheme =
+      typeof window !== "undefined" ? (window.localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null) : null;
+    const preferredTheme =
+      typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+    const initialTheme = savedTheme === "light" || savedTheme === "dark" ? savedTheme : preferredTheme;
+    setTheme(initialTheme);
+    document.documentElement.dataset.theme = initialTheme;
+
     void (async () => {
       const [settingsResp, suppliersResp, usersResp] = await Promise.all([
         fetch("/api/company/settings", { cache: "no-store" }),
@@ -89,6 +102,13 @@ export default function CompanySettingsPage() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    }
+  }, [theme]);
 
   if (!settings) {
     return (
@@ -195,6 +215,35 @@ export default function CompanySettingsPage() {
 
   return (
     <AppShell title="Company Settings">
+      <section className="card card-accent">
+        <div className="section-heading">
+          <div>
+            <p className="section-kicker">Appearance</p>
+            <h3>Display Mode</h3>
+            <p className="muted">Choose the look that is easiest on your eyes. This setting stays saved on this device.</p>
+          </div>
+          <span className="subtle-badge">Personal preference</span>
+        </div>
+        <div className="settings-inline-panel">
+          <div className="theme-toggle settings-theme-toggle" role="group" aria-label="Theme mode">
+            <button
+              type="button"
+              className={theme === "dark" ? "theme-option active" : "theme-option"}
+              onClick={() => setTheme("dark")}
+            >
+              Dark
+            </button>
+            <button
+              type="button"
+              className={theme === "light" ? "theme-option active" : "theme-option"}
+              onClick={() => setTheme("light")}
+            >
+              Light
+            </button>
+          </div>
+        </div>
+      </section>
+
       <section className="card">
         <h3>Labor and Markup Defaults</h3>
         <p className="muted">Admin users can configure company-wide defaults used by estimates and takeoffs.</p>

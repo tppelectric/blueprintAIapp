@@ -6,8 +6,6 @@ import { Suspense, useEffect, useState, type ReactNode } from "react";
 
 type NavItem = { href: string; label: string; tag: string };
 type NavSection = { title: string; items: NavItem[] };
-type ThemeMode = "dark" | "light";
-const THEME_STORAGE_KEY = "blueprint-theme";
 
 function withJobQuery(href: string, jobId: string | null): string {
   if (!jobId) {
@@ -29,7 +27,6 @@ function AppShellContent({ title, children }: { title: string; children: ReactNo
   const isInProject = Boolean(activeProjectId);
   const isInJob = Boolean(activeProjectId && activeJobId);
   const isHomePage = pathname === "/";
-  const [theme, setTheme] = useState<ThemeMode>("dark");
   const [session, setSession] = useState<{
     signedIn: boolean;
     companyId: string | null;
@@ -45,16 +42,6 @@ function AppShellContent({ title, children }: { title: string; children: ReactNo
     userRole: null,
     userEmail: null
   });
-
-  useEffect(() => {
-    const savedTheme =
-      typeof window !== "undefined" ? (window.localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null) : null;
-    const preferredTheme =
-      typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
-    const initialTheme = savedTheme === "light" || savedTheme === "dark" ? savedTheme : preferredTheme;
-    setTheme(initialTheme);
-    document.documentElement.dataset.theme = initialTheme;
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,13 +86,6 @@ function AppShellContent({ title, children }: { title: string; children: ReactNo
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-    }
-  }, [theme]);
 
   async function signOut() {
     try {
@@ -229,25 +209,6 @@ function AppShellContent({ title, children }: { title: string; children: ReactNo
               )}
             </>
           )}
-          <div className="theme-panel">
-            <p className="muted section-gap">Display Mode</p>
-            <div className="theme-toggle" role="group" aria-label="Theme mode">
-              <button
-                type="button"
-                className={theme === "dark" ? "theme-option active" : "theme-option"}
-                onClick={() => setTheme("dark")}
-              >
-                Dark
-              </button>
-              <button
-                type="button"
-                className={theme === "light" ? "theme-option active" : "theme-option"}
-                onClick={() => setTheme("light")}
-              >
-                Light
-              </button>
-            </div>
-          </div>
         </div>
       </aside>
 

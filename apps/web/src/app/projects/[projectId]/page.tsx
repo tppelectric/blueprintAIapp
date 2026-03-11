@@ -21,6 +21,29 @@ type ProjectFormState = {
   projectType: "residential" | "multifamily" | "commercial" | "industrial";
 };
 
+const JOB_TYPE_LABELS: Record<CreateProjectJobInput["jobType"], string> = {
+  electrical_estimate: "Electrical Estimate",
+  low_voltage_estimate: "Low Voltage Estimate",
+  lighting_upgrade: "Lighting Upgrade",
+  service_upgrade: "Service Upgrade",
+  other: "Other"
+};
+
+function formatActivityDate(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return parsed.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+
 export default function ProjectDashboardPage() {
   const params = useParams<{ projectId: string }>();
   const router = useRouter();
@@ -296,116 +319,159 @@ export default function ProjectDashboardPage() {
         </div>
       </section>
 
-      <section className="card card-accent section-gap">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <p className="section-kicker">Settings</p>
-            <h3>Project Controls</h3>
-            <p className="muted">Update the project identity, address, customer, and scope type from one place.</p>
+      <section className="project-layout section-gap">
+        <section className="card card-accent">
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <p className="section-kicker">Settings</p>
+              <h3>Project Controls</h3>
+              <p className="muted">Update the project identity, address, customer, and scope type from one place.</p>
+            </div>
+            <div className="row">
+              {!isEditingProject ? (
+                <>
+                  <button type="button" className="secondary" onClick={() => setIsEditingProject(true)}>
+                    Edit Project
+                  </button>
+                  <button type="button" className="danger" onClick={() => void handleDeleteProject()}>
+                    Delete Project
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button type="button" onClick={() => void handleSaveProject()}>
+                    Save Changes
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => {
+                      setIsEditingProject(false);
+                      setProjectForm({
+                        projectName: dashboard.project.name,
+                        projectAddress: dashboard.project.projectAddress ?? "",
+                        city: dashboard.project.city ?? "",
+                        state: dashboard.project.state ?? "NY",
+                        clientName: dashboard.project.clientName ?? dashboard.project.customerName ?? "",
+                        projectType: dashboard.project.projectType ?? "residential"
+                      });
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </>
+              )}
+            </div>
           </div>
-          <div className="row">
-            {!isEditingProject ? (
-              <>
-                <button type="button" className="secondary" onClick={() => setIsEditingProject(true)}>
-                  Edit Project
-                </button>
-                <button type="button" className="danger" onClick={() => void handleDeleteProject()}>
-                  Delete Project
-                </button>
-              </>
-            ) : (
-              <>
-                <button type="button" onClick={() => void handleSaveProject()}>
-                  Save Changes
-                </button>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => {
-                    setIsEditingProject(false);
+
+          {isEditingProject ? (
+            <div className="form-grid section-gap">
+              <label className="field">
+                Project ID
+                <input value={projectIdInput} onChange={(event) => setProjectIdInput(event.target.value)} />
+              </label>
+              <label className="field">
+                Project Name
+                <input
+                  value={projectForm.projectName}
+                  onChange={(event) => setProjectForm({ ...projectForm, projectName: event.target.value })}
+                />
+              </label>
+              <label className="field">
+                Project Address
+                <input
+                  value={projectForm.projectAddress}
+                  onChange={(event) => setProjectForm({ ...projectForm, projectAddress: event.target.value })}
+                />
+              </label>
+              <label className="field">
+                City
+                <input value={projectForm.city} onChange={(event) => setProjectForm({ ...projectForm, city: event.target.value })} />
+              </label>
+              <label className="field">
+                State
+                <input
+                  value={projectForm.state}
+                  onChange={(event) => setProjectForm({ ...projectForm, state: event.target.value.toUpperCase() })}
+                />
+              </label>
+              <label className="field">
+                Client Name
+                <input
+                  value={projectForm.clientName}
+                  onChange={(event) => setProjectForm({ ...projectForm, clientName: event.target.value })}
+                />
+              </label>
+              <label className="field">
+                Project Type
+                <select
+                  value={projectForm.projectType}
+                  onChange={(event) =>
                     setProjectForm({
-                      projectName: dashboard.project.name,
-                      projectAddress: dashboard.project.projectAddress ?? "",
-                      city: dashboard.project.city ?? "",
-                      state: dashboard.project.state ?? "NY",
-                      clientName: dashboard.project.clientName ?? dashboard.project.customerName ?? "",
-                      projectType: dashboard.project.projectType ?? "residential"
-                    });
-                  }}
+                      ...projectForm,
+                      projectType: event.target.value as typeof projectForm.projectType
+                    })
+                  }
                 >
-                  Cancel
-                </button>
-              </>
-            )}
-          </div>
-        </div>
+                  <option value="residential">Residential</option>
+                  <option value="multifamily">Multifamily</option>
+                  <option value="commercial">Commercial</option>
+                  <option value="industrial">Industrial</option>
+                </select>
+              </label>
+            </div>
+          ) : (
+            <div className="entity-meta-grid section-gap">
+              <div className="entity-meta-item">
+                <span className="entity-meta-label">Client</span>
+                <strong>{dashboard.project.clientName ?? dashboard.project.customerName ?? "Not set"}</strong>
+              </div>
+              <div className="entity-meta-item">
+                <span className="entity-meta-label">State</span>
+                <strong>{dashboard.project.state ?? "NY"}</strong>
+              </div>
+              <div className="entity-meta-item">
+                <span className="entity-meta-label">Address</span>
+                <strong>{dashboard.project.projectAddress ?? dashboard.project.location}</strong>
+              </div>
+              <div className="entity-meta-item">
+                <span className="entity-meta-label">Scope</span>
+                <strong>{dashboard.project.projectType ?? "residential"}</strong>
+              </div>
+            </div>
+          )}
 
-        {isEditingProject && (
-          <div className="form-grid section-gap">
-            <label className="field">
-              Project ID
-              <input value={projectIdInput} onChange={(event) => setProjectIdInput(event.target.value)} />
-            </label>
-            <label className="field">
-              Project Name
-              <input
-                value={projectForm.projectName}
-                onChange={(event) => setProjectForm({ ...projectForm, projectName: event.target.value })}
-              />
-            </label>
-            <label className="field">
-              Project Address
-              <input
-                value={projectForm.projectAddress}
-                onChange={(event) => setProjectForm({ ...projectForm, projectAddress: event.target.value })}
-              />
-            </label>
-            <label className="field">
-              City
-              <input value={projectForm.city} onChange={(event) => setProjectForm({ ...projectForm, city: event.target.value })} />
-            </label>
-            <label className="field">
-              State
-              <input
-                value={projectForm.state}
-                onChange={(event) => setProjectForm({ ...projectForm, state: event.target.value.toUpperCase() })}
-              />
-            </label>
-            <label className="field">
-              Client Name
-              <input
-                value={projectForm.clientName}
-                onChange={(event) => setProjectForm({ ...projectForm, clientName: event.target.value })}
-              />
-            </label>
-            <label className="field">
-              Project Type
-              <select
-                value={projectForm.projectType}
-                onChange={(event) =>
-                  setProjectForm({
-                    ...projectForm,
-                    projectType: event.target.value as typeof projectForm.projectType
-                  })
-                }
-              >
-                <option value="residential">Residential</option>
-                <option value="multifamily">Multifamily</option>
-                <option value="commercial">Commercial</option>
-                <option value="industrial">Industrial</option>
-              </select>
-            </label>
+          <div className="row actions">
+            <Link className="button-link" href={`/projects/${params.projectId}/import`}>
+              Upload Plans
+            </Link>
+            <Link className="button-link secondary" href={`/projects/${params.projectId}/export`}>
+              View Reports
+            </Link>
           </div>
-        )}
+        </section>
 
-        <div className="row actions">
-          <Link className="button-link" href={`/projects/${params.projectId}/import`}>
-            Upload Plans
-          </Link>
-          <Link className="button-link secondary" href={`/projects/${params.projectId}/export`}>
-            View Reports
-          </Link>
-        </div>
+        <section className="card project-aside">
+          <div>
+            <p className="section-kicker">Workflow summary</p>
+            <h3>How this project is organized</h3>
+            <p className="muted">Keep one project for the overall jobsite. Create jobs under it for each estimating track or scope package.</p>
+          </div>
+          <div className="info-stack">
+            <div className="info-chip">
+              <span className="info-chip-label">Project ID</span>
+              <strong>{dashboard.project.id}</strong>
+            </div>
+            <div className="info-chip">
+              <span className="info-chip-label">Jobs inside this project</span>
+              <strong>{jobs.length}</strong>
+            </div>
+            <div className="info-chip">
+              <span className="info-chip-label">Recent activity</span>
+              <strong>{dashboard.recentActivity?.length ?? 0} logged updates</strong>
+            </div>
+          </div>
+        </section>
       </section>
 
       <section className="card section-gap">
@@ -413,7 +479,9 @@ export default function ProjectDashboardPage() {
           <div>
             <p className="section-kicker">Job setup</p>
             <h3>Create Job</h3>
+            <p className="muted">Use a separate job for each estimate package so scans and reports stay isolated.</p>
           </div>
+          <span className="subtle-badge">Jobs inherit this project context</span>
         </div>
         <div className="form-grid">
           <label className="field">
@@ -453,124 +521,120 @@ export default function ProjectDashboardPage() {
           </div>
           <span className="subtle-badge">Each job keeps its own workspace context</span>
         </div>
-        <div className="table-shell">
-        <table>
-          <thead>
-            <tr>
-              <th>Job ID</th>
-              <th>Name</th>
-              <th>Type</th>
-              <th>Description</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {jobs.length === 0 && (
-              <tr>
-                <td colSpan={5}>No jobs yet.</td>
-              </tr>
-            )}
+        {jobs.length === 0 ? (
+          <div className="empty-state">
+            <h4>No jobs yet</h4>
+            <p>Create a job above to open a dedicated workspace for scans, takeoffs, estimates, and reports.</p>
+          </div>
+        ) : (
+          <div className="entity-grid">
             {jobs.map((job) => (
-              <tr key={job.id}>
-                <td>
-                  {editingJobId === job.id ? (
-                    <input value={editingJobIdInput} onChange={(event) => setEditingJobIdInput(event.target.value)} />
-                  ) : (
-                    job.id
-                  )}
-                </td>
-                <td>
-                  {editingJobId === job.id ? (
-                    <input
-                      value={editingJobForm.jobName}
-                      onChange={(event) => setEditingJobForm({ ...editingJobForm, jobName: event.target.value })}
-                    />
-                  ) : (
-                    job.name
-                  )}
-                </td>
-                <td>
-                  {editingJobId === job.id ? (
-                    <select
-                      value={editingJobForm.jobType}
-                      onChange={(event) =>
-                        setEditingJobForm({
-                          ...editingJobForm,
-                          jobType: event.target.value as CreateProjectJobInput["jobType"]
-                        })
-                      }
-                    >
-                      <option value="electrical_estimate">Electrical Estimate</option>
-                      <option value="low_voltage_estimate">Low Voltage Estimate</option>
-                      <option value="lighting_upgrade">Lighting Upgrade</option>
-                      <option value="service_upgrade">Service Upgrade</option>
-                      <option value="other">Other</option>
-                    </select>
-                  ) : (
-                    job.type
-                  )}
-                </td>
-                <td>
-                  {editingJobId === job.id ? (
-                    <input
-                      value={editingJobForm.description}
-                      onChange={(event) => setEditingJobForm({ ...editingJobForm, description: event.target.value })}
-                    />
-                  ) : (
-                    job.description
-                  )}
-                </td>
-                <td>
-                  <div className="row">
+              <article key={job.id} className="entity-card">
+                <div className="entity-card-top">
+                  <div>
+                    <p className="entity-eyebrow">Job Workspace</p>
                     {editingJobId === job.id ? (
-                      <>
-                        <button type="button" onClick={() => void handleSaveJob(job.id)}>
-                          Save
-                        </button>
-                        <button
-                          type="button"
-                          className="secondary"
-                          onClick={() => {
-                            setEditingJobId(null);
-                            setEditingJobIdInput("");
-                            setEditingJobForm(DEFAULT_JOB);
-                          }}
-                        >
-                          Cancel
-                        </button>
-                      </>
+                      <input
+                        value={editingJobForm.jobName}
+                        onChange={(event) => setEditingJobForm({ ...editingJobForm, jobName: event.target.value })}
+                      />
                     ) : (
-                      <>
-                        <Link className="button-link secondary" href={`/projects/${params.projectId}/jobs/${job.id}`}>
-                          Open Workspace
-                        </Link>
-                        <button
-                          type="button"
-                          className="secondary"
-                          onClick={() => {
-                            setEditingJobId(job.id);
-                            setEditingJobIdInput(job.id);
-                            setEditingJobForm({
-                              jobName: job.name,
-                              jobType: job.type,
-                              description: job.description
-                            });
-                          }}
-                        >
-                          Edit
-                        </button>
-                        <button type="button" className="danger" onClick={() => void handleDeleteJob(job.id)}>
-                          Delete
-                        </button>
-                      </>
+                      <h4>{job.name}</h4>
                     )}
                   </div>
-                </td>
-              </tr>
+                  <span className="subtle-badge">{JOB_TYPE_LABELS[job.type]}</span>
+                </div>
+                <div className="entity-meta-grid">
+                  <div className="entity-meta-item">
+                    <span className="entity-meta-label">Job ID</span>
+                    {editingJobId === job.id ? (
+                      <input value={editingJobIdInput} onChange={(event) => setEditingJobIdInput(event.target.value)} />
+                    ) : (
+                      <strong>{job.id}</strong>
+                    )}
+                  </div>
+                  <div className="entity-meta-item">
+                    <span className="entity-meta-label">Type</span>
+                    {editingJobId === job.id ? (
+                      <select
+                        value={editingJobForm.jobType}
+                        onChange={(event) =>
+                          setEditingJobForm({
+                            ...editingJobForm,
+                            jobType: event.target.value as CreateProjectJobInput["jobType"]
+                          })
+                        }
+                      >
+                        <option value="electrical_estimate">Electrical Estimate</option>
+                        <option value="low_voltage_estimate">Low Voltage Estimate</option>
+                        <option value="lighting_upgrade">Lighting Upgrade</option>
+                        <option value="service_upgrade">Service Upgrade</option>
+                        <option value="other">Other</option>
+                      </select>
+                    ) : (
+                      <strong>{JOB_TYPE_LABELS[job.type]}</strong>
+                    )}
+                  </div>
+                  <div className="entity-meta-item entity-meta-item-wide">
+                    <span className="entity-meta-label">Description</span>
+                    {editingJobId === job.id ? (
+                      <input
+                        value={editingJobForm.description}
+                        onChange={(event) => setEditingJobForm({ ...editingJobForm, description: event.target.value })}
+                      />
+                    ) : (
+                      <strong>{job.description}</strong>
+                    )}
+                  </div>
+                </div>
+                <div className="row actions">
+                  {editingJobId === job.id ? (
+                    <>
+                      <button type="button" onClick={() => void handleSaveJob(job.id)}>
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => {
+                          setEditingJobId(null);
+                          setEditingJobIdInput("");
+                          setEditingJobForm(DEFAULT_JOB);
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <Link className="button-link" href={`/projects/${params.projectId}/jobs/${job.id}`}>
+                        Open Workspace
+                      </Link>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => {
+                          setEditingJobId(job.id);
+                          setEditingJobIdInput(job.id);
+                          setEditingJobForm({
+                            jobName: job.name,
+                            jobType: job.type,
+                            description: job.description
+                          });
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button type="button" className="danger" onClick={() => void handleDeleteJob(job.id)}>
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </div>
+              </article>
             ))}
-          </tbody>
-        </table>
-        </div>
+          </div>
+        )}
       </section>
 
       <section className="card section-gap">
@@ -580,29 +644,24 @@ export default function ProjectDashboardPage() {
             <h3>Recent Activity</h3>
           </div>
         </div>
-        <div className="table-shell">
-        <table>
-          <thead>
-            <tr>
-              <th>Activity</th>
-              <th>When</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(dashboard.recentActivity ?? []).length === 0 && (
-              <tr>
-                <td colSpan={2}>No recent activity.</td>
-              </tr>
-            )}
+        {(dashboard.recentActivity ?? []).length === 0 ? (
+          <div className="empty-state">
+            <h4>No recent activity</h4>
+            <p>Project changes will show up here after scans, edits, or report exports are completed.</p>
+          </div>
+        ) : (
+          <div className="activity-list">
             {(dashboard.recentActivity ?? []).map((activity) => (
-              <tr key={activity.id}>
-                <td>{activity.label}</td>
-                <td>{activity.createdAt}</td>
-              </tr>
+              <article key={activity.id} className="activity-item">
+                <div>
+                  <p className="entity-eyebrow">Project update</p>
+                  <h4>{activity.label}</h4>
+                </div>
+                <span className="subtle-badge">{formatActivityDate(activity.createdAt)}</span>
+              </article>
             ))}
-          </tbody>
-        </table>
-        </div>
+          </div>
+        )}
       </section>
     </AppShell>
   );

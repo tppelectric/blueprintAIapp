@@ -135,7 +135,7 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <section className="grid stats">
+      <section className="grid stats section-gap">
         <StatCard label="Uploaded Plans" value={formatCount(dashboard.sheets.length)} />
         <StatCard label="Detected Rooms" value={formatCount(dashboard.rooms.length)} />
         <StatCard label="Detected Symbols" value={formatCount(dashboard.symbols.length)} />

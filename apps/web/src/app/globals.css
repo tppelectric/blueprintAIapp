@@ -683,7 +683,7 @@ textarea:focus {
 
 .hero-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1.8fr) minmax(300px, 1fr);
+  grid-template-columns: minmax(0, 1.55fr) minmax(260px, 1fr);
   gap: 0.9rem;
   padding: 1.1rem 1.15rem;
   border-radius: 28px;
@@ -691,16 +691,24 @@ textarea:focus {
   background: var(--hero-bg);
   box-shadow: var(--shadow-md);
   overflow: hidden;
+  align-items: start;
+  isolation: isolate;
+}
+
+.hero-panel > * {
+  min-width: 0;
 }
 
 .hero-panel h2 {
   font-size: clamp(1.45rem, 1rem + 1.3vw, 2.3rem);
   margin-top: 0.2rem;
+  max-width: 14ch;
 }
 
 .hero-stats {
   display: grid;
   gap: 0.6rem;
+  align-content: start;
 }
 
 .hero-stat {

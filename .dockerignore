@@ -1,0 +1,15 @@
+node_modules
+.next
+dist
+.git
+.uploads
+*.log
+*.pyc
+__pycache__
+.env
+.env.local
+.env.production
+.env.staging
+apps/*/node_modules
+services/*/node_modules
+packages/*/node_modules

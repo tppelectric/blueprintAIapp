@@ -1,0 +1,79 @@
+databases:
+  - name: blueprint-staging-db
+    databaseName: blueprint_ai_staging
+    user: blueprint_ai_staging
+    plan: basic-256mb
+
+services:
+  - type: web
+    name: blueprint-staging-api
+    runtime: docker
+    dockerfilePath: infrastructure/docker/api.Dockerfile
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_PORT
+        value: "4000"
+      - key: API_PUBLIC_URL
+        sync: false
+      - key: WEB_URL
+        sync: false
+      - key: API_BASE_URL
+        sync: false
+      - key: SCANNER_URL
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: PLAN_STORAGE_MODE
+        value: api_proxy
+      - key: APP_TENANCY_MODE
+        value: multi_company
+      - key: AUTH_REQUIRED
+        value: "true"
+      - key: RBAC_ENFORCED
+        value: "true"
+      - key: ALLOW_DEV_TENANT_HEADER
+        value: "false"
+      - key: DB_SCHEMA_CHECK_ENABLED
+        value: "true"
+      - key: MATERIAL_PRICE_SCHEDULER_ENABLED
+        value: "false"
+      - key: SCANNER_REAL_REQUIRE_YOLO
+        value: "false"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: blueprint-staging-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: RESET_TOKEN_SECRET
+        generateValue: true
+      - key: PLAN_FILE_TOKEN_SECRET
+        generateValue: true
+
+  - type: web
+    name: blueprint-staging-scanner
+    runtime: docker
+    dockerfilePath: infrastructure/docker/scanner.Dockerfile
+    plan: starter
+    healthCheckPath: /health
+
+  - type: web
+    name: blueprint-staging-web
+    runtime: docker
+    dockerfilePath: infrastructure/docker/web.Dockerfile
+    plan: starter
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_BASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: JWT_SECRET
+        sync: false

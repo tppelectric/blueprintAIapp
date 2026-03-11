@@ -205,6 +205,7 @@ Next.js routes under `apps/web/src/app/api/*` proxy browser requests to Fastify 
 - Do not reuse the local `.env` file for staging.
 - Start from `.env.staging.example` for hosted staging values.
 - Deployment and rollback notes are in `docs/staging-deployment.md`.
+- Render-based staging setup files are in `render.yaml` and `docs/render-staging-setup.md`.
 
 ## Project -> Job Workflow
 Core hierarchy now supported:

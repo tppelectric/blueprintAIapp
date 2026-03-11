@@ -293,15 +293,20 @@ function AppShellContent({ title, children }: { title: string; children: ReactNo
                 </Link>
               </>
             )}
-            <div className="header-chip">
-              Company: {session.companyName ?? "Not signed in"}
-              {session.companyId ? ` (${session.companyId})` : ""}
-            </div>
-            {session.signedIn && (
-              <div className="header-chip">
-                User: {session.userName ?? "Unknown"} {session.userRole ? `(${session.userRole})` : ""}
+            <div className="identity-cluster">
+              <div className="identity-card">
+                <span className="identity-label">Company</span>
+                <strong>{session.companyName ?? "Not signed in"}</strong>
+                <span className="identity-meta">{session.companyId ?? "Local session"}</span>
               </div>
-            )}
+              {session.signedIn && (
+                <div className="identity-card">
+                  <span className="identity-label">User</span>
+                  <strong>{session.userName ?? "Unknown"}</strong>
+                  <span className="identity-meta">{session.userRole ?? "member"}</span>
+                </div>
+              )}
+            </div>
             {session.signedIn ? (
               <button type="button" className="secondary" onClick={() => void signOut()}>
                 Sign Out

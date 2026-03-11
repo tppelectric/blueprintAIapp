@@ -351,6 +351,7 @@ a {
 
 .header-actions {
   justify-content: flex-end;
+  gap: 0.7rem;
 }
 
 .header-chip {
@@ -361,6 +362,46 @@ a {
   color: var(--chip-text);
   font-size: 0.8rem;
   font-weight: 700;
+}
+
+.identity-cluster {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.identity-card {
+  min-width: 168px;
+  display: grid;
+  gap: 0.14rem;
+  padding: 0.62rem 0.82rem;
+  border-radius: 18px;
+  border: 1px solid var(--chip-border);
+  background: var(--chip-bg);
+  color: var(--chip-text);
+  box-shadow: var(--shadow-sm);
+}
+
+.identity-card strong {
+  font-size: 0.98rem;
+  line-height: 1.1;
+}
+
+.identity-label,
+.identity-meta {
+  font-size: 0.73rem;
+  letter-spacing: 0.04em;
+}
+
+.identity-label {
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.identity-meta {
+  color: var(--muted);
+  font-weight: 600;
 }
 
 .muted {
@@ -388,12 +429,12 @@ a {
 
 .stat-orbit {
   position: absolute;
-  right: -18px;
-  top: -18px;
-  width: 72px;
-  height: 72px;
+  right: -8px;
+  top: -8px;
+  width: 48px;
+  height: 48px;
   border-radius: 999px;
-  background: radial-gradient(circle, rgba(31, 143, 255, 0.38) 0%, rgba(31, 143, 255, 0) 70%);
+  background: radial-gradient(circle, rgba(31, 143, 255, 0.24) 0%, rgba(31, 143, 255, 0) 72%);
 }
 
 .stat-label {
@@ -643,12 +684,13 @@ textarea:focus {
 .hero-panel {
   display: grid;
   grid-template-columns: minmax(0, 1.8fr) minmax(300px, 1fr);
-  gap: 1rem;
-  padding: 1.25rem 1.3rem;
+  gap: 0.9rem;
+  padding: 1.1rem 1.15rem;
   border-radius: 28px;
   border: 1px solid var(--hero-border);
   background: var(--hero-bg);
   box-shadow: var(--shadow-md);
+  overflow: hidden;
 }
 
 .hero-panel h2 {
@@ -658,15 +700,16 @@ textarea:focus {
 
 .hero-stats {
   display: grid;
-  gap: 0.75rem;
+  gap: 0.6rem;
 }
 
 .hero-stat {
-  padding: 0.95rem 1rem;
-  border-radius: 18px;
+  padding: 0.8rem 0.9rem;
+  border-radius: 16px;
   border: 1px solid var(--hero-stat-border);
   background: var(--hero-stat-bg);
   backdrop-filter: blur(12px);
+  min-width: 0;
 }
 
 .hero-stat-label,
@@ -755,6 +798,30 @@ textarea:focus {
 
   .header-actions {
     justify-content: flex-start;
+  }
+
+  .identity-cluster {
+    width: 100%;
+  }
+
+  .identity-card {
+    min-width: min(100%, 220px);
+  }
+
+  .stat-orbit {
+    width: 36px;
+    height: 36px;
+    right: -6px;
+    top: -6px;
+  }
+
+  .hero-panel {
+    padding: 1rem;
+    border-radius: 22px;
+  }
+
+  .hero-stat {
+    padding: 0.72rem 0.8rem;
   }
 
   table {

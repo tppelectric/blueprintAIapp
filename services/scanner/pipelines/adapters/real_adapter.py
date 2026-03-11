@@ -28,10 +28,22 @@ ROOM_PATTERNS = [
     "bathroom",
     "kitchen",
     "living",
+    "dining",
+    "foyer",
     "garage",
     "basement",
     "laundry",
     "office",
+    "closet",
+    "pantry",
+    "utility",
+    "mechanical",
+    "storage",
+    "entry",
+    "stair",
+    "mudroom",
+    "porch",
+    "deck",
 ]
 
 SCALE_PATTERN = re.compile(
@@ -238,14 +250,13 @@ class RealScannerAdapter(ScannerAdapter):
             legend_score = template_match.score if template_match else 0.0
             mapped_from_legend = _map_legend_class_to_symbol_type(template_match.symbol_class if template_match else None)
 
-            # AI candidate score is not final classification by itself.
             ai_score = float(detection.confidence)
-            if template_match and legend_score >= 0.72 and mapped_from_legend != "unknown":
-                final_type = mapped_from_legend
-                needs_review = False
-            else:
-                final_type = "unknown"
-                needs_review = True
+            final_type, needs_review = self._resolve_symbol_type(
+                mapped_from_legend=mapped_from_legend,
+                legend_score=legend_score,
+                ai_candidate_type=detection.symbol_type,
+                ai_score=ai_score,
+            )
 
             room_name = self._assign_room_by_overlap(rooms, page_number, (x1, y1, x2, y2))
 
@@ -266,6 +277,29 @@ class RealScannerAdapter(ScannerAdapter):
             )
 
         return detections
+
+    def _resolve_symbol_type(
+        self,
+        *,
+        mapped_from_legend: str,
+        legend_score: float,
+        ai_candidate_type: str,
+        ai_score: float,
+    ) -> tuple[str, bool]:
+        if mapped_from_legend != "unknown" and legend_score >= 0.72:
+            return mapped_from_legend, False
+
+        if mapped_from_legend != "unknown" and legend_score >= 0.52:
+            return mapped_from_legend, True
+
+        ai_type = ai_candidate_type if ai_candidate_type in SYMBOL_KEYWORDS or ai_candidate_type in {"outlet", "switch", "dimmer", "light", "recessed_light", "fan", "cat6", "speaker", "camera", "smoke_co"} else "unknown"
+        if ai_type != "unknown" and ai_score >= 0.58:
+            return ai_type, False
+
+        if ai_type != "unknown" and ai_score >= 0.3:
+            return ai_type, True
+
+        return "unknown", True
 
     def _assign_room_by_overlap(self, rooms: list[dict], page_number: int, bbox: tuple[int, int, int, int]) -> str:
         x1, y1, x2, y2 = bbox

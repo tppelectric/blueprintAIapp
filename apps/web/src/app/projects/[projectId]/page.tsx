@@ -64,7 +64,7 @@ export default function ProjectDashboardPage() {
   const [editingJobIdInput, setEditingJobIdInput] = useState("");
   const [editingJobForm, setEditingJobForm] = useState<CreateProjectJobInput>(DEFAULT_JOB);
   const [planFiles, setPlanFiles] = useState<File[]>([]);
-  const [planScanMode, setPlanScanMode] = useState<"mock" | "real">("mock");
+  const [planScanMode, setPlanScanMode] = useState<"mock" | "real">("real");
   const [uploadingPlans, setUploadingPlans] = useState(false);
   const [status, setStatus] = useState("Loading project dashboard...");
 
@@ -750,10 +750,22 @@ export default function ProjectDashboardPage() {
       <section className="card section-gap">
         <div className="section-heading">
           <div>
-            <p className="section-kicker">Uploaded plans</p>
-            <h3>Project Plan Register</h3>
+            <p className="section-kicker">Project plans</p>
+            <h3>Uploaded Plans In This Project</h3>
+            <p className="muted">Review the plan sheets already attached to this project and open the processed results.</p>
           </div>
-          <span className="subtle-badge">{dashboard.sheets.length} sheet(s)</span>
+          <div className="row">
+            <span className="subtle-badge">{dashboard.sheets.length} sheet(s)</span>
+            {dashboard.sheets.length > 0 ? (
+              <Link className="button-link secondary" href={`/projects/${params.projectId}/takeoff`}>
+                Results
+              </Link>
+            ) : (
+              <button type="button" className="secondary" disabled>
+                Results
+              </button>
+            )}
+          </div>
         </div>
         {dashboard.sheets.length === 0 ? (
           <div className="empty-state">

@@ -36,7 +36,7 @@ export default function ImportPlansPage() {
   const searchParams = useSearchParams();
   const jobId = searchParams.get("jobId") ?? undefined;
   const [source, setSource] = useState<(typeof SOURCES)[number]["value"]>("local");
-  const [scanMode, setScanMode] = useState<(typeof SCAN_MODES)[number]["value"]>("mock");
+  const [scanMode, setScanMode] = useState<(typeof SCAN_MODES)[number]["value"]>("real");
   const [fileName, setFileName] = useState("hudson-ridge-electrical.pdf");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [manualScale, setManualScale] = useState("");

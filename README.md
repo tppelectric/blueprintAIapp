@@ -75,6 +75,10 @@ Notes:
    - `CORS_ALLOWED_ORIGINS=http://localhost:3000`
 8. Optional upload directory override for plan imports:
    - `LOCAL_UPLOAD_DIR=...`
+9. Keep local scanner uploads on disk by default:
+   - `PLAN_STORAGE_MODE=local`
+10. Optional public API URL for signed scanner file access:
+   - `API_PUBLIC_URL=http://127.0.0.1:4000`
 
 ## API Authentication and Tenant Isolation
 - API routes under `/api/*` resolve tenant context from JWT claims first.
@@ -156,6 +160,16 @@ Core workflow endpoints now require real persisted project data:
 - `/api/projects/:projectId/takeoff`
 - `/api/projects/:projectId/estimate` (POST)
 - `/api/projects/:projectId/material-list` (POST)
+
+Scanner file handling modes:
+- `PLAN_STORAGE_MODE=local`
+  - local development default
+  - web route writes uploads to disk and passes a filesystem path through the import pipeline
+- `PLAN_STORAGE_MODE=api_proxy`
+  - staging/outside tester mode
+  - web route forwards uploads to the API
+  - API stores the file and gives the scanner a signed download URL
+  - scanner downloads the file to a temp path before processing
 
 ## Database Schema
 Initial PostgreSQL schema is in:

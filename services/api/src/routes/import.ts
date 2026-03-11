@@ -4,13 +4,21 @@ import { z } from "zod";
 import { extractSheetWithScanner, splitSheetsWithScanner } from "../integrations/scanner/client.js";
 import { getLatestImportedFileForProject, saveBlueprintImportResult } from "../repositories/import-repository.js";
 import { getDashboardForProject } from "../repositories/project-repository.js";
+import { readStoredPlanByToken, savePlanUpload } from "../utils/plan-storage.js";
 import { resolveCompanyId } from "../utils/tenant.js";
+
+const uploadSchema = z.object({
+  fileName: z.string().min(1),
+  contentBase64: z.string().min(1),
+  contentType: z.string().optional()
+});
 
 const importSchema = z.object({
   projectId: z.string().min(1),
   jobId: z.string().min(1).optional(),
   source: z.enum(["local", "onedrive", "google-drive", "apple-files"]),
   fileName: z.string().optional(),
+  upload: uploadSchema.optional(),
   manualScale: z.string().trim().min(1).optional(),
   scanMode: z.enum(["mock", "real"]).optional().default("mock")
 });
@@ -79,6 +87,24 @@ async function runImportPipeline(params: {
 }
 
 export const importRoutes: FastifyPluginAsync = async (app) => {
+  app.get("/imports/files", async (request, reply) => {
+    const query = request.query as { token?: string };
+    const token = query.token?.trim();
+    if (!token) {
+      return reply.code(400).send({ message: "token is required." });
+    }
+
+    const file = await readStoredPlanByToken(token);
+    if (!file) {
+      return reply.code(404).send({ message: "Plan file not found or token expired." });
+    }
+
+    return reply
+      .header("content-type", "application/octet-stream")
+      .header("cache-control", "private, max-age=60")
+      .send(file.content);
+  });
+
   app.post("/imports/plans", async (request, reply) => {
     const parsed = importSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -86,8 +112,24 @@ export const importRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const companyId = resolveCompanyId(request);
-    const { projectId, jobId, source, fileName, manualScale, scanMode } = parsed.data;
-    const resolvedFile = fileName ?? `${source}-import.pdf`;
+    const { projectId, jobId, source, fileName, upload, manualScale, scanMode } = parsed.data;
+    let resolvedFile = fileName ?? `${source}-import.pdf`;
+
+    if (upload) {
+      try {
+        const storedUpload = await savePlanUpload({
+          projectId,
+          fileName: upload.fileName,
+          contentBase64: upload.contentBase64
+        });
+        resolvedFile = storedUpload.scannerFileRef;
+      } catch (error) {
+        return reply.code(502).send({
+          message: "Could not persist uploaded plan file.",
+          detail: (error as Error).message
+        });
+      }
+    }
 
     try {
       const result = await runImportPipeline({

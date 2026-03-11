@@ -30,6 +30,7 @@ This means staging should use a host that supports a writable runtime path, or t
 
 ## Minimum Safe Staging Settings
 - `NODE_ENV=production`
+- `PLAN_STORAGE_MODE=api_proxy`
 - `APP_TENANCY_MODE=multi_company`
 - `AUTH_REQUIRED=true`
 - `RBAC_ENFORCED=true`
@@ -37,6 +38,8 @@ This means staging should use a host that supports a writable runtime path, or t
 - explicit `JWT_SECRET`
 - explicit `SESSION_SECRET`
 - explicit `RESET_TOKEN_SECRET`
+- explicit `PLAN_FILE_TOKEN_SECRET`
+- explicit `API_PUBLIC_URL`
 - explicit `CORS_ALLOWED_ORIGINS`
 - separate staging `DATABASE_URL`
 
@@ -66,6 +69,17 @@ If staging does not work correctly:
 3. Deploy web app with staging `API_BASE_URL`
 4. Confirm sign-in, project creation, and reports
 5. Add scanner service only if outside testers need imports and scan processing
+
+## Scanner Activation For Outside Testers
+- Local development should stay on `PLAN_STORAGE_MODE=local`
+- Staging should use `PLAN_STORAGE_MODE=api_proxy`
+- In staging, the web app forwards uploads to the API instead of writing to local web-server disk
+- The API stores uploaded plans and gives the scanner a signed download URL
+- The scanner downloads the plan to a temp file before processing
+
+This allows:
+- local scanner use to stay unchanged
+- staged outside testing to work without sharing the web server filesystem
 
 ## Suggested First External Test Scope
 Start with:

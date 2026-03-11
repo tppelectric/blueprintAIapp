@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://127.0.0.1:4000";
 const uploadRoot = process.env.LOCAL_UPLOAD_DIR ?? resolve(process.cwd(), "..", "..", ".uploads", "plans");
+const proxyPlanUploads = process.env.PLAN_STORAGE_MODE === "api_proxy";
 
 const ALLOWED_EXTENSIONS = new Set([".pdf", ".png", ".jpg", ".jpeg"]);
 
@@ -39,6 +40,34 @@ async function forwardJson(payload: unknown, request: Request): Promise<NextResp
   }
 }
 
+async function forwardUploadedFile(params: {
+  projectId: string;
+  jobId: string;
+  source: string;
+  scanMode: string;
+  manualScale: string;
+  fileName: string;
+  file: File;
+  request: Request;
+}): Promise<NextResponse> {
+  const buffer = Buffer.from(await params.file.arrayBuffer());
+  return forwardJson(
+    {
+      projectId: params.projectId,
+      jobId: params.jobId || undefined,
+      source: params.source,
+      scanMode: params.scanMode,
+      manualScale: params.manualScale || undefined,
+      upload: {
+        fileName: params.fileName || params.file.name || "import-plan.pdf",
+        contentType: params.file.type || "application/octet-stream",
+        contentBase64: buffer.toString("base64")
+      }
+    },
+    params.request
+  );
+}
+
 export async function POST(request: Request) {
   const contentType = request.headers.get("content-type") ?? "";
   if (!contentType.includes("multipart/form-data")) {
@@ -69,7 +98,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "A plan file is required for upload." }, { status: 400 });
   }
   const destinationDir = resolve(uploadRoot, projectId);
-  await mkdir(destinationDir, { recursive: true });
 
   const uploadedFilePaths: string[] = [];
   const results: Array<{ status: number; payload: unknown }> = [];
@@ -82,24 +110,40 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "Unsupported file type. Use PDF, PNG, JPG, or JPEG." }, { status: 400 });
     }
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const finalName = `${projectId}-${timestamp}-${i + 1}-${safeName}`;
-    const destinationPath = resolve(destinationDir, finalName);
-    const buffer = Buffer.from(await file.arrayBuffer());
-    await writeFile(destinationPath, buffer);
-    uploadedFilePaths.push(destinationPath);
-
-    const response = await forwardJson(
-      {
+    let response: NextResponse;
+    if (proxyPlanUploads) {
+      response = await forwardUploadedFile({
         projectId,
-        jobId: jobId || undefined,
+        jobId,
         source,
         scanMode,
-        manualScale: manualScale || undefined,
-        fileName: destinationPath
-      },
-      request
-    );
+        manualScale,
+        fileName: safeName,
+        file,
+        request
+      });
+      uploadedFilePaths.push(safeName);
+    } else {
+      await mkdir(destinationDir, { recursive: true });
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const finalName = `${projectId}-${timestamp}-${i + 1}-${safeName}`;
+      const destinationPath = resolve(destinationDir, finalName);
+      const buffer = Buffer.from(await file.arrayBuffer());
+      await writeFile(destinationPath, buffer);
+      uploadedFilePaths.push(destinationPath);
+
+      response = await forwardJson(
+        {
+          projectId,
+          jobId: jobId || undefined,
+          source,
+          scanMode,
+          manualScale: manualScale || undefined,
+          fileName: destinationPath
+        },
+        request
+      );
+    }
     results.push({ status: response.status, payload: await response.json() });
   }
 

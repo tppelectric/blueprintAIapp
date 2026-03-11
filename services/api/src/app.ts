@@ -69,7 +69,8 @@ export async function buildApp() {
       "POST /api/auth/password-reset/request",
       "POST /api/auth/password-reset/confirm"
     ]);
-    if (publicAuthRoutes.has(`${request.method.toUpperCase()} ${path}`)) {
+    const publicSignedRoutes = new Set(["GET /api/imports/files"]);
+    if (publicAuthRoutes.has(`${request.method.toUpperCase()} ${path}`) || publicSignedRoutes.has(`${request.method.toUpperCase()} ${path}`)) {
       return;
     }
 

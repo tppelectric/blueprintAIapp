@@ -63,6 +63,9 @@ export default function ProjectDashboardPage() {
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
   const [editingJobIdInput, setEditingJobIdInput] = useState("");
   const [editingJobForm, setEditingJobForm] = useState<CreateProjectJobInput>(DEFAULT_JOB);
+  const [planFiles, setPlanFiles] = useState<File[]>([]);
+  const [planScanMode, setPlanScanMode] = useState<"mock" | "real">("mock");
+  const [uploadingPlans, setUploadingPlans] = useState(false);
   const [status, setStatus] = useState("Loading project dashboard...");
 
   async function loadProject() {
@@ -284,6 +287,59 @@ export default function ProjectDashboardPage() {
     }
   }
 
+  async function handleUploadPlans() {
+    if (planFiles.length === 0) {
+      setStatus("Attach at least one plan file before uploading.");
+      return;
+    }
+
+    setUploadingPlans(true);
+    setStatus("Uploading and scanning plans...");
+    try {
+      const formData = new FormData();
+      formData.append("projectId", params.projectId);
+      formData.append("source", "local");
+      formData.append("scanMode", planScanMode);
+      formData.append("fileName", planFiles[0].name);
+      for (const file of planFiles) {
+        formData.append("files", file);
+      }
+
+      const response = await fetch("/api/projects/imports/plans", {
+        method: "POST",
+        body: formData
+      });
+      const payload = (await response.json()) as {
+        message?: string;
+        importedFiles?: number;
+        scanner?: {
+          status?: string;
+          mode?: string;
+          scaleSummary?: Array<{ needsInput: boolean }>;
+        };
+      };
+      if (!response.ok) {
+        setStatus(payload.message ?? "Could not upload plans.");
+        return;
+      }
+
+      const scaleNeedsInput = (payload.scanner?.scaleSummary ?? []).filter((item) => item.needsInput).length;
+      const importedFiles = payload.importedFiles ?? planFiles.length;
+      const scaleMessage =
+        scaleNeedsInput > 0
+          ? ` Scale was not detected on ${scaleNeedsInput} sheet(s).`
+          : " Scale detected or provided for all processed sheets.";
+
+      setPlanFiles([]);
+      setStatus(`Uploaded ${importedFiles} plan file(s) in ${payload.scanner?.mode ?? planScanMode} mode.${scaleMessage}`);
+      await loadProject();
+    } catch (error) {
+      setStatus((error as Error).message || "Network error while uploading plans.");
+    } finally {
+      setUploadingPlans(false);
+    }
+  }
+
   if (!dashboard) {
     return (
       <AppShell title="Project Dashboard">
@@ -442,13 +498,40 @@ export default function ProjectDashboardPage() {
           )}
 
           <div className="row actions">
-            <Link className="button-link" href={`/projects/${params.projectId}/import`}>
-              Upload Plans
+            <button type="button" onClick={() => void handleUploadPlans()} disabled={uploadingPlans}>
+              {uploadingPlans ? "Uploading Plans..." : "Upload Plans"}
+            </button>
+            <Link className="button-link secondary" href={`/projects/${params.projectId}/import`}>
+              Open Full Import Workspace
             </Link>
             <Link className="button-link secondary" href={`/projects/${params.projectId}/export`}>
               View Reports
             </Link>
           </div>
+
+          <div className="form-grid section-gap">
+            <label className="field">
+              Attached Plans
+              <input
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg"
+                multiple
+                onChange={(event) => setPlanFiles(Array.from(event.target.files ?? []))}
+              />
+            </label>
+            <label className="field">
+              Scan Mode
+              <select value={planScanMode} onChange={(event) => setPlanScanMode(event.target.value as "mock" | "real")}>
+                <option value="mock">Mock (fast testing)</option>
+                <option value="real">Real PDF/OCR</option>
+              </select>
+            </label>
+          </div>
+          {planFiles.length > 0 && (
+            <p className="muted section-gap">
+              Ready to upload: {planFiles.map((file) => file.name).join(", ")}
+            </p>
+          )}
         </section>
 
         <section className="card project-aside">
@@ -660,6 +743,47 @@ export default function ProjectDashboardPage() {
                 <span className="subtle-badge">{formatActivityDate(activity.createdAt)}</span>
               </article>
             ))}
+          </div>
+        )}
+      </section>
+
+      <section className="card section-gap">
+        <div className="section-heading">
+          <div>
+            <p className="section-kicker">Uploaded plans</p>
+            <h3>Project Plan Register</h3>
+          </div>
+          <span className="subtle-badge">{dashboard.sheets.length} sheet(s)</span>
+        </div>
+        {dashboard.sheets.length === 0 ? (
+          <div className="empty-state">
+            <h4>No plans uploaded</h4>
+            <p>Upload plans from Project Controls to build this project&apos;s sheet list and reporting data.</p>
+          </div>
+        ) : (
+          <div className="table-shell">
+            <table>
+              <thead>
+                <tr>
+                  <th>Sheet</th>
+                  <th>Title</th>
+                  <th>Source File</th>
+                  <th>Page</th>
+                  <th>Scale</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dashboard.sheets.map((sheet) => (
+                  <tr key={sheet.id}>
+                    <td>{sheet.sheetNumber}</td>
+                    <td>{sheet.title}</td>
+                    <td>{sheet.fileName}</td>
+                    <td>{sheet.pageNumber}</td>
+                    <td>{sheet.scale}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </section>

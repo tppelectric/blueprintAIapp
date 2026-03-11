@@ -1,6 +1,6 @@
-﻿"use client";
+"use client";
 
-import type { ExportJob } from "@package/types";
+import type { DashboardData, ExportJob } from "@package/types";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppShell } from "../../../../components/app-shell";
@@ -13,19 +13,31 @@ export default function ExportPage() {
   const router = useRouter();
   const [status, setStatus] = useState("Loading export jobs...");
   const [jobs, setJobs] = useState<ExportJob[]>([]);
+  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [busyAction, setBusyAction] = useState<"csv" | "jobtread" | null>(null);
 
-  async function loadJobs() {
+  async function loadPageData() {
     try {
       const query = jobId ? `?jobId=${encodeURIComponent(jobId)}` : "";
-      const response = await fetch(`/api/projects/${params.projectId}/exports${query}`, { cache: "no-store" });
-      const payload = (await response.json()) as { message?: string; exports?: ExportJob[] };
-      if (!response.ok || !payload.exports) {
-        setStatus(payload.message ?? "Could not load export jobs.");
+      const [exportsResponse, dashboardResponse] = await Promise.all([
+        fetch(`/api/projects/${params.projectId}/exports${query}`, { cache: "no-store" }),
+        fetch(`/api/projects/${params.projectId}/dashboard${query}`, { cache: "no-store" })
+      ]);
+
+      const exportsPayload = (await exportsResponse.json()) as { message?: string; exports?: ExportJob[] };
+      const dashboardPayload = (await dashboardResponse.json()) as { message?: string; dashboard?: DashboardData };
+
+      if (!exportsResponse.ok || !exportsPayload.exports) {
+        setStatus(exportsPayload.message ?? "Could not load export jobs.");
+        return;
+      }
+      if (!dashboardResponse.ok || !dashboardPayload.dashboard) {
+        setStatus(dashboardPayload.message ?? "Could not load project report data.");
         return;
       }
 
-      setJobs(payload.exports);
+      setJobs(exportsPayload.exports);
+      setDashboard(dashboardPayload.dashboard);
       setStatus("");
     } catch (error) {
       setStatus((error as Error).message || "Network error while loading export jobs.");
@@ -33,7 +45,7 @@ export default function ExportPage() {
   }
 
   useEffect(() => {
-    void loadJobs();
+    void loadPageData();
   }, [jobId, params.projectId]);
 
   async function runExport(action: "csv" | "jobtread") {
@@ -53,7 +65,7 @@ export default function ExportPage() {
       }
 
       setStatus(action === "csv" ? "CSV export completed." : "JobTread sync queued.");
-      await loadJobs();
+      await loadPageData();
       router.refresh();
     } catch (error) {
       setStatus((error as Error).message || "Network error while running export.");
@@ -71,7 +83,12 @@ export default function ExportPage() {
           <button type="button" onClick={() => void runExport("csv")} disabled={busyAction !== null}>
             {busyAction === "csv" ? "Generating CSV..." : "Generate JobTread CSV"}
           </button>
-          <button type="button" className="secondary" onClick={() => void runExport("jobtread")} disabled={busyAction !== null}>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => void runExport("jobtread")}
+            disabled={busyAction !== null}
+          >
             {busyAction === "jobtread" ? "Queueing Sync..." : "Queue Direct JobTread Sync"}
           </button>
         </div>
@@ -79,34 +96,77 @@ export default function ExportPage() {
       </section>
 
       <section className="card section-gap">
+        <div className="section-heading">
+          <div>
+            <p className="section-kicker">Project plans</p>
+            <h3>Uploaded Plans In This Project</h3>
+          </div>
+          <span className="subtle-badge">{dashboard?.sheets.length ?? 0} sheet(s)</span>
+        </div>
+        {!dashboard || dashboard.sheets.length === 0 ? (
+          <div className="empty-state">
+            <h4>No uploaded plans yet</h4>
+            <p>Upload plans from the project dashboard or the import workspace to populate project reporting.</p>
+          </div>
+        ) : (
+          <div className="table-shell">
+            <table>
+              <thead>
+                <tr>
+                  <th>Sheet</th>
+                  <th>Title</th>
+                  <th>Source File</th>
+                  <th>Page</th>
+                  <th>Scale</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dashboard.sheets.map((sheet) => (
+                  <tr key={sheet.id}>
+                    <td>{sheet.sheetNumber}</td>
+                    <td>{sheet.title}</td>
+                    <td>{sheet.fileName}</td>
+                    <td>{sheet.pageNumber}</td>
+                    <td>{sheet.scale}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="card section-gap">
         <h3>Export / Sync Status</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Job</th>
-              <th>Type</th>
-              <th>Status</th>
-              <th>Created</th>
-              <th>Details</th>
-            </tr>
-          </thead>
-          <tbody>
-            {jobs.length === 0 && (
+        <div className="table-shell">
+          <table>
+            <thead>
               <tr>
-                <td colSpan={5}>No export jobs yet.</td>
+                <th>Job</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Details</th>
               </tr>
-            )}
-            {jobs.map((job) => (
-              <tr key={job.id}>
-                <td>{job.id}</td>
-                <td>{job.type}</td>
-                <td>{job.status}</td>
-                <td>{formatDate(job.createdAt)}</td>
-                <td>{job.details}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {jobs.length === 0 && (
+                <tr>
+                  <td colSpan={5}>No export jobs yet.</td>
+                </tr>
+              )}
+              {jobs.map((job) => (
+                <tr key={job.id}>
+                  <td>{job.id}</td>
+                  <td>{job.type}</td>
+                  <td>{job.status}</td>
+                  <td>{formatDate(job.createdAt)}</td>
+                  <td>{job.details}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
     </AppShell>
   );

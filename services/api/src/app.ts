@@ -22,10 +22,40 @@ import { takeoffRoutes } from "./routes/takeoff.js";
 import { enforceAuthContext } from "./utils/auth.js";
 import { enforceRolePermissions } from "./utils/rbac.js";
 
+function getAllowedOrigins(): string[] {
+  const configured = process.env.CORS_ALLOWED_ORIGINS ?? process.env.WEB_URL ?? "";
+  return configured
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function isAllowedOrigin(origin: string | undefined): boolean {
+  if (!origin) {
+    return true;
+  }
+
+  const allowedOrigins = getAllowedOrigins();
+  if (allowedOrigins.length === 0) {
+    return process.env.NODE_ENV !== "production";
+  }
+
+  return allowedOrigins.includes(origin);
+}
+
 export async function buildApp() {
   const app = Fastify({ logger: true });
 
-  await app.register(cors, { origin: true });
+  await app.register(cors, {
+    origin(origin, callback) {
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error("Origin not allowed by CORS"), false);
+    }
+  });
 
   app.addHook("preHandler", async (request, reply) => {
     if (!request.url.startsWith("/api")) {

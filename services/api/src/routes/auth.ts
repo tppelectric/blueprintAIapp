@@ -68,7 +68,13 @@ function randomTemporaryPassword(): string {
 }
 
 function hashResetToken(token: string): string {
-  const secret = process.env.RESET_TOKEN_SECRET ?? process.env.JWT_SECRET ?? "local-dev-reset-secret";
+  const secret =
+    process.env.RESET_TOKEN_SECRET ??
+    process.env.JWT_SECRET ??
+    (process.env.NODE_ENV === "production" ? "" : "local-dev-reset-secret");
+  if (!secret) {
+    throw new Error("RESET_TOKEN_SECRET or JWT_SECRET must be configured in production.");
+  }
   return createHash("sha256").update(`${token}.${secret}`).digest("hex");
 }
 

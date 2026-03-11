@@ -22,7 +22,14 @@ type SessionResponse = {
 };
 
 function getSessionSecret(): string {
-  return process.env.SESSION_SECRET ?? process.env.JWT_SECRET ?? "local-dev-session-secret";
+  const configured = process.env.SESSION_SECRET ?? process.env.JWT_SECRET;
+  if (configured) {
+    return configured;
+  }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("SESSION_SECRET or JWT_SECRET must be configured in production.");
+  }
+  return "local-dev-session-secret";
 }
 
 function sign(value: string): string {

@@ -71,6 +71,10 @@ Notes:
    - `API_BASE_URL=http://127.0.0.1:4000`
 6. Optional mobile direct API URL (Expo app fetches API directly):
    - `EXPO_PUBLIC_API_BASE_URL=http://127.0.0.1:4000`
+7. Optional local browser CORS allow list for API:
+   - `CORS_ALLOWED_ORIGINS=http://localhost:3000`
+8. Optional upload directory override for plan imports:
+   - `LOCAL_UPLOAD_DIR=...`
 
 ## API Authentication and Tenant Isolation
 - API routes under `/api/*` resolve tenant context from JWT claims first.
@@ -179,6 +183,14 @@ Schema status endpoint:
 
 ## Web API Proxies
 Next.js routes under `apps/web/src/app/api/*` proxy browser requests to Fastify (`API_BASE_URL`) and forward tenant/auth headers (`Authorization`, optional `x-company-id` when enabled).
+
+## Staging Strategy
+- Keep local development as the primary daily workflow.
+- Use a separate staging deployment for outside testers.
+- Use separate staging secrets, staging URLs, and a separate staging database.
+- Do not reuse the local `.env` file for staging.
+- Start from `.env.staging.example` for hosted staging values.
+- Deployment and rollback notes are in `docs/staging-deployment.md`.
 
 ## Project -> Job Workflow
 Core hierarchy now supported:

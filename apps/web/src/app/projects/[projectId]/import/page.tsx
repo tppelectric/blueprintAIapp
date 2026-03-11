@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -30,6 +30,37 @@ type ScanJobStatus =
   | "completed"
   | "failed";
 
+type PageProgressItem = {
+  sheetNumber: string;
+  title: string;
+  pageNumber: number;
+  status: "queued" | "processing" | "completed" | "failed";
+  progressPercent: number;
+  currentStep: string;
+};
+
+type ScanProgressState = {
+  status: ScanJobStatus;
+  currentStep: string;
+  progressPercent: number;
+  errorMessage?: string | null;
+  aiSecondPass: boolean;
+  aiSecondPassStatus: "idle" | "running" | "completed" | "skipped";
+  pageProgress: PageProgressItem[];
+};
+
+async function fileToBase64(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    const slice = bytes.subarray(index, index + chunkSize);
+    binary += String.fromCharCode(...slice);
+  }
+  return btoa(binary);
+}
+
 export default function ImportPlansPage() {
   const params = useParams<{ projectId: string }>();
   const router = useRouter();
@@ -40,17 +71,13 @@ export default function ImportPlansPage() {
   const [fileName, setFileName] = useState("hudson-ridge-electrical.pdf");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [manualScale, setManualScale] = useState("");
+  const [aiSecondPass, setAiSecondPass] = useState(false);
   const [progressMode, setProgressMode] = useState<(typeof PROGRESS_MODES)[number]["value"]>("panel");
   const [takeoffPrompt, setTakeoffPrompt] = useState<"none" | "prompt">("none");
   const [scanPassCompleted, setScanPassCompleted] = useState(false);
   const [status, setStatus] = useState<string>("");
   const [scanJobId, setScanJobId] = useState<string | null>(null);
-  const [scanProgress, setScanProgress] = useState<{
-    status: ScanJobStatus;
-    currentStep: string;
-    progressPercent: number;
-    errorMessage?: string | null;
-  } | null>(null);
+  const [scanProgress, setScanProgress] = useState<ScanProgressState | null>(null);
   const [takeoffSummary, setTakeoffSummary] = useState<{
     lightingFixtures: number;
     receptacles: number;
@@ -63,28 +90,18 @@ export default function ImportPlansPage() {
     }
 
     let cancelled = false;
-    const interval = setInterval(() => {
-      void (async () => {
+    const loadScanProgress = async () => {
+      try {
         const response = await fetch(`/api/projects/${params.projectId}/scan-jobs/${scanJobId}`, { cache: "no-store" });
         const payload = (await response.json()) as {
           message?: string;
-          scanJob?: {
-            status: ScanJobStatus;
-            currentStep: string;
-            progressPercent: number;
-            errorMessage?: string | null;
-          };
+          scanJob?: ScanProgressState;
         };
         if (cancelled || !response.ok || !payload.scanJob) {
           return;
         }
 
-        setScanProgress({
-          status: payload.scanJob.status,
-          currentStep: payload.scanJob.currentStep,
-          progressPercent: payload.scanJob.progressPercent,
-          errorMessage: payload.scanJob.errorMessage ?? null
-        });
+        setScanProgress(payload.scanJob);
 
         if (payload.scanJob.status === "completed") {
           clearInterval(interval);
@@ -114,7 +131,16 @@ export default function ImportPlansPage() {
           setScanPassCompleted(false);
           setStatus(payload.scanJob.errorMessage ?? "Scan failed. Unable to process plan file.");
         }
-      })();
+      } catch {
+        if (!cancelled) {
+          setStatus("Could not refresh scan progress.");
+        }
+      }
+    };
+
+    void loadScanProgress();
+    const interval = setInterval(() => {
+      void loadScanProgress();
     }, 2000);
 
     return () => {
@@ -123,109 +149,36 @@ export default function ImportPlansPage() {
     };
   }, [jobId, params.projectId, progressMode, router, scanJobId]);
 
-  async function handleImport() {
-    setStatus("Importing and scanning sheets...");
-    let response: Response;
-    if (source === "local" && selectedFiles.length > 0) {
-      const form = new FormData();
-      form.append("projectId", params.projectId);
-      if (jobId) {
-        form.append("jobId", jobId);
-      }
-      form.append("source", source);
-      form.append("scanMode", scanMode);
-      if (manualScale.trim()) {
-        form.append("manualScale", manualScale.trim());
-      }
-      form.append("fileName", selectedFiles[0].name);
-      for (const file of selectedFiles) {
-        form.append("files", file);
-      }
-      response = await fetch("/api/projects/imports/plans", {
-        method: "POST",
-        body: form
-      });
-    } else {
-      response = await fetch("/api/projects/imports/plans", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: params.projectId,
-          jobId,
-          source,
-          scanMode,
-          manualScale: manualScale.trim() || undefined,
-          fileName
-        })
-      });
-    }
-
-    const payload = (await response.json()) as {
-      message?: string;
-      dashboard?: {
-        rooms?: Array<unknown>;
-        symbols?: Array<unknown>;
-      };
-      scanner?: {
-        status: string;
-        mode: string;
-        message?: string;
-        scaleSummary?: Array<{ sheetNumber: string; pageNumber: number; detectedScale: string | null; needsInput: boolean }>;
-      };
-      uploadedFilePath?: string;
-      uploadedFilePaths?: string[];
-      importedFiles?: number;
-    };
-
-    if (!response.ok) {
-      setStatus(payload.message ?? "Import failed");
-      setScanPassCompleted(false);
-      return;
-    }
-
-    const scaleNeedsInput = (payload.scanner?.scaleSummary ?? []).filter((item) => item.needsInput).length;
-    if (payload.scanner?.status === "processed") {
-      setScanPassCompleted(true);
-      const fileCount = payload.importedFiles ?? payload.uploadedFilePaths?.length ?? 1;
-      const roomCount = payload.dashboard?.rooms?.length ?? 0;
-      const symbolCount = payload.dashboard?.symbols?.length ?? 0;
-      const scaleText =
-        scaleNeedsInput > 0
-          ? ` Scale was not detected on ${scaleNeedsInput} sheet(s); enter scale and re-run import, or run with Manual Scale.`
-          : " Scale detected or provided for all processed sheets.";
-      setStatus(
-        `Import complete (${fileCount} file(s)). Scanner processed in ${payload.scanner.mode} mode and found ${roomCount} room(s) / ${symbolCount} symbol(s).${scaleText}`
-      );
-    } else if (payload.scanner?.status === "fallback") {
-      setScanPassCompleted(false);
-      setStatus(payload.scanner.message ?? "Scanner unavailable. Fallback import used.");
-    } else {
-      setScanPassCompleted(false);
-      setStatus("Import complete.");
-    }
-
-    if (payload.uploadedFilePath) {
-      setFileName(payload.uploadedFilePath);
-    } else if (payload.uploadedFilePaths && payload.uploadedFilePaths.length > 0) {
-      setFileName(payload.uploadedFilePaths[payload.uploadedFilePaths.length - 1]);
-    }
-
-    setTakeoffPrompt("prompt");
-    router.refresh();
-  }
-
-  async function handleScanPlans() {
+  async function startScanJob(options: { useUpload: boolean }) {
     setStatus("Creating scan job...");
     setTakeoffSummary(null);
+    setScanPassCompleted(false);
+
+    let upload: { fileName: string; contentType: string; contentBase64: string } | undefined;
+    if (options.useUpload) {
+      if (selectedFiles.length === 0) {
+        setStatus("Select a local plan file before starting import and scan.");
+        return;
+      }
+      const file = selectedFiles[0];
+      upload = {
+        fileName: file.name,
+        contentType: file.type || "application/octet-stream",
+        contentBase64: await fileToBase64(file)
+      };
+    }
+
     const response = await fetch(`/api/projects/${params.projectId}/scan-jobs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         jobId,
         source,
-        fileName: fileName.trim() || undefined,
+        fileName: upload ? undefined : fileName.trim() || undefined,
+        upload,
         scanMode,
-        manualScale: manualScale.trim() || undefined
+        manualScale: manualScale.trim() || undefined,
+        aiSecondPass
       })
     });
 
@@ -236,12 +189,12 @@ export default function ImportPlansPage() {
         status: ScanJobStatus;
         currentStep: string;
         progressPercent: number;
+        aiSecondPass?: boolean;
       };
     };
 
     if (!response.ok || !payload.scanJob) {
       setStatus(payload.message ?? "Could not start scan job.");
-      setScanPassCompleted(false);
       return;
     }
 
@@ -249,9 +202,13 @@ export default function ImportPlansPage() {
     setScanProgress({
       status: payload.scanJob.status,
       currentStep: payload.scanJob.currentStep,
-      progressPercent: payload.scanJob.progressPercent
+      progressPercent: payload.scanJob.progressPercent,
+      aiSecondPass: payload.scanJob.aiSecondPass ?? aiSecondPass,
+      aiSecondPassStatus: aiSecondPass ? "running" : "skipped",
+      pageProgress: []
     });
-    setStatus("Scan job started.");
+    setStatus(options.useUpload ? "Import and scan job started." : "Scan job started.");
+    setTakeoffPrompt("prompt");
 
     if (progressMode === "page") {
       const query = new URLSearchParams();
@@ -260,7 +217,6 @@ export default function ImportPlansPage() {
         query.set("jobId", jobId);
       }
       router.push(`/projects/${params.projectId}/scan-progress?${query.toString()}`);
-      return;
     }
   }
 
@@ -268,7 +224,7 @@ export default function ImportPlansPage() {
     <AppShell title="Import Plans">
       <section className="card">
         <h3>Plan Sources</h3>
-        <p className="muted">Imports automatically run sheet split and extraction on each sheet.</p>
+        <p className="muted">Imports run sheet split and extraction on each sheet, and can optionally run an AI second pass for uncertain symbols.</p>
         {jobId && <p className="muted">Active Job: {jobId}</p>}
 
         <div className="form-grid">
@@ -319,24 +275,31 @@ export default function ImportPlansPage() {
             </select>
           </label>
 
+          <label className="field">
+            AI Second Pass
+            <select value={aiSecondPass ? "enabled" : "disabled"} onChange={(event) => setAiSecondPass(event.target.value === "enabled")}>
+              <option value="disabled">Off</option>
+              <option value="enabled">On for uncertain symbols</option>
+            </select>
+          </label>
+
           {source === "local" && (
             <label className="field">
-              Local Plan Files (PDF/PNG/JPG, multi-file allowed)
+              Local Plan File
               <input
                 type="file"
                 accept=".pdf,.png,.jpg,.jpeg"
-                multiple
                 onChange={(event) => setSelectedFiles(Array.from(event.target.files ?? []))}
               />
             </label>
           )}
 
           <div className="row actions">
-            <button type="button" onClick={handleImport}>
+            <button type="button" onClick={() => void startScanJob({ useUpload: source === "local" })}>
               Import And Scan
             </button>
-            <button type="button" className="secondary" onClick={handleScanPlans}>
-              Scan Plans (AI Pass)
+            <button type="button" className="secondary" onClick={() => void startScanJob({ useUpload: false })}>
+              Scan Plans
             </button>
           </div>
         </div>
@@ -344,29 +307,92 @@ export default function ImportPlansPage() {
         {status && <p className="status-text">{status}</p>}
 
         {scanProgress && progressMode === "panel" && (
-          <div className="card section-gap">
-            <h3>Scanning Plans...</h3>
-            <p className="muted">Project: {params.projectId}{jobId ? ` | Job: ${jobId}` : ""}</p>
-            <p>
-              Step: <strong>{scanProgress.currentStep}</strong>
-            </p>
-            <p>
-              Progress: <strong>{scanProgress.progressPercent}%</strong>
-            </p>
-            <div style={{ width: "100%", height: 12, borderRadius: 999, background: "#d9e6f3", overflow: "hidden" }}>
+          <div className="card section-gap progress-panel">
+            <div className="progress-header">
+              <div>
+                <p className="entity-eyebrow">Scanning Plans</p>
+                <h3>{scanProgress.currentStep}</h3>
+                <p className="muted">Project: {params.projectId}{jobId ? ` | Job: ${jobId}` : ""}</p>
+              </div>
+              <div className="progress-meta">
+                <span className={`status-pill ${scanProgress.status === "completed" ? "completed" : scanProgress.status === "failed" ? "failed" : "processing"}`}>
+                  {scanProgress.status === "completed" ? "Complete" : scanProgress.status === "failed" ? "Failed" : "In Progress"}
+                </span>
+                <span className="status-pill">{scanProgress.progressPercent}% complete</span>
+                <span className={`status-pill ${scanProgress.aiSecondPass ? (scanProgress.aiSecondPassStatus === "completed" ? "completed" : "processing") : ""}`}>
+                  AI second pass:{" "}
+                  {scanProgress.aiSecondPass
+                    ? scanProgress.aiSecondPassStatus === "completed"
+                      ? "Completed"
+                      : "Running"
+                    : "Off"}
+                </span>
+              </div>
+            </div>
+
+            <div className="progress-bar" aria-label="Overall scan progress">
               <div
-                style={{
-                  width: `${Math.max(0, Math.min(100, scanProgress.progressPercent))}%`,
-                  height: "100%",
-                  background: scanProgress.status === "failed" ? "#b24a1b" : "#0f5fa8",
-                  transition: "width 0.3s ease"
-                }}
+                className={`progress-bar-fill ${scanProgress.status === "failed" ? "failed" : ""}`}
+                style={{ width: `${Math.max(0, Math.min(100, scanProgress.progressPercent))}%` }}
               />
             </div>
+
+            {scanProgress.pageProgress.length > 0 && (
+              <div className="section-gap progress-stack">
+                <div>
+                  <p className="entity-eyebrow">Per-Page Progress</p>
+                  <h4>Each uploaded page shows its own scan bar.</h4>
+                </div>
+                <div className="page-progress-grid">
+                  {scanProgress.pageProgress.map((page) => (
+                    <article key={`${page.sheetNumber}-${page.pageNumber}`} className="page-progress-card">
+                      <div className="page-progress-top">
+                        <div className="page-progress-copy">
+                          <p className="entity-eyebrow">
+                            {page.sheetNumber} | Page {page.pageNumber}
+                          </p>
+                          <h4>{page.title || "Untitled sheet"}</h4>
+                          <p className="muted">{page.currentStep}</p>
+                        </div>
+                        <span
+                          className={`status-pill ${page.status === "completed" ? "completed" : page.status === "failed" ? "failed" : "processing"}`}
+                        >
+                          {page.status === "completed" ? "Complete" : page.status === "failed" ? "Failed" : "Scanning"}
+                        </span>
+                      </div>
+                      <div className="page-progress-detail">
+                        <span className="muted">Page progress</span>
+                        <strong>{page.progressPercent}%</strong>
+                      </div>
+                      <div className="progress-bar" aria-label={`${page.sheetNumber} progress`}>
+                        <div
+                          className={`progress-bar-fill ${page.status === "failed" ? "failed" : ""}`}
+                          style={{ width: `${Math.max(0, Math.min(100, page.progressPercent))}%` }}
+                        />
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {scanProgress.status === "failed" && (
               <p className="status-text">Scan Failed. {scanProgress.errorMessage ?? "Unable to process plan file."}</p>
             )}
             {scanProgress.status === "completed" && <p className="status-text">Scan Complete</p>}
+            {scanProgress.status === "completed" && (
+              <div className="row actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const query = jobId ? `?jobId=${encodeURIComponent(jobId)}` : "";
+                    router.push(`/projects/${params.projectId}/takeoff${query}`);
+                  }}
+                >
+                  View Results
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -402,7 +428,7 @@ export default function ImportPlansPage() {
             </div>
             {!scanPassCompleted && (
               <p className="muted section-gap">
-                Run a successful scan first using <strong>Import And Scan</strong> or <strong>Scan Plans (AI Pass)</strong>.
+                Run a successful scan first using <strong>Import And Scan</strong> or <strong>Scan Plans</strong>.
               </p>
             )}
           </div>

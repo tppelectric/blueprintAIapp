@@ -37,7 +37,12 @@ def split_sheets_endpoint(payload: SplitSheetsRequest) -> dict:
 def extract(payload: ExtractRequest) -> dict:
     try:
         with materialize_file_ref(payload.file_name) as local_file_name:
-            result = run_blueprint_pipeline(file_name=local_file_name, sheet_id=payload.sheet_id, mode=payload.scan_mode)
+            result = run_blueprint_pipeline(
+                file_name=local_file_name,
+                sheet_id=payload.sheet_id,
+                mode=payload.scan_mode,
+                ai_second_pass=payload.ai_second_pass,
+            )
     except (ScannerDependencyError, PDFInfoNotInstalledError, pytesseract.TesseractNotFoundError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return {"project_id": payload.project_id, "sheet_id": payload.sheet_id, "scan_mode": payload.scan_mode, **result}

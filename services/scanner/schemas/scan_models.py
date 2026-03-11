@@ -22,6 +22,7 @@ class ExtractRequest(BaseModel):
     sheet_id: str = Field(min_length=1)
     file_name: str = Field(min_length=1)
     scan_mode: ScanMode = "mock"
+    ai_second_pass: bool = False
 
 
 class ClassifySymbolRequest(BaseModel):

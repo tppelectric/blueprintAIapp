@@ -3,6 +3,11 @@ import { extractSheetWithScanner, splitSheetsWithScanner } from "../integrations
 import { saveBlueprintImportResult } from "../repositories/import-repository.js";
 import { updateScanJobProgress } from "../repositories/scan-job-repository.js";
 import { getDashboardForProject } from "../repositories/project-repository.js";
+import {
+  initializeScanJobRuntimeProgress,
+  setScanJobAiSecondPassStatus,
+  updateScanJobPageProgress
+} from "./scan-job-progress-store.js";
 
 export async function runScanJobPipeline(params: {
   companyId: string;
@@ -13,6 +18,7 @@ export async function runScanJobPipeline(params: {
   fileName: string;
   manualScale?: string;
   scanMode: "mock" | "real";
+  aiSecondPass?: boolean;
 }): Promise<void> {
   await updateScanJobProgress({
     companyId: params.companyId,
@@ -27,11 +33,27 @@ export async function runScanJobPipeline(params: {
   if (detectedSheets.length === 0) {
     throw new Error("Scanner returned no sheets");
   }
+  initializeScanJobRuntimeProgress({
+    scanJobId: params.scanJobId,
+    aiSecondPassEnabled: Boolean(params.aiSecondPass),
+    pages: detectedSheets.map((sheet) => ({
+      sheetNumber: sheet.sheet_number,
+      title: sheet.title,
+      pageNumber: sheet.page_number
+    }))
+  });
 
   const extractions: ScannerExtractResult[] = [];
   for (let index = 0; index < detectedSheets.length; index += 1) {
     const sheet = detectedSheets[index];
     const progress = 15 + Math.round(((index + 1) / detectedSheets.length) * 55);
+    updateScanJobPageProgress({
+      scanJobId: params.scanJobId,
+      pageNumber: sheet.page_number,
+      status: "processing",
+      progressPercent: 45,
+      currentStep: `Scanning ${sheet.sheet_number}`
+    });
     await updateScanJobProgress({
       companyId: params.companyId,
       projectId: params.projectId,
@@ -44,11 +66,20 @@ export async function runScanJobPipeline(params: {
       params.projectId,
       sheet.sheet_number,
       params.fileName,
-      params.scanMode as ScanMode
+      params.scanMode as ScanMode,
+      Boolean(params.aiSecondPass)
     );
     extractions.push(extraction);
+    updateScanJobPageProgress({
+      scanJobId: params.scanJobId,
+      pageNumber: sheet.page_number,
+      status: "completed",
+      progressPercent: 100,
+      currentStep: Boolean(params.aiSecondPass) ? "Scan complete with AI review" : "Scan complete"
+    });
   }
 
+  setScanJobAiSecondPassStatus(params.scanJobId, params.aiSecondPass ? "completed" : "skipped");
   await updateScanJobProgress({
     companyId: params.companyId,
     projectId: params.projectId,
@@ -94,4 +125,3 @@ export async function runScanJobPipeline(params: {
     completed: true
   });
 }
-

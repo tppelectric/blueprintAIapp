@@ -8,14 +8,24 @@ import {
   getScanJobById,
   updateScanJobProgress
 } from "../repositories/scan-job-repository.js";
+import { getScanJobRuntimeProgress } from "../services/scan-job-progress-store.js";
 import { runScanJobPipeline } from "../services/scan-job-service.js";
+import { savePlanUpload } from "../utils/plan-storage.js";
+
+const uploadSchema = z.object({
+  fileName: z.string().min(1),
+  contentBase64: z.string().min(1),
+  contentType: z.string().optional()
+});
 
 const createScanJobSchema = z.object({
   jobId: z.string().min(1).optional(),
   source: z.enum(["local", "onedrive", "google-drive", "apple-files"]).optional().default("local"),
   fileName: z.string().min(1).optional(),
+  upload: uploadSchema.optional(),
   manualScale: z.string().trim().min(1).optional(),
-  scanMode: z.enum(["mock", "real"]).optional().default("real")
+  scanMode: z.enum(["mock", "real"]).optional().default("real"),
+  aiSecondPass: z.boolean().optional().default(false)
 });
 
 export const scanJobRoutes: FastifyPluginAsync = async (app) => {
@@ -61,25 +71,35 @@ export const scanJobRoutes: FastifyPluginAsync = async (app) => {
         }
       }
 
-      const resolvedFile =
-        parsed.data.fileName ??
-        (await getLatestImportedFileForScan({
+      let resolvedFile: string | null | undefined = parsed.data.fileName;
+      if (parsed.data.upload) {
+        const storedUpload = await savePlanUpload({
+          projectId: params.projectId,
+          fileName: parsed.data.upload.fileName,
+          contentBase64: parsed.data.upload.contentBase64
+        });
+        resolvedFile = storedUpload.scannerFileRef;
+      }
+      if (!resolvedFile) {
+        resolvedFile = await getLatestImportedFileForScan({
           companyId,
           projectId: params.projectId,
           jobId: parsed.data.jobId
-        }));
+        });
+      }
       if (!resolvedFile) {
         return reply.code(404).send({
           message: "No imported plans found. Upload plans before starting a scan job."
         });
       }
+      const finalResolvedFile = resolvedFile;
 
       const scanJob = await createScanJob({
         companyId,
         projectId: params.projectId,
         jobId: parsed.data.jobId,
         source: parsed.data.source,
-        fileName: resolvedFile,
+        fileName: finalResolvedFile,
         scanMode: parsed.data.scanMode
       });
 
@@ -92,9 +112,10 @@ export const scanJobRoutes: FastifyPluginAsync = async (app) => {
             jobId: parsed.data.jobId,
             scanJobId: scanJob.id,
             source: parsed.data.source,
-            fileName: resolvedFile,
+            fileName: finalResolvedFile,
             manualScale: parsed.data.manualScale,
-            scanMode: parsed.data.scanMode
+            scanMode: parsed.data.scanMode,
+            aiSecondPass: parsed.data.aiSecondPass
           });
         } catch (error) {
           await updateScanJobProgress({
@@ -114,7 +135,10 @@ export const scanJobRoutes: FastifyPluginAsync = async (app) => {
         companyId,
         projectId: params.projectId,
         jobId: parsed.data.jobId ?? null,
-        scanJob: scanJob
+        scanJob: {
+          ...scanJob,
+          aiSecondPass: parsed.data.aiSecondPass
+        }
       });
     } catch (error) {
       return reply.code(502).send({ message: "Could not create scan job", detail: (error as Error).message });
@@ -134,14 +158,19 @@ export const scanJobRoutes: FastifyPluginAsync = async (app) => {
       if (!scanJob) {
         return reply.code(404).send({ message: "Scan job not found for project scope." });
       }
+      const runtimeProgress = getScanJobRuntimeProgress(scanJob.id);
       return {
         companyId,
         projectId: params.projectId,
-        scanJob
+        scanJob: {
+          ...scanJob,
+          aiSecondPass: runtimeProgress?.aiSecondPassEnabled ?? false,
+          aiSecondPassStatus: runtimeProgress?.aiSecondPassStatus ?? "idle",
+          pageProgress: runtimeProgress?.pageProgress ?? []
+        }
       };
     } catch (error) {
       return reply.code(502).send({ message: "Could not load scan job", detail: (error as Error).message });
     }
   });
 };
-

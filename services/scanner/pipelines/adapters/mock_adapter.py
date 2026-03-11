@@ -11,7 +11,7 @@ class MockScannerAdapter(ScannerAdapter):
     def split_sheets(self, file_name: str):
         return split_pdf_into_sheets(file_name)
 
-    def extract(self, file_name: str, sheet_id: str) -> dict:
+    def extract(self, file_name: str, sheet_id: str, ai_second_pass: bool = False) -> dict:
         sheets = self.split_sheets(file_name)
         rooms = detect_rooms()
         symbols = detect_symbols()

@@ -97,7 +97,7 @@ class RealScannerAdapter(ScannerAdapter):
     def split_sheets(self, file_name: str):
         return parse_pdf_sheets(file_name)
 
-    def extract(self, file_name: str, sheet_id: str) -> dict:
+    def extract(self, file_name: str, sheet_id: str, ai_second_pass: bool = False) -> dict:
         sheets = self.split_sheets(file_name)
         page_texts = extract_page_text(file_name)
         preprocessed_pages = load_blueprint_pages(file_name)
@@ -105,7 +105,7 @@ class RealScannerAdapter(ScannerAdapter):
 
         rooms = self._extract_rooms(page_texts, preprocessed_pages, target_page_numbers)
         legends, templates = self._extract_legends(page_texts, preprocessed_pages, target_page_numbers)
-        symbols = self._extract_symbols(file_name, preprocessed_pages, rooms, templates, target_page_numbers)
+        symbols = self._extract_symbols(file_name, preprocessed_pages, rooms, templates, target_page_numbers, ai_second_pass)
         relevant_text = self._collect_page_text(page_texts, preprocessed_pages, target_page_numbers)
         notes = self._extract_notes(relevant_text.lower())
         panel_schedule = self._extract_panel_schedule(relevant_text.lower())
@@ -227,6 +227,7 @@ class RealScannerAdapter(ScannerAdapter):
         rooms: list[dict],
         templates: list[TemplateCandidate],
         target_page_numbers: set[int],
+        ai_second_pass: bool,
     ) -> list[dict]:
         if not rooms:
             return []
@@ -261,7 +262,7 @@ class RealScannerAdapter(ScannerAdapter):
             )
 
             openai_review = None
-            if final_type == "unknown" or needs_review:
+            if ai_second_pass and (final_type == "unknown" or needs_review):
                 openai_review = self.openai_symbol_reviewer.review_symbol_crop(
                     crop,
                     ai_candidate_type=detection.symbol_type,

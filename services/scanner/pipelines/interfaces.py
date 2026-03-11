@@ -11,7 +11,7 @@ class ScannerAdapter(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def extract(self, file_name: str, sheet_id: str) -> dict:
+    def extract(self, file_name: str, sheet_id: str, ai_second_pass: bool = False) -> dict:
         raise NotImplementedError
 
     @abstractmethod

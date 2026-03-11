@@ -36,12 +36,14 @@ export async function extractSheetWithScanner(
   projectId: string,
   sheetId: string,
   fileName: string,
-  scanMode: ScanMode
+  scanMode: ScanMode,
+  aiSecondPass = false
 ): Promise<ScannerExtractResult> {
   return await scannerPost<ScannerExtractResult>("/scan/extract", {
     project_id: projectId,
     sheet_id: sheetId,
     file_name: fileName,
-    scan_mode: scanMode
+    scan_mode: scanMode,
+    ai_second_pass: aiSecondPass
   });
 }

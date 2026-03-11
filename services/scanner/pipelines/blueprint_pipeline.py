@@ -7,9 +7,9 @@ def split_sheets(file_name: str, mode: ScanMode = "mock") -> list[dict]:
     return [sheet.model_dump() for sheet in adapter.split_sheets(file_name)]
 
 
-def run_blueprint_pipeline(file_name: str, sheet_id: str, mode: ScanMode = "mock") -> dict:
+def run_blueprint_pipeline(file_name: str, sheet_id: str, mode: ScanMode = "mock", ai_second_pass: bool = False) -> dict:
     adapter = get_scanner_adapter(mode)
-    return adapter.extract(file_name=file_name, sheet_id=sheet_id)
+    return adapter.extract(file_name=file_name, sheet_id=sheet_id, ai_second_pass=ai_second_pass)
 
 
 def classify_symbol_candidates(symbol_image_ref: str, mode: ScanMode = "mock") -> list[dict[str, str | float]]:

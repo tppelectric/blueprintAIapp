@@ -110,6 +110,7 @@ Environment flags:
 - Start services without keeping PowerShell windows open:
   - double-click `Open Full App (Background).cmd`
   - or use `Start API Server (Background).cmd`, `Start Scanner Service (Background).cmd`, and `Start Web App (Background).cmd`
+  - these background launchers now use Windows Script Host (`wscript`) instead of PowerShell
   - background logs are written to `api-runtime.log`, `scanner-runtime.log`, and `web-runtime.log`
 - Open the separate second app:
   - `powershell -ExecutionPolicy Bypass -File .\scripts\open-second-app.ps1`

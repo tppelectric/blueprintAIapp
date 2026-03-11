@@ -1,2 +1,2 @@
 @echo off
-powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%~dp0scripts\start-api-background.ps1"
+wscript.exe "%~dp0scripts\start-api-background.vbs"

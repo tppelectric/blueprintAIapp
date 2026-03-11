@@ -31,6 +31,8 @@ type ScanJobStatus =
   | "failed";
 
 type PageProgressItem = {
+  id?: string;
+  sourceFileName?: string;
   sheetNumber: string;
   title: string;
   pageNumber: number;
@@ -48,18 +50,6 @@ type ScanProgressState = {
   aiSecondPassStatus: "idle" | "running" | "completed" | "skipped";
   pageProgress: PageProgressItem[];
 };
-
-async function fileToBase64(file: File): Promise<string> {
-  const buffer = await file.arrayBuffer();
-  let binary = "";
-  const bytes = new Uint8Array(buffer);
-  const chunkSize = 0x8000;
-  for (let index = 0; index < bytes.length; index += chunkSize) {
-    const slice = bytes.subarray(index, index + chunkSize);
-    binary += String.fromCharCode(...slice);
-  }
-  return btoa(binary);
-}
 
 export default function ImportPlansPage() {
   const params = useParams<{ projectId: string }>();
@@ -153,33 +143,32 @@ export default function ImportPlansPage() {
     setStatus("Creating scan job...");
     setTakeoffSummary(null);
     setScanPassCompleted(false);
+    if (options.useUpload && selectedFiles.length === 0) {
+      setStatus("Select at least one local plan file before starting import and scan.");
+      return;
+    }
 
-    let upload: { fileName: string; contentType: string; contentBase64: string } | undefined;
+    const body = new FormData();
+    body.append("source", source);
+    body.append("scanMode", scanMode);
+    body.append("aiSecondPass", String(aiSecondPass));
+    if (jobId) {
+      body.append("jobId", jobId);
+    }
+    if (manualScale.trim()) {
+      body.append("manualScale", manualScale.trim());
+    }
     if (options.useUpload) {
-      if (selectedFiles.length === 0) {
-        setStatus("Select a local plan file before starting import and scan.");
-        return;
+      for (const file of selectedFiles) {
+        body.append("files", file);
       }
-      const file = selectedFiles[0];
-      upload = {
-        fileName: file.name,
-        contentType: file.type || "application/octet-stream",
-        contentBase64: await fileToBase64(file)
-      };
+    } else if (fileName.trim()) {
+      body.append("fileName", fileName.trim());
     }
 
     const response = await fetch(`/api/projects/${params.projectId}/scan-jobs`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jobId,
-        source,
-        fileName: upload ? undefined : fileName.trim() || undefined,
-        upload,
-        scanMode,
-        manualScale: manualScale.trim() || undefined,
-        aiSecondPass
-      })
+      body
     });
 
     const payload = (await response.json()) as {
@@ -207,7 +196,11 @@ export default function ImportPlansPage() {
       aiSecondPassStatus: aiSecondPass ? "running" : "skipped",
       pageProgress: []
     });
-    setStatus(options.useUpload ? "Import and scan job started." : "Scan job started.");
+    setStatus(
+      options.useUpload
+        ? `Import and scan job started for ${selectedFiles.length} file(s).`
+        : "Scan job started."
+    );
     setTakeoffPrompt("prompt");
 
     if (progressMode === "page") {
@@ -285,10 +278,11 @@ export default function ImportPlansPage() {
 
           {source === "local" && (
             <label className="field">
-              Local Plan File
+              Local Plan Files
               <input
                 type="file"
                 accept=".pdf,.png,.jpg,.jpeg"
+                multiple
                 onChange={(event) => setSelectedFiles(Array.from(event.target.files ?? []))}
               />
             </label>
@@ -303,6 +297,12 @@ export default function ImportPlansPage() {
             </button>
           </div>
         </div>
+
+        {source === "local" && selectedFiles.length > 0 && (
+          <p className="muted section-gap">
+            Ready to scan: {selectedFiles.map((file) => file.name).join(", ")}
+          </p>
+        )}
 
         {status && <p className="status-text">{status}</p>}
 
@@ -345,13 +345,14 @@ export default function ImportPlansPage() {
                 </div>
                 <div className="page-progress-grid">
                   {scanProgress.pageProgress.map((page) => (
-                    <article key={`${page.sheetNumber}-${page.pageNumber}`} className="page-progress-card">
+                    <article key={page.id ?? `${page.sourceFileName ?? "plan"}-${page.sheetNumber}-${page.pageNumber}`} className="page-progress-card">
                       <div className="page-progress-top">
                         <div className="page-progress-copy">
                           <p className="entity-eyebrow">
                             {page.sheetNumber} | Page {page.pageNumber}
                           </p>
                           <h4>{page.title || "Untitled sheet"}</h4>
+                          {page.sourceFileName && <p className="muted">{page.sourceFileName}</p>}
                           <p className="muted">{page.currentStep}</p>
                         </div>
                         <span

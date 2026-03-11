@@ -14,6 +14,8 @@ type ScanJobStatus =
   | "failed";
 
 type PageProgressItem = {
+  id: string;
+  sourceFileName: string;
   sheetNumber: string;
   title: string;
   pageNumber: number;
@@ -168,13 +170,14 @@ export default function ScanProgressPage() {
               </div>
               <div className="page-progress-grid">
                 {(progress.pageProgress ?? []).map((page) => (
-                  <article key={`${page.sheetNumber}-${page.pageNumber}`} className="page-progress-card">
+                  <article key={page.id} className="page-progress-card">
                     <div className="page-progress-top">
                       <div className="page-progress-copy">
                         <p className="entity-eyebrow">
                           {page.sheetNumber} | Page {page.pageNumber}
                         </p>
                         <h4>{page.title || "Untitled sheet"}</h4>
+                        <p className="muted">{page.sourceFileName}</p>
                         <p className="muted">{page.currentStep}</p>
                       </div>
                       <span

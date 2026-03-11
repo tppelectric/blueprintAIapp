@@ -22,7 +22,9 @@ const createScanJobSchema = z.object({
   jobId: z.string().min(1).optional(),
   source: z.enum(["local", "onedrive", "google-drive", "apple-files"]).optional().default("local"),
   fileName: z.string().min(1).optional(),
+  fileNames: z.array(z.string().min(1)).optional(),
   upload: uploadSchema.optional(),
+  uploads: z.array(uploadSchema).min(1).optional(),
   manualScale: z.string().trim().min(1).optional(),
   scanMode: z.enum(["mock", "real"]).optional().default("real"),
   aiSecondPass: z.boolean().optional().default(false)
@@ -71,35 +73,45 @@ export const scanJobRoutes: FastifyPluginAsync = async (app) => {
         }
       }
 
-      let resolvedFile: string | null | undefined = parsed.data.fileName;
-      if (parsed.data.upload) {
-        const storedUpload = await savePlanUpload({
-          projectId: params.projectId,
-          fileName: parsed.data.upload.fileName,
-          contentBase64: parsed.data.upload.contentBase64
-        });
-        resolvedFile = storedUpload.scannerFileRef;
-      }
-      if (!resolvedFile) {
-        resolvedFile = await getLatestImportedFileForScan({
+      const uploadItems = parsed.data.uploads ?? (parsed.data.upload ? [parsed.data.upload] : []);
+      const resolvedFiles: string[] = [];
+
+      if (uploadItems.length > 0) {
+        for (const upload of uploadItems) {
+          const storedUpload = await savePlanUpload({
+            projectId: params.projectId,
+            fileName: upload.fileName,
+            contentBase64: upload.contentBase64
+          });
+          resolvedFiles.push(storedUpload.scannerFileRef);
+        }
+      } else if (parsed.data.fileNames && parsed.data.fileNames.length > 0) {
+        resolvedFiles.push(...parsed.data.fileNames);
+      } else if (parsed.data.fileName) {
+        resolvedFiles.push(parsed.data.fileName);
+      } else {
+        const latestFile = await getLatestImportedFileForScan({
           companyId,
           projectId: params.projectId,
           jobId: parsed.data.jobId
         });
+        if (latestFile) {
+          resolvedFiles.push(latestFile);
+        }
       }
-      if (!resolvedFile) {
+      if (resolvedFiles.length === 0) {
         return reply.code(404).send({
           message: "No imported plans found. Upload plans before starting a scan job."
         });
       }
-      const finalResolvedFile = resolvedFile;
+      const finalResolvedFiles = resolvedFiles;
 
       const scanJob = await createScanJob({
         companyId,
         projectId: params.projectId,
         jobId: parsed.data.jobId,
         source: parsed.data.source,
-        fileName: finalResolvedFile,
+        fileName: finalResolvedFiles.length === 1 ? finalResolvedFiles[0] : `${finalResolvedFiles.length} files`,
         scanMode: parsed.data.scanMode
       });
 
@@ -112,7 +124,7 @@ export const scanJobRoutes: FastifyPluginAsync = async (app) => {
             jobId: parsed.data.jobId,
             scanJobId: scanJob.id,
             source: parsed.data.source,
-            fileName: finalResolvedFile,
+            fileNames: finalResolvedFiles,
             manualScale: parsed.data.manualScale,
             scanMode: parsed.data.scanMode,
             aiSecondPass: parsed.data.aiSecondPass

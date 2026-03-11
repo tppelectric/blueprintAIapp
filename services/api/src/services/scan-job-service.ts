@@ -15,7 +15,7 @@ export async function runScanJobPipeline(params: {
   jobId?: string;
   scanJobId: string;
   source: string;
-  fileName: string;
+  fileNames: string[];
   manualScale?: string;
   scanMode: "mock" | "real";
   aiSecondPass?: boolean;
@@ -29,53 +29,96 @@ export async function runScanJobPipeline(params: {
     currentStep: "Loading plans"
   });
 
-  const detectedSheets = await splitSheetsWithScanner(params.projectId, params.fileName, params.scanMode as ScanMode);
-  if (detectedSheets.length === 0) {
-    throw new Error("Scanner returned no sheets");
-  }
-  initializeScanJobRuntimeProgress({
-    scanJobId: params.scanJobId,
-    aiSecondPassEnabled: Boolean(params.aiSecondPass),
-    pages: detectedSheets.map((sheet) => ({
-      sheetNumber: sheet.sheet_number,
-      title: sheet.title,
-      pageNumber: sheet.page_number
-    }))
-  });
+  const fileRuns: Array<{
+    sourceFileName: string;
+    detectedSheets: Awaited<ReturnType<typeof splitSheetsWithScanner>>;
+  }> = [];
 
-  const extractions: ScannerExtractResult[] = [];
-  for (let index = 0; index < detectedSheets.length; index += 1) {
-    const sheet = detectedSheets[index];
-    const progress = 15 + Math.round(((index + 1) / detectedSheets.length) * 55);
-    updateScanJobPageProgress({
-      scanJobId: params.scanJobId,
-      pageNumber: sheet.page_number,
-      status: "processing",
-      progressPercent: 45,
-      currentStep: `Scanning ${sheet.sheet_number}`
-    });
+  for (let fileIndex = 0; fileIndex < params.fileNames.length; fileIndex += 1) {
+    const fileName = params.fileNames[fileIndex];
     await updateScanJobProgress({
       companyId: params.companyId,
       projectId: params.projectId,
       scanJobId: params.scanJobId,
-      status: "analyzing_symbols",
-      progressPercent: progress,
-      currentStep: `Detecting electrical symbols (${index + 1}/${detectedSheets.length})`
+      status: "processing",
+      progressPercent: 10 + Math.round(((fileIndex + 1) / params.fileNames.length) * 15),
+      currentStep: `Loading plan file ${fileIndex + 1} of ${params.fileNames.length}`
     });
-    const extraction = await extractSheetWithScanner(
-      params.projectId,
-      sheet.sheet_number,
-      params.fileName,
-      params.scanMode as ScanMode,
-      Boolean(params.aiSecondPass)
-    );
-    extractions.push(extraction);
-    updateScanJobPageProgress({
-      scanJobId: params.scanJobId,
-      pageNumber: sheet.page_number,
-      status: "completed",
-      progressPercent: 100,
-      currentStep: Boolean(params.aiSecondPass) ? "Scan complete with AI review" : "Scan complete"
+
+    const detectedSheets = await splitSheetsWithScanner(params.projectId, fileName, params.scanMode as ScanMode);
+    if (detectedSheets.length === 0) {
+      throw new Error(`Scanner returned no sheets for ${fileName}`);
+    }
+    fileRuns.push({ sourceFileName: fileName, detectedSheets });
+  }
+
+  initializeScanJobRuntimeProgress({
+    scanJobId: params.scanJobId,
+    aiSecondPassEnabled: Boolean(params.aiSecondPass),
+    pages: fileRuns.flatMap((fileRun) =>
+      fileRun.detectedSheets.map((sheet) => ({
+        id: `${fileRun.sourceFileName}:${sheet.sheet_number}:${sheet.page_number}`,
+        sourceFileName: fileRun.sourceFileName,
+        sheetNumber: sheet.sheet_number,
+        title: sheet.title,
+        pageNumber: sheet.page_number
+      }))
+    )
+  });
+
+  const totalSheets = fileRuns.reduce((sum, fileRun) => sum + fileRun.detectedSheets.length, 0);
+  let processedSheets = 0;
+
+  for (const fileRun of fileRuns) {
+    const extractions: ScannerExtractResult[] = [];
+
+    for (const sheet of fileRun.detectedSheets) {
+      processedSheets += 1;
+      const progress = 25 + Math.round((processedSheets / totalSheets) * 45);
+      const pageId = `${fileRun.sourceFileName}:${sheet.sheet_number}:${sheet.page_number}`;
+
+      updateScanJobPageProgress({
+        scanJobId: params.scanJobId,
+        pageId,
+        status: "processing",
+        progressPercent: 45,
+        currentStep: `Scanning ${sheet.sheet_number}`
+      });
+      await updateScanJobProgress({
+        companyId: params.companyId,
+        projectId: params.projectId,
+        scanJobId: params.scanJobId,
+        status: "analyzing_symbols",
+        progressPercent: progress,
+        currentStep: `Detecting electrical symbols (${processedSheets}/${totalSheets})`
+      });
+      const extraction = await extractSheetWithScanner(
+        params.projectId,
+        sheet.sheet_number,
+        fileRun.sourceFileName,
+        params.scanMode as ScanMode,
+        Boolean(params.aiSecondPass)
+      );
+      extractions.push(extraction);
+      updateScanJobPageProgress({
+        scanJobId: params.scanJobId,
+        pageId,
+        status: "completed",
+        progressPercent: 100,
+        currentStep: Boolean(params.aiSecondPass) ? "Scan complete with AI review" : "Scan complete"
+      });
+    }
+
+    await saveBlueprintImportResult({
+      companyId: params.companyId,
+      projectId: params.projectId,
+      jobId: params.jobId,
+      source: params.source,
+      fileName: fileRun.sourceFileName,
+      manualScale: params.manualScale,
+      scanMode: params.scanMode,
+      sheets: fileRun.detectedSheets,
+      extractions
     });
   }
 
@@ -87,18 +130,6 @@ export async function runScanJobPipeline(params: {
     status: "grouping_devices",
     progressPercent: 78,
     currentStep: "Grouping devices by room"
-  });
-
-  await saveBlueprintImportResult({
-    companyId: params.companyId,
-    projectId: params.projectId,
-    jobId: params.jobId,
-    source: params.source,
-    fileName: params.fileName,
-    manualScale: params.manualScale,
-    scanMode: params.scanMode,
-    sheets: detectedSheets,
-    extractions
   });
 
   await updateScanJobProgress({

@@ -1,6 +1,8 @@
 type PageProgressStatus = "queued" | "processing" | "completed" | "failed";
 
 export type ScanJobPageProgress = {
+  id: string;
+  sourceFileName: string;
   sheetNumber: string;
   title: string;
   pageNumber: number;
@@ -20,12 +22,14 @@ const runtimeProgressByJobId = new Map<string, ScanJobRuntimeProgress>();
 export function initializeScanJobRuntimeProgress(params: {
   scanJobId: string;
   aiSecondPassEnabled: boolean;
-  pages: Array<{ sheetNumber: string; title: string; pageNumber: number }>;
+  pages: Array<{ id: string; sourceFileName: string; sheetNumber: string; title: string; pageNumber: number }>;
 }): void {
   runtimeProgressByJobId.set(params.scanJobId, {
     aiSecondPassEnabled: params.aiSecondPassEnabled,
     aiSecondPassStatus: params.aiSecondPassEnabled ? "running" : "skipped",
     pageProgress: params.pages.map((page) => ({
+      id: page.id,
+      sourceFileName: page.sourceFileName,
       sheetNumber: page.sheetNumber,
       title: page.title,
       pageNumber: page.pageNumber,
@@ -38,7 +42,7 @@ export function initializeScanJobRuntimeProgress(params: {
 
 export function updateScanJobPageProgress(params: {
   scanJobId: string;
-  pageNumber: number;
+  pageId: string;
   status: PageProgressStatus;
   progressPercent: number;
   currentStep: string;
@@ -49,7 +53,7 @@ export function updateScanJobPageProgress(params: {
   }
 
   current.pageProgress = current.pageProgress.map((page) =>
-    page.pageNumber === params.pageNumber
+    page.id === params.pageId
       ? {
           ...page,
           status: params.status,

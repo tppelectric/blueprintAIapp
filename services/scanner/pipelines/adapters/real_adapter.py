@@ -11,6 +11,7 @@ from services.scanner.detectors.template_matcher import (
     match_symbol_to_templates,
 )
 from services.scanner.detectors.yolo_symbol_detector import YoloSymbolDetector
+from services.scanner.ai.openai_symbol_review import OpenAISymbolReviewer
 from services.scanner.ocr.legend_extractor import (
     extract_legend_templates,
     infer_symbol_class,
@@ -91,6 +92,7 @@ class RealScannerAdapter(ScannerAdapter):
 
     def __init__(self) -> None:
         self.symbol_detector = YoloSymbolDetector()
+        self.openai_symbol_reviewer = OpenAISymbolReviewer()
 
     def split_sheets(self, file_name: str):
         return parse_pdf_sheets(file_name)
@@ -258,15 +260,30 @@ class RealScannerAdapter(ScannerAdapter):
                 ai_score=ai_score,
             )
 
+            openai_review = None
+            if final_type == "unknown" or needs_review:
+                openai_review = self.openai_symbol_reviewer.review_symbol_crop(
+                    crop,
+                    ai_candidate_type=detection.symbol_type,
+                    legend_hint=template_match.symbol_description if template_match else None,
+                    room_name=self._assign_room_by_overlap(rooms, page_number, (x1, y1, x2, y2)),
+                )
+                if openai_review and openai_review.symbol_type != "unknown":
+                    final_type = openai_review.symbol_type
+                    needs_review = openai_review.confidence < 0.72
+
             room_name = self._assign_room_by_overlap(rooms, page_number, (x1, y1, x2, y2))
+            final_confidence = legend_score if not needs_review else ai_score * 0.5
+            if openai_review is not None:
+                final_confidence = max(final_confidence, openai_review.confidence)
 
             detections.append(
                 {
                     "room": room_name,
                     "type": final_type,
-                    "confidence": round(max(0.0, min(1.0, legend_score if not needs_review else ai_score * 0.5)), 2),
+                    "confidence": round(max(0.0, min(1.0, final_confidence)), 2),
                     "needs_review": needs_review,
-                    "detection_source": detection.source,
+                    "detection_source": "openai_review" if openai_review is not None else detection.source,
                     "ai_candidate_type": detection.symbol_type,
                     "legend_match": template_match.symbol_id if template_match else None,
                     "legend_similarity": round(legend_score, 2),

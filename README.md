@@ -171,6 +171,18 @@ Scanner file handling modes:
   - API stores the file and gives the scanner a signed download URL
   - scanner downloads the file to a temp path before processing
 
+Optional OpenAI-assisted symbol review:
+- `OPENAI_SYMBOL_REVIEW_ENABLED=true`
+  - enables a second-pass review only for unclear symbol crops in real scanner mode
+- `OPENAI_VISION_MODEL=gpt-4.1-mini`
+  - default OpenAI vision-capable model for symbol review
+- `OPENAI_SYMBOL_REVIEW_MAX_CALLS=20`
+  - limits how many uncertain symbols per import can call OpenAI
+- `OPENAI_API_KEY=...`
+  - required only when OpenAI review is enabled
+
+This does not replace the main detector. It supplements YOLO/OpenCV + OCR for ambiguous symbols.
+
 ## Database Schema
 Initial PostgreSQL schema is in:
 - `infrastructure/migrations/001_initial_schema.sql`

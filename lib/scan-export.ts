@@ -204,9 +204,11 @@ export type TakeoffExportProjectInput = {
   filterPages?: Set<number>;
   /** Single-room export */
   filterRoom?: Pick<DetectedRoomRow, "id" | "page_number" | "room_name">;
+  /** Optional material estimate for PDF executive summary */
+  estimatedMaterialCost?: number | null;
 };
 
-type PageSheetMeta = {
+export type PageSheetMeta = {
   globalPage: number;
   sheetNumber: number;
   sheetName: string;
@@ -234,7 +236,7 @@ function buildPageSheetIndex(
   return map;
 }
 
-function roomSqFt(r: DetectedRoomRow): string {
+export function roomSqFt(r: DetectedRoomRow): string {
   const w = r.width_ft != null ? Number(r.width_ft) : null;
   const len = r.length_ft != null ? Number(r.length_ft) : null;
   if (w != null && len != null && w > 0 && len > 0)
@@ -246,7 +248,7 @@ function roomSqFt(r: DetectedRoomRow): string {
   return "";
 }
 
-function exportEffectiveQty(
+export function exportEffectiveQty(
   item: ElectricalItemRow,
   manualCounts: Record<string, number>,
   manualMode: boolean,
@@ -272,7 +274,7 @@ function exportManualCountCell(
   return "";
 }
 
-function exportPlanNoteText(item: ElectricalItemRow): string {
+export function exportPlanNoteText(item: ElectricalItemRow): string {
   if (item.category === "plan_note") {
     const raw = item.raw_note?.trim();
     if (raw) return raw;
@@ -353,15 +355,27 @@ function sortItemsForOrganize(
   return [...items].sort((a, b) => key(a).localeCompare(key(b)));
 }
 
+/** Shared prepared rows for CSV, printable HTML, and PDF takeoff export. */
+export function prepareTakeoffRows(
+  input: TakeoffExportProjectInput,
+  organizeBy: TakeoffOrganizeBy,
+): {
+  items: ElectricalItemRow[];
+  rooms: DetectedRoomRow[];
+  pageIndex: Map<number, PageSheetMeta>;
+} {
+  const { items: rawItems, rooms: rawRooms } = filterTakeoffData(input);
+  const pageIndex = buildPageSheetIndex(input.sheets, input.docNumPages);
+  const items = sortItemsForOrganize(rawItems, rawRooms, organizeBy);
+  return { items, rooms: rawRooms, pageIndex };
+}
+
 export function buildProjectTakeoffCsv(
   input: TakeoffExportProjectInput,
   organizeBy: TakeoffOrganizeBy,
   include: TakeoffExportInclude,
 ): string {
-  const { items: rawItems, rooms: rawRooms } = filterTakeoffData(input);
-  const pageIndex = buildPageSheetIndex(input.sheets, input.docNumPages);
-  const items = sortItemsForOrganize(rawItems, rawRooms, organizeBy);
-  const rooms = rawRooms;
+  const { items, rooms, pageIndex } = prepareTakeoffRows(input, organizeBy);
 
   const headers = [
     "Project",
@@ -595,9 +609,10 @@ export function openProjectTakeoffPrintReport(
   organizeBy: TakeoffOrganizeBy,
   include: TakeoffExportInclude,
 ): void {
-  const { items: rawItems, rooms: rawRooms } = filterTakeoffData(input);
-  const pageIndex = buildPageSheetIndex(input.sheets, input.docNumPages);
-  const items = sortItemsForOrganize(rawItems, rawRooms, organizeBy);
+  const { items, rooms: rawRooms, pageIndex } = prepareTakeoffRows(
+    input,
+    organizeBy,
+  );
   const rooms = [...rawRooms].sort((a, b) => {
     if (a.page_number !== b.page_number)
       return a.page_number - b.page_number;
@@ -790,6 +805,10 @@ export function runTakeoffExport(
     );
   }
   if (format === "pdf" || format === "both") {
-    openProjectTakeoffPrintReport(input, organizeBy, include);
+    void import("@/lib/takeoff-pdf-report").then(({ downloadTakeoffPdfReport }) => {
+      downloadTakeoffPdfReport(input, organizeBy, include, {
+        filename: `takeoff-${safeName}-${stamp}.pdf`,
+      });
+    });
   }
 }

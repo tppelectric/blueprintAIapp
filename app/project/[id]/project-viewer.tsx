@@ -77,6 +77,23 @@ type ResumePayload = {
   mode: ScanModeId;
 };
 
+/**
+ * Maps 0–100 intra-page progress into this page's slice of a batch run.
+ * Percent is based only on pages from batchStartPage through totalPages (resume-safe).
+ */
+function batchSlotProgressPct(
+  intra0to100: number,
+  batchStartPage: number,
+  totalPages: number,
+  currentPage: number,
+): number {
+  const remaining = Math.max(1, totalPages - batchStartPage + 1);
+  const pageOffset = Math.max(0, currentPage - batchStartPage);
+  const base = (pageOffset / remaining) * 100;
+  const span = 100 / remaining;
+  return Math.min(99, Math.round(base + (intra0to100 / 100) * span));
+}
+
 type ProjectRow = {
   id: string;
   project_name: string | null;
@@ -544,6 +561,10 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   );
   const [scanCurrentPage, setScanCurrentPage] = useState(1);
   const [scanTotalPages, setScanTotalPages] = useState(1);
+  /** First page in the current batch run (for resume messaging and progress denominator). */
+  const [scanBatchStartPage, setScanBatchStartPage] = useState(1);
+  /** Incremented when a scan overlay opens so the progress bar resets visually. */
+  const [scanProgressSessionKey, setScanProgressSessionKey] = useState(0);
   const [pageScanErrors, setPageScanErrors] = useState<Record<number, string>>(
     {},
   );
@@ -1594,6 +1615,11 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         skipGpt?: boolean;
         signal?: AbortSignal;
         onBeforeGpt?: () => void;
+        onScanProgress?: (
+          pct: number,
+          primary: string,
+          secondary?: string | null,
+        ) => void;
       },
     ) => {
       if (json.persisted === false) {
@@ -1603,6 +1629,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
             [pageToAnalyze]: `Page ${pageToAnalyze} — No electrical items detected. Please verify this page manually.`,
           }));
         }
+        opts?.onScanProgress?.(88, "Finishing…", null);
         return;
       }
       setPageAnalysisWarnings((prev) => {
@@ -1619,6 +1646,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         ...incomingRooms,
       ]);
       if (incoming.length > 0 && !opts?.skipGpt) {
+        opts?.onScanProgress?.(73, "GPT-4o verifying counts…", null);
         opts?.onBeforeGpt?.();
         await runGptVerification(
           pageImage.base64,
@@ -1627,7 +1655,12 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           incoming,
           { signal: opts?.signal },
         );
+      } else if (opts?.skipGpt) {
+        opts?.onScanProgress?.(82, "Saving results…", null);
+      } else {
+        opts?.onScanProgress?.(88, "Saving results…", null);
       }
+      opts?.onScanProgress?.(95, "Saving results…", null);
       setScanReloadToken((t) => t + 1);
     },
     [runGptVerification],
@@ -1707,8 +1740,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
 
       updateThumb(pageToAnalyze, "spin");
       onProgress?.(
-        18,
-        `Claude reading page ${pageToAnalyze}…`,
+        0,
+        "Rendering page image…",
         mode === "quick" ? null : "Then GPT-4o verifies counts…",
       );
 
@@ -1739,6 +1772,12 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         updateThumb(pageToAnalyze, "wait");
         return { itemCount: 0, outcome: "error", errorMessage: "Cancelled" };
       }
+
+      onProgress?.(
+        20,
+        "Claude analyzing…",
+        mode === "quick" ? null : "Then GPT-4o verifies counts…",
+      );
 
       let res: Response;
       try {
@@ -1772,7 +1811,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       }
 
       onProgress?.(
-        48,
+        70,
         mode === "quick"
           ? "Saving results…"
           : "GPT-4o verifying counts…",
@@ -1783,9 +1822,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         await applyAnalyzePageJson(pageToAnalyze, json, pageImage, {
           skipGpt: mode === "quick",
           signal,
-          onBeforeGpt: () => {
-            onProgress?.(58, "GPT-4o verifying counts…", null);
-          },
+          onScanProgress: onProgress,
         });
       } catch {
         updateThumb(pageToAnalyze, "wait");
@@ -1801,7 +1838,9 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         return { itemCount: 0, outcome: "error", errorMessage: "Cancelled" };
       }
 
+      onProgress?.(98, "Saving results…", null);
       await recordScanUsage(pageToAnalyze, mode);
+      onProgress?.(100, "Complete", null);
 
       const incomingCount = ((json.items ?? []) as ElectricalItemRow[]).length;
       if (json.persisted === false && json.pageAnalysisWarning) {
@@ -1841,6 +1880,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       const signal = scanAbortControllerRef.current.signal;
       scanCancelRequestedRef.current = false;
       scanStartedAtRef.current = Date.now();
+      setScanProgressSessionKey((k) => k + 1);
+      setScanBatchStartPage(1);
       setScanProgressVariant("single");
       setScanProgressMode(mode);
       setScanProgressOpen(true);
@@ -1851,10 +1892,10 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       setScanPageRows([]);
       setScanCostSoFar(0);
       setScanSessionEstimate(totalCostPerPage(meta));
-      setScanProgressPct(8);
-      setScanPhasePrimary("Claude reading electrical items…");
+      setScanProgressPct(0);
+      setScanPhasePrimary("Rendering page image…");
       setScanPhaseSecondary(
-        mode === "quick" ? null : "GPT-4o verifying counts…",
+        mode === "quick" ? null : "Then GPT-4o verifies counts…",
       );
       setAnalyzePhase("page");
       setAnalyzeError(null);
@@ -1939,6 +1980,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         },
       );
       setScanPageRows(initialRows);
+      setScanProgressSessionKey((k) => k + 1);
+      setScanBatchStartPage(startPage);
       setScanProgressVariant("batch");
       setScanProgressMode(mode);
       setScanProgressOpen(true);
@@ -1951,10 +1994,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       batchCostAccumRef.current = priorCost;
       setScanCostSoFar(priorCost);
       setScanSessionEstimate(totalCostPerPage(meta) * totalPages);
-      setScanProgressPct(
-        Math.round(((startPage - 1) / Math.max(1, totalPages)) * 100),
-      );
-      setScanPhasePrimary(`Claude reading page ${startPage}…`);
+      setScanProgressPct(0);
+      setScanPhasePrimary("Rendering page image…");
       setScanPhaseSecondary(
         mode === "quick" ? null : "Then GPT-4o verifies counts…",
       );
@@ -1983,17 +2024,16 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           setAnalyzeAllProgress({ current: p, total: totalPages });
           updateRow(p, { state: "running" });
 
-          const subPct = (p - 1) / totalPages;
-          setScanProgressPct(Math.round(subPct * 100));
+          setScanProgressPct(
+            batchSlotProgressPct(0, startPage, totalPages, p),
+          );
 
           const r = await runOnePageWithMode(p, mode, signal, {
             updateThumb: (pg, s) =>
               setThumbByPage((prev) => ({ ...prev, [pg]: s })),
-            onProgress: (pct, primary, secondary) => {
-              const base = ((p - 1) / totalPages) * 100;
-              const span = (1 / totalPages) * 100;
+            onProgress: (intra, primary, secondary) => {
               setScanProgressPct(
-                Math.min(99, Math.round(base + (pct / 100) * span)),
+                batchSlotProgressPct(intra, startPage, totalPages, p),
               );
               setScanPhasePrimary(primary);
               setScanPhaseSecondary(secondary ?? null);
@@ -3233,7 +3273,9 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
 
   const scanPageLine =
     scanProgressVariant === "batch"
-      ? `Page ${scanCurrentPage} of ${scanTotalPages}`
+      ? scanBatchStartPage > 1
+        ? `Resuming from page ${scanBatchStartPage} of ${scanTotalPages} — Page ${scanCurrentPage} of ${scanTotalPages}`
+        : `Page ${scanCurrentPage} of ${scanTotalPages}`
       : `Page ${scanCurrentPage}`;
 
   return (
@@ -3295,6 +3337,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
               : "Analyzing Blueprint"
           }
           progressPct={scanProgressPct}
+          progressSessionKey={scanProgressSessionKey}
           pageLine={scanPageLine}
           phasePrimary={scanPhasePrimary}
           phaseSecondary={scanPhaseSecondary}

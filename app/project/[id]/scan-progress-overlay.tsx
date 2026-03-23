@@ -40,6 +40,8 @@ export function ScanProgressOverlay({
   variant,
   title,
   progressPct,
+  /** Bumps when a new scan session opens so the bar width resets from 0 without inheriting the previous run. */
+  progressSessionKey,
   pageLine,
   phasePrimary,
   phaseSecondary,
@@ -57,6 +59,7 @@ export function ScanProgressOverlay({
   variant: "single" | "batch";
   title: string;
   progressPct: number;
+  progressSessionKey?: number;
   pageLine: string;
   phasePrimary: string;
   phaseSecondary?: string | null;
@@ -107,6 +110,7 @@ export function ScanProgressOverlay({
             aria-valuemax={100}
           >
             <div
+              key={progressSessionKey ?? 0}
               className="h-full rounded-full bg-gradient-to-r from-sky-500 to-violet-500 transition-[width] duration-300"
               style={{ width: `${pct}%` }}
             />

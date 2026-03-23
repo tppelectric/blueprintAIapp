@@ -441,12 +441,26 @@ export function DashboardClient() {
               </p>
             ) : null}
           </div>
-          <Link
-            href="/upload"
-            className="inline-flex shrink-0 items-center justify-center rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-[#0a1628] shadow-sm transition-colors hover:bg-white/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/80"
-          >
-            Upload New Blueprint
-          </Link>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <Link
+              href="/tools/load-calculator"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-sky-500/45 bg-sky-950/40 px-4 py-2.5 text-sm font-semibold text-sky-100 transition-colors hover:bg-sky-950/55"
+            >
+              Load Calculator
+            </Link>
+            <Link
+              href="/tools/nec-checker"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-violet-500/45 bg-violet-950/35 px-4 py-2.5 text-sm font-semibold text-violet-100 transition-colors hover:bg-violet-950/50"
+            >
+              NEC Checker
+            </Link>
+            <Link
+              href="/upload"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-[#0a1628] shadow-sm transition-colors hover:bg-white/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/80"
+            >
+              Upload New Blueprint
+            </Link>
+          </div>
         </div>
 
         {loading && (

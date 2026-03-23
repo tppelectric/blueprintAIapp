@@ -112,7 +112,7 @@ export function TakeoffExportDialog({
                 onChange={() => setFormat("pdf")}
                 className="accent-sky-500"
               />
-              PDF Report (print friendly)
+              PDF Report (formatted multi-page download)
             </label>
             <label className="flex cursor-pointer items-center gap-2">
               <input

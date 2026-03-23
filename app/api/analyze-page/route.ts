@@ -103,29 +103,28 @@ PLAN NOTES: All electrical notes, NEC references, panel schedules, AHJ notes. Qu
 PANEL SCHEDULE DETECTION:
 If this page contains a panel schedule table:
 - Read every circuit in the schedule
-- Extract: circuit number, description, breaker size, voltage, phase
+- Extract: circuit number, description,
+  breaker size, voltage, phase
 - Return each circuit as a plan_note item:
   description: Circuit X - [description]
-  specification: [breaker size]A, [voltage]V (include phase in specification when shown, e.g. 1φ or 3φ)
+  specification: [breaker size]A, [voltage]V
   category: plan_note
   confidence: 0.95
-- Use quantity 1 and unit NOTE for each schedule row unless the drawing shows a distinct count
-- Use which_room: UNASSIGNED for schedule-only rows
 
 RISER DIAGRAM DETECTION:
 If this page contains an electrical riser:
 - Extract service size
 - Extract panel locations and sizes
 - Extract feeder sizes
-- Return as panel category items (one item per distinct riser element: service entrance, main disconnect, panels, feeders with description and specification including sizes and ampacities)
-- Use which_room: UNASSIGNED when the element is not tied to a single room
+- Return as panel category items
 
 TEXT HEAVY PAGES:
 If this page has more text than symbols:
 - Read all electrical specifications
 - Read all schedules and tables
 - Return everything as plan_note items
-- Never return empty electrical_items for a page with visible electrical text content (schedules, specs, notes, load summaries, legends) — extract every meaningful line as at least one item
+- Never return empty for a page with
+  electrical text content
 
 COUNTING RULES - THIS IS CRITICAL:
 - Count every single symbol individually, one by one

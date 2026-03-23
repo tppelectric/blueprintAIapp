@@ -1,7 +1,8 @@
 "use client";
 
+import { jsPDF } from "jspdf";
 import type { ReactNode } from "react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -82,6 +83,245 @@ function isNysNone(note: string): boolean {
   return /^\s*none\.?\s*$/i.test(note.trim());
 }
 
+const PDF_BRAND = "TPP Electric";
+const PDF_DOC_TITLE = "NEC Code Reference";
+const PDF_FOOTER = "Blueprint AI — blueprint-a-iapp.vercel.app";
+
+function tokenizeNecCitations(text: string): { cite: boolean; s: string }[] {
+  const out: { cite: boolean; s: string }[] = [];
+  const re = new RegExp(NEC_CITE.source, NEC_CITE.flags);
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) {
+      out.push({ cite: false, s: text.slice(last, m.index) });
+    }
+    out.push({ cite: true, s: m[1] });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) {
+    out.push({ cite: false, s: text.slice(last) });
+  }
+  return out;
+}
+
+function drawFooter(doc: jsPDF, pageW: number, pageH: number, margin: number): void {
+  doc.setFontSize(8);
+  doc.setTextColor(90, 90, 90);
+  doc.setFont("helvetica", "normal");
+  doc.text(PDF_FOOTER, margin, pageH - 28);
+  doc.setTextColor(0, 0, 0);
+}
+
+/** Writes plain + NEC-highlighted text with word wrap; returns next Y; adds pages as needed. */
+function writeBodyText(
+  doc: jsPDF,
+  text: string,
+  x: number,
+  y: number,
+  maxW: number,
+  lineHeight: number,
+  margin: number,
+  pageH: number,
+  bottomReserve: number,
+): number {
+  let cy = y;
+  let cx = x;
+  doc.setFontSize(10);
+  const tokens = tokenizeNecCitations(text);
+  const pageBreak = () => {
+    doc.addPage();
+    cy = margin + 24;
+    cx = x;
+  };
+
+  for (const tok of tokens) {
+    const chunks = tok.s.split(/(\s+)/);
+    for (const chunk of chunks) {
+      if (!chunk) continue;
+      doc.setFont("helvetica", tok.cite ? "bold" : "normal");
+      if (tok.cite) {
+        doc.setTextColor(0, 102, 180);
+      } else {
+        doc.setTextColor(33, 33, 33);
+      }
+      const w = doc.getTextWidth(chunk);
+      if (cx + w > x + maxW && cx > x) {
+        cx = x;
+        cy += lineHeight;
+        if (cy > pageH - bottomReserve) pageBreak();
+      }
+      doc.text(chunk, cx, cy);
+      cx += w;
+    }
+  }
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(0, 0, 0);
+  return cy + lineHeight;
+}
+
+function writeSectionHeading(doc: jsPDF, title: string, y: number, margin: number): number {
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(40, 40, 40);
+  doc.text(title, margin, y);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(33, 33, 33);
+  return y + 16;
+}
+
+function downloadNecAnswerPdf(opts: {
+  question: string;
+  parsed: ReturnType<typeof parseNecFormattedAnswer>;
+}): void {
+  const doc = new jsPDF({ unit: "pt", format: "letter" });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 48;
+  const maxW = pageW - margin * 2;
+  const lineHeight = 14;
+  const bottomReserve = 56;
+  const { parsed, question } = opts;
+
+  let y = margin + 8;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.setTextColor(20, 20, 20);
+  doc.text(PDF_BRAND, margin, y);
+  y += 22;
+
+  doc.setFontSize(20);
+  doc.text(PDF_DOC_TITLE, margin, y);
+  y += 28;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  const stamp = new Date().toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  doc.setTextColor(70, 70, 70);
+  doc.text(`Generated: ${stamp}`, margin, y);
+  y += 22;
+  doc.setTextColor(33, 33, 33);
+
+  y = writeSectionHeading(doc, "Question", y, margin);
+  y = writeBodyText(
+    doc,
+    question,
+    margin,
+    y,
+    maxW,
+    lineHeight,
+    margin,
+    pageH,
+    bottomReserve,
+  );
+  y += 6;
+  if (y > pageH - bottomReserve) {
+    doc.addPage();
+    drawFooter(doc, pageW, pageH, margin);
+    y = margin + 24;
+  }
+
+  const answerBody =
+    parsed.answer.trim() || parsed.raw.trim() || "(No answer text.)";
+  y = writeSectionHeading(doc, "Answer", y, margin);
+  y = writeBodyText(
+    doc,
+    answerBody,
+    margin,
+    y,
+    maxW,
+    lineHeight,
+    margin,
+    pageH,
+    bottomReserve,
+  );
+  y += 4;
+
+  if (parsed.necReference.trim()) {
+    if (y > pageH - bottomReserve - 40) {
+      doc.addPage();
+      drawFooter(doc, pageW, pageH, margin);
+      y = margin + 24;
+    }
+    y = writeSectionHeading(doc, "NEC article citations", y, margin);
+    y = writeBodyText(
+      doc,
+      parsed.necReference,
+      margin,
+      y,
+      maxW,
+      lineHeight,
+      margin,
+      pageH,
+      bottomReserve,
+    );
+    y += 4;
+  }
+
+  if (parsed.nysNote.trim()) {
+    if (y > pageH - bottomReserve - 40) {
+      doc.addPage();
+      drawFooter(doc, pageW, pageH, margin);
+      y = margin + 24;
+    }
+    y = writeSectionHeading(doc, "NYS notes", y, margin);
+    const nysBody = isNysNone(parsed.nysNote)
+      ? "None applicable."
+      : parsed.nysNote;
+    y = writeBodyText(
+      doc,
+      nysBody,
+      margin,
+      y,
+      maxW,
+      lineHeight,
+      margin,
+      pageH,
+      bottomReserve,
+    );
+    y += 4;
+  }
+
+  if (parsed.additional.trim()) {
+    if (y > pageH - bottomReserve - 40) {
+      doc.addPage();
+      drawFooter(doc, pageW, pageH, margin);
+      y = margin + 24;
+    }
+    y = writeSectionHeading(doc, "Additional", y, margin);
+    y = writeBodyText(
+      doc,
+      parsed.additional,
+      margin,
+      y,
+      maxW,
+      lineHeight,
+      margin,
+      pageH,
+      bottomReserve,
+    );
+  }
+
+  const n = doc.getNumberOfPages();
+  for (let i = 1; i <= n; i++) {
+    doc.setPage(i);
+    drawFooter(doc, pageW, pageH, margin);
+  }
+
+  const safe =
+    question
+      .slice(0, 40)
+      .replace(/[^\w\- ]+/g, "")
+      .trim()
+      .replace(/\s+/g, "-") || "nec-answer";
+  doc.save(`nec-reference-${safe}.pdf`);
+}
+
 export function NecAiQuestionPanel({
   jurisdiction,
   necEdition,
@@ -94,15 +334,35 @@ export function NecAiQuestionPanel({
   const [error, setError] = useState<string | null>(null);
   const [lastQuestion, setLastQuestion] = useState<string | null>(null);
   const [rawAnswer, setRawAnswer] = useState<string | null>(null);
+  const askAbortRef = useRef<AbortController | null>(null);
 
-  const parsed = useMemo(
-    () => (rawAnswer ? parseNecFormattedAnswer(rawAnswer) : null),
-    [rawAnswer],
-  );
+  const parsed = useMemo(() => {
+    if (rawAnswer === null) return null;
+    return parseNecFormattedAnswer(rawAnswer);
+  }, [rawAnswer]);
+
+  const hasClearable =
+    Boolean(qInput.trim()) ||
+    lastQuestion !== null ||
+    rawAnswer !== null ||
+    error !== null;
+
+  const clearAll = useCallback(() => {
+    askAbortRef.current?.abort();
+    askAbortRef.current = null;
+    setQInput("");
+    setRawAnswer(null);
+    setLastQuestion(null);
+    setError(null);
+    setLoading(false);
+  }, []);
 
   const ask = useCallback(async () => {
     const question = qInput.trim();
     if (!question) return;
+    askAbortRef.current?.abort();
+    const ac = new AbortController();
+    askAbortRef.current = ac;
     setLoading(true);
     setError(null);
     setRawAnswer(null);
@@ -115,6 +375,7 @@ export function NecAiQuestionPanel({
           jurisdiction,
           nec_edition: necEdition,
         }),
+        signal: ac.signal,
       });
       const json = (await res.json()) as { answer?: string; error?: string };
       if (!res.ok) {
@@ -123,10 +384,14 @@ export function NecAiQuestionPanel({
       }
       setLastQuestion(question);
       setRawAnswer(json.answer ?? "");
-    } catch {
+    } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") return;
       setError("Network error. Try again.");
     } finally {
-      setLoading(false);
+      if (askAbortRef.current === ac) {
+        setLoading(false);
+        askAbortRef.current = null;
+      }
     }
   }, [qInput, jurisdiction, necEdition]);
 
@@ -148,14 +413,25 @@ export function NecAiQuestionPanel({
         className="mt-4 w-full resize-y rounded-xl border border-white/15 bg-[#0a1628] px-4 py-3 text-sm text-white placeholder:text-white/35 outline-none focus:ring-2 focus:ring-violet-500/40 print:border-gray-300 print:bg-white print:text-black"
         disabled={loading}
       />
-      <button
-        type="button"
-        onClick={() => void ask()}
-        disabled={loading || !qInput.trim()}
-        className="mt-4 rounded-lg bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-45 print:bg-violet-800"
-      >
-        Ask Question
-      </button>
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void ask()}
+          disabled={loading || !qInput.trim()}
+          className="rounded-lg bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-45 print:bg-violet-800"
+        >
+          Ask Question
+        </button>
+        {hasClearable ? (
+          <button
+            type="button"
+            onClick={clearAll}
+            className="rounded-lg border border-white/25 bg-transparent px-5 py-2.5 text-sm font-semibold text-white/90 hover:bg-white/10 print:border-gray-400 print:text-black"
+          >
+            Clear
+          </button>
+        ) : null}
+      </div>
 
       {loading ? (
         <p
@@ -172,7 +448,7 @@ export function NecAiQuestionPanel({
         </p>
       ) : null}
 
-      {parsed && lastQuestion ? (
+      {parsed !== null && lastQuestion ? (
         <div className="mt-6 rounded-xl border border-white/12 bg-black/25 p-5 print:border-gray-300 print:bg-gray-50">
           <p className="text-xs font-semibold uppercase tracking-wide text-white/50 print:text-gray-600">
             Your question
@@ -231,6 +507,18 @@ export function NecAiQuestionPanel({
                 </p>
               </div>
             ) : null}
+          </div>
+
+          <div className="mt-5 border-t border-white/10 pt-4 print:border-gray-200">
+            <button
+              type="button"
+              onClick={() =>
+                downloadNecAnswerPdf({ question: lastQuestion, parsed })
+              }
+              className="rounded-lg border border-emerald-400/50 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/25 print:border-emerald-700 print:text-emerald-900"
+            >
+              Save as PDF
+            </button>
           </div>
         </div>
       ) : null}

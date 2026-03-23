@@ -341,12 +341,6 @@ export function NecAiQuestionPanel({
     return parseNecFormattedAnswer(rawAnswer);
   }, [rawAnswer]);
 
-  const hasClearable =
-    Boolean(qInput.trim()) ||
-    lastQuestion !== null ||
-    rawAnswer !== null ||
-    error !== null;
-
   const clearAll = useCallback(() => {
     askAbortRef.current?.abort();
     askAbortRef.current = null;
@@ -422,15 +416,13 @@ export function NecAiQuestionPanel({
         >
           Ask Question
         </button>
-        {hasClearable ? (
-          <button
-            type="button"
-            onClick={clearAll}
-            className="rounded-lg border border-white/25 bg-transparent px-5 py-2.5 text-sm font-semibold text-white/90 hover:bg-white/10 print:border-gray-400 print:text-black"
-          >
-            Clear
-          </button>
-        ) : null}
+        <button
+          type="button"
+          onClick={clearAll}
+          className="rounded-lg border border-violet-400/45 bg-transparent px-5 py-2.5 text-sm font-semibold text-violet-100 hover:bg-violet-500/15 print:border-violet-700 print:text-violet-950"
+        >
+          Clear
+        </button>
       </div>
 
       {loading ? (

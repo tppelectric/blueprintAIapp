@@ -1,0 +1,566 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { NextResponse } from "next/server";
+import {
+  extractAnalyzePayload,
+  normalizeAnalysisItem,
+  normalizeAnalysisRoom,
+  type IncomingItem,
+  type IncomingRoom,
+} from "@/lib/claude-blueprint-analysis";
+import { nextSavedScanIndex } from "@/lib/saved-scan-db";
+import { formatAutoScanName } from "@/lib/saved-scan-format";
+import { buildAnalysisLegendAppendix } from "@/lib/analysis-legend-context";
+import { MAX_IMAGE_BYTES } from "@/lib/pdf-page-image";
+import { createServiceRoleClient } from "@/lib/supabase/service";
+import {
+  CLAUDE_OVERLOADED_USER_MESSAGE,
+  withClaudeOverloadRetries,
+} from "@/lib/ai-api-retries";
+
+export const maxDuration = 180;
+
+/** Safety net: reject oversized payloads before Claude (5 MB API limit). */
+const MAX_INCOMING_IMAGE_BYTES = Math.floor(4.8 * 1024 * 1024);
+
+const MODEL = "claude-sonnet-4-6";
+
+/** Shown on the second Claude attempt when the first reply is not usable JSON. */
+const STRICT_JSON_USER_ADDENDUM = `
+
+IMPORTANT: You MUST respond with valid JSON only: a single JSON object with keys "electrical_items" and "rooms" (both arrays). If the page has no electrical content at all, return {"electrical_items":[],"rooms":[]}. If the page has panel schedules, riser diagrams, specifications, tables, or other electrical text, you MUST extract them into electrical_items per the system instructions — do not return empty electrical_items in that case. Never respond with plain text, apologies, or markdown. Only the JSON object.`;
+
+function claudeTextLooksLikeJson(text: string): boolean {
+  const t = text.trim();
+  return t.startsWith("{") || t.startsWith("[");
+}
+
+function tryExtractAnalyzePayload(
+  text: string,
+): { electrical_items: unknown[]; rooms: unknown[] } | null {
+  try {
+    return extractAnalyzePayload(text);
+  } catch {
+    return null;
+  }
+}
+
+const SYSTEM_PROMPT = `You are a licensed electrical estimator with 20 years of experience reading commercial and residential electrical blueprints under NEC 2023. Analyze this blueprint page and identify ALL electrical elements.
+
+For each item found return a JSON array with objects:
+{
+  category: fixture OR panel OR wiring OR plan_note,
+  description: item name for materials list,
+  specification: technical details like gauge amperage NEMA type,
+  quantity: number,
+  unit: EA or LF or LOT or NOTE,
+  confidence: number between 0.0 and 1.0,
+  raw_note: verbatim plan note text or null,
+  which_room: string (see ROOM ASSIGNMENT RULES below)
+}
+
+ROOM ASSIGNMENT RULES — CRITICAL:
+Every single electrical item MUST be assigned to a room. Follow these rules exactly:
+
+1. IDENTIFY ALL ROOMS FIRST
+   Before counting any items scan the entire page and list every room and area you can see.
+   Include: hallways, closets, storage areas, utility spaces, staircases, any labeled area.
+
+2. ASSIGN BY LOCATION
+   Look at where each symbol is physically located on the plan.
+   Assign it to whichever room boundary it falls inside.
+   For symbols on a wall between two rooms assign to the room the symbol faces into.
+
+3. NEVER USE UNASSIGNED
+   Every item must have a room assignment.
+   If truly unclear assign to the nearest named room.
+   Only use UNASSIGNED for items with no possible room context like panel schedules.
+
+4. SMALL ROOMS MATTER
+   Pay special attention to:
+   - Hallways and corridors
+   - Closets and storage areas
+   - Utility and mechanical spaces
+   - Mudrooms and entry areas
+   - Staircases
+   These areas always have electrical items even if small — look carefully.
+
+5. DOUBLE CHECK ASSIGNMENT
+   After assigning all items review your list.
+   Make sure no room that has visible symbols shows zero items assigned to it.
+   If a room shows zero items scan it again.
+
+Match which_room to room labels visible on the drawing when possible. Use the same spelling style as the sheet (you may use ALL CAPS for consistency).
+
+IDENTIFY THESE ITEMS:
+FIXTURES: Receptacles (standard GFCI AFCI TR WP), lighting (recessed surface wall), ceiling fans, exhaust fans, smoke/CO detectors, dedicated circuits
+
+PANELS: Main panels with amperage, subpanels, disconnects, transfer switches
+
+WIRING: Wire gauge and type (NM-B MC EMT PVC), home runs, feeders, low voltage, underground. Estimate linear footage if scale bar visible.
+
+PLAN NOTES: All electrical notes, NEC references, panel schedules, AHJ notes. Quote verbatim.
+
+PANEL SCHEDULE DETECTION:
+If this page contains a panel schedule table:
+- Read every circuit in the schedule
+- Extract: circuit number, description, breaker size, voltage, phase
+- Return each circuit as a plan_note item:
+  description: Circuit X - [description]
+  specification: [breaker size]A, [voltage]V (include phase in specification when shown, e.g. 1φ or 3φ)
+  category: plan_note
+  confidence: 0.95
+- Use quantity 1 and unit NOTE for each schedule row unless the drawing shows a distinct count
+- Use which_room: UNASSIGNED for schedule-only rows
+
+RISER DIAGRAM DETECTION:
+If this page contains an electrical riser:
+- Extract service size
+- Extract panel locations and sizes
+- Extract feeder sizes
+- Return as panel category items (one item per distinct riser element: service entrance, main disconnect, panels, feeders with description and specification including sizes and ampacities)
+- Use which_room: UNASSIGNED when the element is not tied to a single room
+
+TEXT HEAVY PAGES:
+If this page has more text than symbols:
+- Read all electrical specifications
+- Read all schedules and tables
+- Return everything as plan_note items
+- Never return empty electrical_items for a page with visible electrical text content (schedules, specs, notes, load summaries, legends) — extract every meaningful line as at least one item
+
+COUNTING RULES - THIS IS CRITICAL:
+- Count every single symbol individually, one by one
+- Do not estimate or guess quantities
+- Scan the entire page systematically:
+  * Start at top left, move right across the page
+  * Then move down one row and repeat
+  * Never skip any area of the page
+- Count symbols near walls, corners, and edges carefully
+- Count symbols that are close together separately
+- If a symbol is partially covered by text or lines, still count it
+- Double check your count before returning results
+- For receptacles specifically: count every duplex, GFCI, AFCI, and specialty outlet as separate items
+- When in doubt count it - the estimator will verify
+
+RECEPTACLE DETECTION - PAY SPECIAL ATTENTION:
+- Look for any of these symbols: circle with two slots, duplex outlet symbol, the standard outlet symbol which looks like a circle with two vertical lines
+- Count EVERY outlet symbol on the page individually
+- Receptacles are often near walls, at counter height, or along baseboards
+- They may be labeled with circuit numbers nearby
+- Do not skip any outlet symbol even if small or near other symbols
+- GFCI outlets have a small T or GFI label next to them
+
+Confidence guide:
+0.90 to 1.0 = clear and unambiguous
+0.70 to 0.89 = likely correct minor uncertainty
+0.50 to 0.69 = needs verification
+Below 0.50 = do not include
+
+ROOM DETECTION — FIND EVERY SPACE:
+List every single named and unnamed space on this blueprint page including:
+- All labeled rooms (bedroom, kitchen etc)
+- All utility spaces (mechanical, electrical)
+- All transitional spaces (hallway, corridor, foyer, mudroom, entry, landing)
+- All storage spaces (closet, storage, pantry)
+- All outdoor spaces (patio, deck, garage)
+- Any space with electrical symbols even if not explicitly labeled
+
+For unlabeled spaces with electrical items:
+- Name them by their apparent function
+- Example: HALLWAY, STAIRCASE, ENTRY
+
+Never leave a space with visible electrical symbols without a room assignment.
+
+Also identify every room or area visible on this page.
+For each room return an object in the rooms array with:
+{
+  room_name: label shown on blueprint or best descriptive guess,
+  room_type: one of: living_room, bedroom, kitchen, bathroom, garage, dining_room, hallway, laundry, outdoor, basement, office, utility, other,
+  approximate_width_ft: number or null,
+  approximate_length_ft: number or null,
+  approximate_sq_ft: number or null,
+  confidence: number from 0.0 to 1.0
+}
+
+Return your complete response as a single JSON object with this exact shape (no markdown, no commentary):
+{
+  "electrical_items": [ ... array of electrical item objects as specified above ... ],
+  "rooms": [ ... array of room objects ... ]
+}`;
+
+export async function POST(request: Request) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: "Server is missing ANTHROPIC_API_KEY in .env.local." },
+      { status: 500 },
+    );
+  }
+
+  let body: {
+    projectId?: string;
+    pageNumber?: number;
+    imageBase64?: string;
+    /** Client should send image/png or image/jpeg to match payload. */
+    imageMediaType?: string;
+  };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
+
+  const projectId = body.projectId?.trim();
+  const pageNumber = body.pageNumber;
+  const imageBase64 = body.imageBase64?.trim();
+
+  const uuidRe =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!projectId || !uuidRe.test(projectId)) {
+    return NextResponse.json({ error: "Invalid projectId." }, { status: 400 });
+  }
+  if (
+    typeof pageNumber !== "number" ||
+    !Number.isInteger(pageNumber) ||
+    pageNumber < 1
+  ) {
+    return NextResponse.json(
+      { error: "pageNumber must be a positive integer." },
+      { status: 400 },
+    );
+  }
+  if (!imageBase64 || imageBase64.length < 50) {
+    return NextResponse.json(
+      { error: "imageBase64 is required (PNG base64, no data URL prefix)." },
+      { status: 400 },
+    );
+  }
+
+  const decodedBytes = Buffer.from(imageBase64, "base64").length;
+  if (decodedBytes > MAX_INCOMING_IMAGE_BYTES) {
+    return NextResponse.json(
+      {
+        error:
+          "Page image too large — please try reducing scan resolution in settings",
+      },
+      { status: 400 },
+    );
+  }
+
+  const mediaTypeRaw = body.imageMediaType?.trim().toLowerCase();
+  const claudeMediaType =
+    mediaTypeRaw === "image/jpeg" ? "image/jpeg" : "image/png";
+
+  const base64StringBytes = Buffer.byteLength(imageBase64, "utf8");
+  console.log(
+    `[analyze-page] Image sent to Claude — base64 string: ${base64StringBytes} bytes, decoded: ${decodedBytes} bytes, mediaType=${claudeMediaType} (client target max ${MAX_IMAGE_BYTES} B, project=${projectId} page=${pageNumber})`,
+  );
+
+  let legendAppendix = "";
+  try {
+    const supabaseLegend = createServiceRoleClient();
+    const { data: symRows, error: symErr } = await supabaseLegend
+      .from("project_symbols")
+      .select("symbol_description, symbol_category, confidence, note_category")
+      .eq("project_id", projectId)
+      .order("source_page", { ascending: true });
+    if (!symErr && symRows?.length) {
+      legendAppendix = buildAnalysisLegendAppendix(symRows);
+    }
+  } catch {
+    /* Legend lookup is optional if table missing or misconfigured. */
+  }
+
+  const systemPromptUsed =
+    legendAppendix.length > 0
+      ? SYSTEM_PROMPT + legendAppendix
+      : `${SYSTEM_PROMPT}
+
+No project-specific symbol legend is on file for this project — use standard NEC and conventional blueprint electrical symbols.`;
+
+  const anthropic = new Anthropic({ apiKey });
+
+  const baseUserText =
+    "Analyze this blueprint page. Return ONLY the JSON object with electrical_items and rooms arrays as specified.";
+
+  async function runClaudeTurn(
+    userText: string,
+    imageB64: string,
+    media: "image/png" | "image/jpeg",
+  ): Promise<string> {
+    const msg = await withClaudeOverloadRetries(() =>
+      anthropic.messages.create({
+        model: MODEL,
+        max_tokens: 16384,
+        stream: false,
+        system: systemPromptUsed,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: media,
+                  data: imageB64,
+                },
+              },
+              {
+                type: "text",
+                text: userText,
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    return msg.content
+      .map((b) => (b.type === "text" ? b.text : ""))
+      .join("\n")
+      .trim();
+  }
+
+  let assistantText1: string;
+  try {
+    assistantText1 = await runClaudeTurn(
+      baseUserText,
+      imageBase64,
+      claudeMediaType,
+    );
+  } catch (e) {
+    const message =
+      e instanceof Error ? e.message : "Claude API request failed.";
+    const status =
+      message === CLAUDE_OVERLOADED_USER_MESSAGE ? 503 : 502;
+    return NextResponse.json({ error: message }, { status });
+  }
+
+  let payload: { electrical_items: unknown[]; rooms: unknown[] } | null = null;
+
+  if (claudeTextLooksLikeJson(assistantText1)) {
+    payload = tryExtractAnalyzePayload(assistantText1);
+  }
+
+  if (!payload) {
+    console.error(
+      `[analyze-page] Claude response not usable as JSON (project=${projectId} page=${pageNumber}). Full response:\n${assistantText1}`,
+    );
+    let assistantText2: string;
+    try {
+      assistantText2 = await runClaudeTurn(
+        baseUserText + STRICT_JSON_USER_ADDENDUM,
+        imageBase64,
+        claudeMediaType,
+      );
+    } catch (e) {
+      const message =
+        e instanceof Error ? e.message : "Claude API request failed.";
+      const status =
+        message === CLAUDE_OVERLOADED_USER_MESSAGE ? 503 : 502;
+      return NextResponse.json({ error: message }, { status });
+    }
+
+    if (claudeTextLooksLikeJson(assistantText2)) {
+      payload = tryExtractAnalyzePayload(assistantText2);
+    }
+    if (!payload) {
+      console.error(
+        `[analyze-page] Second Claude attempt still not usable JSON (project=${projectId} page=${pageNumber}). Full response:\n${assistantText2}`,
+      );
+      return NextResponse.json({
+        items: [],
+        rooms: [],
+        persisted: false,
+        pageAnalysisWarning: `Page ${pageNumber} returned no electrical items — please verify manually`,
+      });
+    }
+  }
+
+  const rows: Array<{
+    project_id: string;
+    page_number: number;
+    verification_status: string;
+    category: string;
+    description: string;
+    specification: string;
+    quantity: number;
+    unit: string;
+    confidence: number;
+    which_room: string;
+    raw_note: string | null;
+    gpt_count: null;
+    final_count: null;
+    verified_by: null;
+  }> = [];
+
+  for (const entry of payload.electrical_items) {
+    if (!entry || typeof entry !== "object") continue;
+    const normalized = normalizeAnalysisItem(entry as IncomingItem);
+    if (normalized) {
+      rows.push({
+        project_id: projectId,
+        page_number: pageNumber,
+        ...normalized,
+        verification_status: "pending",
+        gpt_count: null,
+        final_count: null,
+        verified_by: null,
+      });
+    }
+  }
+
+  const roomRows: Array<{
+    project_id: string;
+    page_number: number;
+    room_name: string;
+    room_type: string;
+    width_ft: number | null;
+    length_ft: number | null;
+    sq_ft: number | null;
+    confidence: number;
+  }> = [];
+
+  for (const entry of payload.rooms) {
+    if (!entry || typeof entry !== "object") continue;
+    const nr = normalizeAnalysisRoom(entry as IncomingRoom);
+    if (nr)
+      roomRows.push({
+        project_id: projectId,
+        page_number: pageNumber,
+        ...nr,
+      });
+  }
+
+  if (rows.length === 0 && roomRows.length === 0) {
+    return NextResponse.json({
+      items: [],
+      rooms: [],
+      message: "No electrical items or rooms met the confidence threshold.",
+    });
+  }
+
+  let supabase;
+  try {
+    supabase = createServiceRoleClient();
+  } catch (e) {
+    return NextResponse.json(
+      {
+        error:
+          e instanceof Error
+            ? e.message
+            : "Supabase service client is not configured.",
+      },
+      { status: 500 },
+    );
+  }
+
+  const { error: delRoomErr } = await supabase
+    .from("detected_rooms")
+    .delete()
+    .eq("project_id", projectId)
+    .eq("page_number", pageNumber);
+
+  if (delRoomErr) {
+    return NextResponse.json(
+      {
+        error: delRoomErr.message,
+        hint: "Ensure detected_rooms table exists.",
+      },
+      { status: 500 },
+    );
+  }
+
+  const { error: delItemErr } = await supabase
+    .from("electrical_items")
+    .delete()
+    .eq("project_id", projectId)
+    .eq("page_number", pageNumber);
+
+  if (delItemErr) {
+    return NextResponse.json(
+      {
+        error: delItemErr.message,
+        hint: "Ensure electrical_items table exists.",
+      },
+      { status: 500 },
+    );
+  }
+
+  let insertedItems: unknown[] = [];
+  if (rows.length > 0) {
+    const { data, error } = await supabase
+      .from("electrical_items")
+      .insert(rows)
+      .select();
+
+    if (error) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          hint: "Check electrical_items table and RLS/service role.",
+        },
+        { status: 500 },
+      );
+    }
+    insertedItems = data ?? [];
+  }
+
+  let insertedRooms: unknown[] = [];
+  if (roomRows.length > 0) {
+    const { data: roomData, error: roomErr } = await supabase
+      .from("detected_rooms")
+      .insert(roomRows)
+      .select();
+
+    if (roomErr) {
+      return NextResponse.json(
+        {
+          error: roomErr.message,
+          hint: "Check detected_rooms table.",
+        },
+        { status: 500 },
+      );
+    }
+    insertedRooms = roomData ?? [];
+  }
+
+  try {
+    const scanIdx = await nextSavedScanIndex(supabase, projectId);
+    const scanName = formatAutoScanName(scanIdx);
+    const { error: scanErr } = await supabase.from("saved_scans").insert({
+      project_id: projectId,
+      page_number: pageNumber,
+      scan_name: scanName,
+      scan_date: new Date().toISOString(),
+      items_snapshot: insertedItems,
+      rooms_snapshot: insertedRooms,
+      total_items: rows.length,
+      notes: null,
+    });
+    if (scanErr) {
+      console.error(
+        "[analyze-page] saved_scans insert failed:",
+        scanErr.message,
+        scanErr.details,
+        scanErr.hint,
+        scanErr.code,
+      );
+    } else {
+      console.log(
+        `[analyze-page] saved_scans snapshot "${scanName}" (project=${projectId} page=${pageNumber} items=${rows.length} rooms=${roomRows.length})`,
+      );
+    }
+  } catch (e) {
+    console.error("[analyze-page] saved_scans insert exception:", e);
+  }
+
+  return NextResponse.json({
+    items: insertedItems,
+    rooms: insertedRooms,
+    persisted: true,
+    message:
+      rows.length === 0
+        ? "No electrical items met the confidence threshold."
+        : undefined,
+  });
+}

@@ -1,0 +1,25 @@
+import type { ElectricalItemRow } from "@/lib/electrical-item-types";
+import type { DetectedRoomRow } from "@/lib/detected-room-types";
+
+export type SavedScanRow = {
+  id: string;
+  project_id: string;
+  page_number: number;
+  scan_name: string;
+  scan_date: string;
+  items_snapshot: ElectricalItemRow[] | unknown;
+  rooms_snapshot: DetectedRoomRow[] | unknown;
+  total_items: number;
+  notes: string | null;
+  created_at: string;
+};
+
+export function parseScanItems(snapshot: unknown): ElectricalItemRow[] {
+  if (!Array.isArray(snapshot)) return [];
+  return snapshot as ElectricalItemRow[];
+}
+
+export function parseScanRooms(snapshot: unknown): DetectedRoomRow[] {
+  if (!Array.isArray(snapshot)) return [];
+  return snapshot as DetectedRoomRow[];
+}

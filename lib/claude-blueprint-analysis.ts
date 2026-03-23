@@ -1,0 +1,143 @@
+/** Shared Claude blueprint JSON parsing for analyze-page and analyze-target routes. */
+
+export type IncomingItem = {
+  category?: string;
+  description?: string;
+  specification?: string;
+  quantity?: number;
+  unit?: string;
+  confidence?: number;
+  raw_note?: string | null;
+  which_room?: string | null;
+};
+
+export const ANALYSIS_CATEGORIES = new Set([
+  "fixture",
+  "panel",
+  "wiring",
+  "plan_note",
+]);
+
+const UNITS = new Set(["EA", "LF", "LOT", "NOTE"]);
+
+const ROOM_TYPES = new Set([
+  "living_room",
+  "bedroom",
+  "kitchen",
+  "bathroom",
+  "garage",
+  "dining_room",
+  "hallway",
+  "laundry",
+  "outdoor",
+  "basement",
+  "office",
+  "utility",
+  "other",
+]);
+
+export function extractAnalyzePayload(text: string): {
+  electrical_items: unknown[];
+  rooms: unknown[];
+} {
+  const trimmed = text.trim();
+  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const payload = (fence ? fence[1] : trimmed).trim();
+  const parsed = JSON.parse(payload) as unknown;
+  if (Array.isArray(parsed)) {
+    return { electrical_items: parsed, rooms: [] };
+  }
+  if (parsed && typeof parsed === "object") {
+    const o = parsed as Record<string, unknown>;
+    const ei = o.electrical_items;
+    const r = o.rooms;
+    return {
+      electrical_items: Array.isArray(ei) ? ei : [],
+      rooms: Array.isArray(r) ? r : [],
+    };
+  }
+  throw new Error("Claude did not return a JSON object or array.");
+}
+
+export function normalizeAnalysisItem(raw: IncomingItem): {
+  category: string;
+  description: string;
+  specification: string;
+  quantity: number;
+  unit: string;
+  confidence: number;
+  raw_note: string | null;
+  which_room: string;
+} | null {
+  const cat = String(raw.category ?? "").toLowerCase().trim();
+  if (!ANALYSIS_CATEGORIES.has(cat)) return null;
+  const description = String(raw.description ?? "").trim();
+  if (!description) return null;
+  const confidence = Number(raw.confidence);
+  if (!Number.isFinite(confidence) || confidence < 0.5 || confidence > 1) {
+    return null;
+  }
+  let unit = String(raw.unit ?? "EA").toUpperCase().trim();
+  if (!UNITS.has(unit)) unit = "EA";
+  const quantity = Number(raw.quantity);
+  const q = Number.isFinite(quantity) && quantity >= 0 ? quantity : 1;
+  let which = String(raw.which_room ?? "").trim();
+  if (!which) which = "UNASSIGNED";
+  if (which.toUpperCase() === "UNASSIGNED" || which.toUpperCase() === "N/A") {
+    which = "UNASSIGNED";
+  }
+  return {
+    category: cat,
+    description,
+    specification: String(raw.specification ?? "").trim(),
+    quantity: q,
+    unit,
+    confidence,
+    raw_note:
+      raw.raw_note === null || raw.raw_note === undefined
+        ? null
+        : String(raw.raw_note),
+    which_room: which,
+  };
+}
+
+export type IncomingRoom = {
+  room_name?: string;
+  room_type?: string;
+  approximate_width_ft?: number | null;
+  approximate_length_ft?: number | null;
+  approximate_sq_ft?: number | null;
+  confidence?: number;
+};
+
+export function normalizeAnalysisRoom(raw: IncomingRoom): {
+  room_name: string;
+  room_type: string;
+  width_ft: number | null;
+  length_ft: number | null;
+  sq_ft: number | null;
+  confidence: number;
+} | null {
+  const room_name = String(raw.room_name ?? "").trim();
+  if (!room_name) return null;
+  let rt = String(raw.room_type ?? "other").toLowerCase().trim();
+  if (!ROOM_TYPES.has(rt)) rt = "other";
+  const confidence = Number(raw.confidence);
+  const c =
+    Number.isFinite(confidence) && confidence >= 0 && confidence <= 1
+      ? confidence
+      : 0.75;
+  const numOrNull = (v: unknown): number | null => {
+    if (v === null || v === undefined) return null;
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
+  return {
+    room_name,
+    room_type: rt,
+    width_ft: numOrNull(raw.approximate_width_ft),
+    length_ft: numOrNull(raw.approximate_length_ft),
+    sq_ft: numOrNull(raw.approximate_sq_ft),
+    confidence: c,
+  };
+}

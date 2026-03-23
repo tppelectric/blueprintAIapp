@@ -1,0 +1,681 @@
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createBrowserClient } from "@/lib/supabase/client";
+import { fetchBlueprintSignedUrl } from "@/lib/fetch-blueprint-signed-url";
+import { getPdfjs } from "@/lib/pdfjs-worker";
+import { formatUsd } from "@/lib/scan-modes";
+
+type SheetPageRow = {
+  page_count: number | null;
+  file_url?: string | null;
+  sheet_order?: number | null;
+};
+
+type ProjectRow = {
+  id: string;
+  project_name: string | null;
+  sheet_count: number | null;
+  file_name: string;
+  file_url: string;
+  file_size: number;
+  created_at: string;
+  sheets?: SheetPageRow[] | null;
+};
+
+function projectDisplayName(fileName: string): string {
+  return fileName.replace(/\.pdf$/i, "").trim() || fileName;
+}
+
+function cardTitle(p: ProjectRow): string {
+  const n = p.project_name?.trim();
+  if (n) return n;
+  return projectDisplayName(p.file_name);
+}
+
+function sheetCountLabel(p: ProjectRow): string {
+  const fromDb = p.sheet_count ?? p.sheets?.length;
+  const c =
+    fromDb != null && fromDb > 0
+      ? fromDb
+      : p.file_url
+        ? 1
+        : 0;
+  return `${c} sheet${c === 1 ? "" : "s"}`;
+}
+
+function firstSheetStoragePath(p: ProjectRow): string | null {
+  const sh = p.sheets as SheetPageRow[] | null | undefined;
+  if (sh?.length) {
+    const sorted = [...sh].sort(
+      (a, b) => (a.sheet_order ?? 0) - (b.sheet_order ?? 0),
+    );
+    const u = sorted[0]?.file_url;
+    if (u) return u;
+  }
+  return p.file_url?.trim() ? p.file_url : null;
+}
+
+function ProjectBlueprintThumb({ storagePath }: { storagePath: string }) {
+  const [preview, setPreview] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFailed(false);
+    setPreview(null);
+    (async () => {
+      try {
+        const signedUrl = await fetchBlueprintSignedUrl(storagePath);
+        const pdfjs = await getPdfjs();
+        const pdf = await pdfjs.getDocument({ url: signedUrl }).promise;
+        const page = await pdf.getPage(1);
+        const scale = 0.12;
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          void pdf.destroy();
+          return;
+        }
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        const dataUrl = canvas.toDataURL("image/png");
+        void pdf.destroy();
+        if (!cancelled) setPreview(dataUrl);
+      } catch {
+        if (!cancelled) {
+          setFailed(true);
+          setPreview(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [storagePath]);
+
+  if (failed || (!preview && storagePath)) {
+    return (
+      <div className="mb-4 flex h-24 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-xs text-white/45">
+        Blueprint
+      </div>
+    );
+  }
+  if (!preview) {
+    return (
+      <div className="mb-4 h-24 animate-pulse rounded-xl border border-white/10 bg-white/[0.06]" />
+    );
+  }
+  return (
+    <div className="mb-4 overflow-hidden rounded-xl border border-white/10 bg-[#0a1628]">
+      <img
+        src={preview}
+        alt=""
+        className="h-24 w-full object-cover object-top"
+      />
+    </div>
+  );
+}
+
+function totalPagesLabel(p: ProjectRow): string {
+  const rows = p.sheets;
+  if (!rows?.length) return "—";
+  const known = rows.every(
+    (s) => typeof s.page_count === "number" && s.page_count >= 0,
+  );
+  if (!known) return "—";
+  const sum = rows.reduce((acc, s) => acc + (s.page_count ?? 0), 0);
+  return sum === 1 ? "1 page" : `${sum} pages`;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const val = bytes / Math.pow(k, i);
+  const decimals = i >= 2 ? 2 : i === 1 ? 2 : 0;
+  return `${parseFloat(val.toFixed(decimals))} ${sizes[i]}`;
+}
+
+function formatUploadDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function PencilIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      aria-hidden
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125"
+      />
+    </svg>
+  );
+}
+
+function TrashIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      aria-hidden
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+      />
+    </svg>
+  );
+}
+
+function CheckSaveIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={2}
+      stroke="currentColor"
+      aria-hidden
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="m4.5 12.75 6 6 9-13.5"
+      />
+    </svg>
+  );
+}
+
+export function DashboardClient() {
+  const [projects, setProjects] = useState<ProjectRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [monthUsage, setMonthUsage] = useState<{
+    pages: number;
+    cost: number;
+  } | null>(null);
+  const [flashMessage, setFlashMessage] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [renameSaving, setRenameSaving] = useState(false);
+  const [savedProjectId, setSavedProjectId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ProjectRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const savedTimerRef = useRef<number | null>(null);
+  const editShellRef = useRef<HTMLElement | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const supabase = createBrowserClient();
+      const { data, error: qError } = await supabase
+        .from("projects")
+        .select(
+          "id, project_name, sheet_count, file_name, file_url, file_size, created_at, sheets(file_url, page_count, sheet_order)",
+        )
+        .order("created_at", { ascending: false });
+
+      if (qError) {
+        setError(qError.message);
+        setProjects([]);
+        return;
+      }
+      setProjects((data ?? []) as ProjectRow[]);
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Could not load projects. Try again.",
+      );
+      setProjects([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await fetch("/api/api-usage?scope=month");
+        const j = (await r.json()) as {
+          pagesAnalyzed?: number;
+          totalCost?: number;
+          error?: string;
+        };
+        if (cancelled || !r.ok || j.error) {
+          if (!cancelled) setMonthUsage(null);
+          return;
+        }
+        if (
+          typeof j.pagesAnalyzed === "number" &&
+          typeof j.totalCost === "number"
+        ) {
+          setMonthUsage({ pages: j.pagesAnalyzed, cost: j.totalCost });
+        } else {
+          setMonthUsage(null);
+        }
+      } catch {
+        if (!cancelled) setMonthUsage(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [load]);
+
+  useEffect(() => {
+    if (!flashMessage) return;
+    const t = window.setTimeout(() => setFlashMessage(null), 4500);
+    return () => window.clearTimeout(t);
+  }, [flashMessage]);
+
+  useEffect(() => {
+    return () => {
+      if (savedTimerRef.current) window.clearTimeout(savedTimerRef.current);
+    };
+  }, []);
+
+  const startEdit = useCallback((p: ProjectRow) => {
+    setEditingId(p.id);
+    setEditDraft(cardTitle(p));
+  }, []);
+
+  const cancelEdit = useCallback(() => {
+    setEditingId(null);
+    setEditDraft("");
+  }, []);
+
+  useEffect(() => {
+    if (!editingId) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const shell = editShellRef.current;
+      if (!shell) return;
+      if (!shell.contains(e.target as Node)) {
+        cancelEdit();
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [editingId, cancelEdit]);
+
+  const saveRename = useCallback(async () => {
+    if (!editingId) return;
+    const name = editDraft.trim();
+    if (!name) return;
+    setRenameSaving(true);
+    try {
+      const res = await fetch("/api/projects/rename", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: editingId, projectName: name }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        window.alert(json.error ?? "Could not save name.");
+        return;
+      }
+      setProjects((prev) =>
+        prev.map((x) =>
+          x.id === editingId ? { ...x, project_name: name } : x,
+        ),
+      );
+      setEditingId(null);
+      setEditDraft("");
+      setSavedProjectId(editingId);
+      if (savedTimerRef.current) window.clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = window.setTimeout(
+        () => setSavedProjectId(null),
+        2500,
+      );
+    } finally {
+      setRenameSaving(false);
+    }
+  }, [editingId, editDraft]);
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/projects/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: deleteTarget.id }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        window.alert(json.error ?? "Could not delete project.");
+        return;
+      }
+      setProjects((prev) => prev.filter((x) => x.id !== deleteTarget.id));
+      setDeleteTarget(null);
+      setFlashMessage("Project deleted");
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleteTarget]);
+
+  return (
+    <div className="flex min-h-screen flex-col">
+      <header className="border-b border-white/10 bg-[#071422]/80 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6 sm:px-8">
+          <Link
+            href="/"
+            className="flex items-baseline gap-3 transition-opacity hover:opacity-90"
+          >
+            <span className="text-lg font-semibold tracking-tight text-white">
+              Blueprint AI
+            </span>
+            <span className="hidden text-sm font-medium text-white/55 sm:inline">
+              Electrical contractors
+            </span>
+          </Link>
+          <nav
+            className="flex items-center gap-6 text-sm font-medium text-white/75 sm:gap-8"
+            aria-label="Primary"
+          >
+            <Link href="/" className="transition-colors hover:text-white">
+              Home
+            </Link>
+            <span className="text-white">Dashboard</span>
+            <Link
+              href="/dashboard/symbols"
+              className="transition-colors hover:text-white"
+            >
+              Symbol library
+            </Link>
+            <Link href="/upload" className="transition-colors hover:text-white">
+              Upload
+            </Link>
+          </nav>
+        </div>
+      </header>
+
+      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 py-10 sm:py-12">
+        {flashMessage ? (
+          <div
+            className="mt-6 rounded-xl border border-emerald-500/40 bg-emerald-950/40 px-4 py-3 text-sm font-medium text-emerald-100"
+            role="status"
+          >
+            {flashMessage}
+          </div>
+        ) : null}
+
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+              My Projects
+            </h1>
+            {monthUsage && monthUsage.pages > 0 ? (
+              <p className="mt-2 text-sm text-white/60">
+                This month: {monthUsage.pages} page
+                {monthUsage.pages === 1 ? "" : "s"} analyzed —{" "}
+                <span className="font-medium text-emerald-200/90">
+                  {formatUsd(monthUsage.cost)}
+                </span>
+              </p>
+            ) : null}
+          </div>
+          <Link
+            href="/upload"
+            className="inline-flex shrink-0 items-center justify-center rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-[#0a1628] shadow-sm transition-colors hover:bg-white/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/80"
+          >
+            Upload New Blueprint
+          </Link>
+        </div>
+
+        {loading && (
+          <div
+            className="mt-16 flex flex-col items-center justify-center gap-4"
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <div
+              className="h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-white"
+              aria-hidden
+            />
+            <p className="text-sm text-white/60">Loading projects…</p>
+          </div>
+        )}
+
+        {!loading && error && (
+          <div
+            className="mt-8 rounded-xl border border-red-500/35 bg-red-950/35 px-4 py-3 text-sm text-red-100"
+            role="alert"
+          >
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && projects.length === 0 && (
+          <div className="mt-16 rounded-2xl border border-white/10 bg-white/[0.03] px-8 py-14 text-center">
+            <p className="text-lg font-medium text-white">No projects yet</p>
+            <p className="mt-2 text-sm text-white/55">
+              Upload a blueprint PDF to create your first project.
+            </p>
+            <Link
+              href="/upload"
+              className="mt-6 inline-flex items-center justify-center rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-[#0a1628] shadow-sm transition-colors hover:bg-white/90"
+            >
+              Go to upload
+            </Link>
+          </div>
+        )}
+
+        {!loading && !error && projects.length > 0 && (
+          <ul className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {projects.map((p) => {
+              const thumbPath = firstSheetStoragePath(p);
+              return (
+              <li key={p.id}>
+                <article
+                  ref={(node) => {
+                    if (p.id === editingId) {
+                      editShellRef.current = node;
+                    } else if (node && editShellRef.current === node) {
+                      editShellRef.current = null;
+                    }
+                  }}
+                  className="flex h-full flex-col rounded-2xl border border-white/10 bg-white/[0.04] p-5 shadow-sm transition-colors hover:border-white/15"
+                >
+                  {thumbPath ? (
+                    <ProjectBlueprintThumb storagePath={thumbPath} />
+                  ) : null}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      {editingId === p.id ? (
+                        <div className="flex min-w-0 items-center gap-2">
+                          <input
+                            type="text"
+                            value={editDraft}
+                            onChange={(e) => setEditDraft(e.target.value)}
+                            disabled={renameSaving}
+                            autoFocus
+                            className="min-w-0 flex-1 rounded-lg border border-sky-500/50 bg-[#0a1628] px-2.5 py-1.5 text-lg font-semibold text-white outline-none focus:ring-2 focus:ring-sky-400/50"
+                            aria-label="Project name"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                void saveRename();
+                              }
+                              if (e.key === "Escape") {
+                                e.preventDefault();
+                                cancelEdit();
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void saveRename()}
+                            disabled={renameSaving || !editDraft.trim()}
+                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-emerald-500/45 bg-emerald-600/90 text-white shadow-sm transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-45"
+                            aria-label="Save project name"
+                            title="Save"
+                          >
+                            {renameSaving ? (
+                              <span
+                                className="h-4 w-4 animate-spin rounded-full border-2 border-white/35 border-t-white"
+                                aria-hidden
+                              />
+                            ) : (
+                              <CheckSaveIcon className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
+                      ) : (
+                        <h2 className="text-lg font-semibold leading-snug text-white">
+                          {cardTitle(p)}
+                        </h2>
+                      )}
+                      {savedProjectId === p.id ? (
+                        <p className="mt-1 text-xs font-medium text-emerald-300/95">
+                          Saved
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      {editingId !== p.id ? (
+                        <button
+                          type="button"
+                          onClick={() => startEdit(p)}
+                          className="rounded-lg border border-white/20 bg-white/10 p-2 text-white/85 transition-colors hover:bg-white/15"
+                          aria-label="Edit project name"
+                        >
+                          <PencilIcon className="h-4 w-4" />
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTarget(p)}
+                        disabled={deleting}
+                        className="rounded-lg border border-red-500/35 bg-red-950/30 p-2 text-red-200 transition-colors hover:bg-red-950/50 disabled:cursor-not-allowed disabled:opacity-40"
+                        aria-label="Delete project"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </button>
+                      <span className="ml-1 shrink-0 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-300 ring-1 ring-inset ring-emerald-500/35">
+                        Uploaded
+                      </span>
+                    </div>
+                  </div>
+                  <dl className="mt-4 space-y-2 text-sm text-white/65">
+                    <div className="flex justify-between gap-4">
+                      <dt>Sheets</dt>
+                      <dd className="text-right text-white/85">
+                        {sheetCountLabel(p)}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <dt>Total pages</dt>
+                      <dd className="text-right tabular-nums text-white/85">
+                        {totalPagesLabel(p)}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <dt>Uploaded</dt>
+                      <dd className="text-right text-white/85">
+                        {formatUploadDate(p.created_at)}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <dt>Size</dt>
+                      <dd className="text-right tabular-nums text-white/85">
+                        {formatFileSize(p.file_size)}
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="mt-6 flex flex-1 flex-col justify-end">
+                    <Link
+                      href={`/project/${p.id}`}
+                      className="inline-flex w-full items-center justify-center rounded-lg border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/15"
+                    >
+                      Open Project
+                    </Link>
+                  </div>
+                </article>
+              </li>
+            );
+            })}
+          </ul>
+        )}
+
+        {deleteTarget ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-project-title"
+          >
+            <div className="w-full max-w-md rounded-2xl border border-white/15 bg-[#0a1628] p-6 shadow-xl">
+              <h2
+                id="delete-project-title"
+                className="text-lg font-semibold text-white"
+              >
+                Delete project?
+              </h2>
+              <p className="mt-3 text-sm leading-relaxed text-white/75">
+                Are you sure you want to delete this project? This will
+                permanently delete all sheets, analysis results, and detected
+                rooms. This cannot be undone.
+              </p>
+              <div className="mt-6 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={deleting}
+                  onClick={() => setDeleteTarget(null)}
+                  className="rounded-lg border border-white/25 bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/15 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={deleting}
+                  onClick={() => void confirmDelete()}
+                  className="inline-flex items-center gap-2 rounded-lg border border-red-500/50 bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+                >
+                  {deleting ? (
+                    <>
+                      <span
+                        className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"
+                        aria-hidden
+                      />
+                      Deleting…
+                    </>
+                  ) : (
+                    "Delete"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </main>
+    </div>
+  );
+}

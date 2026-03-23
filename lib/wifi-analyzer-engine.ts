@@ -1,11 +1,32 @@
-/** Rule-based Wi‑Fi AP planning for low-voltage takeoff estimates. */
+/** Rule-based Wi‑Fi AP planning — whole-home layout with room-by-room inputs. */
 
-export type WallMaterial =
+export type RoomWallMaterial =
   | "drywall"
-  | "concrete"
+  | "plaster"
   | "brick"
-  | "metal_stud"
-  | "wood";
+  | "concrete_block"
+  | "mixed";
+
+export type RoomTypeOption =
+  | "living_room"
+  | "bedroom"
+  | "office"
+  | "kitchen"
+  | "bathroom"
+  | "hallway"
+  | "garage"
+  | "basement"
+  | "patio"
+  | "outdoor"
+  | "other";
+
+export type CeilingHeight = "8" | "9" | "10" | "12" | "higher";
+
+export type PlanningPriority =
+  | "best_value"
+  | "best_performance"
+  | "future_proof"
+  | "lowest_cost";
 
 export type CoverageGoal =
   | "basic"
@@ -13,10 +34,6 @@ export type CoverageGoal =
   | "high_density_iot"
   | "smart_home"
   | "commercial";
-
-export type DeviceBand = "1-10" | "11-25" | "26-50" | "50+";
-
-export type CeilingHeight = "8" | "9" | "10" | "12" | "higher";
 
 export type PoeChoice = "yes" | "no" | "recommend";
 
@@ -28,7 +45,12 @@ export type VendorChoice =
   | "access_networks"
   | "none";
 
-export type BudgetTier = "under500" | "500_1500" | "1500_5000" | "5000_plus" | "unlimited";
+export type BudgetTier =
+  | "under500"
+  | "500_1500"
+  | "1500_5000"
+  | "5000_plus"
+  | "unlimited";
 
 export type BuildingType =
   | "residential"
@@ -36,67 +58,41 @@ export type BuildingType =
   | "office"
   | "warehouse";
 
+export type WifiRoomInput = {
+  id: string;
+  name: string;
+  floor: 1 | 2 | 3 | 4;
+  lengthFt: number;
+  widthFt: number;
+  roomType: RoomTypeOption;
+  wallMaterial: RoomWallMaterial;
+  outdoor: boolean;
+  ceilingHeight: CeilingHeight;
+  expectedDevices: number;
+};
+
 export type WifiAnalyzerInputs = {
   projectName: string;
   buildingType: BuildingType;
-  totalSqFt: number;
-  floors: number;
+  rooms: WifiRoomInput[];
+  planningPriority: PlanningPriority;
+  internetSpeedMbps: number;
   coverageGoal: CoverageGoal;
-  wallMaterial: WallMaterial;
-  ceilingHeight: CeilingHeight;
-  deviceBand: DeviceBand;
-  outdoorNeeded: boolean;
   poe: PoeChoice;
   vendor: VendorChoice;
   budget: BudgetTier;
 };
 
-const SQ_FT_PER_AP: Record<WallMaterial, number> = {
-  drywall: 2500,
-  wood: 2000,
-  metal_stud: 1500,
-  brick: 1200,
-  concrete: 800,
+export type RoomPlanRow = {
+  id: string;
+  name: string;
+  floor: number;
+  areaSqFt: number;
+  complete: boolean;
+  incompleteReason?: string;
+  score: number;
+  zoneType: string;
 };
-
-/** 26+ devices: effective coverage per AP reduced by 30% (tighter cells). */
-function highDeviceDensityFactor(band: DeviceBand): number {
-  return band === "26-50" || band === "50+" ? 0.7 : 1;
-}
-
-function coverageGoalFactor(goal: CoverageGoal): number {
-  switch (goal) {
-    case "basic":
-      return 1;
-    case "streaming":
-      return 1 / 0.92;
-    case "high_density_iot":
-      return 1 / 0.75;
-    case "smart_home":
-      return 1;
-    case "commercial":
-      return 1;
-    default:
-      return 1;
-  }
-}
-
-function ceilingFactor(h: CeilingHeight): number {
-  switch (h) {
-    case "8":
-      return 1;
-    case "9":
-      return 1 / 0.97;
-    case "10":
-      return 1 / 0.94;
-    case "12":
-      return 1 / 0.9;
-    case "higher":
-      return 1 / 0.85;
-    default:
-      return 1;
-  }
-}
 
 export type EquipmentRec = {
   apModel: string;
@@ -104,6 +100,8 @@ export type EquipmentRec = {
   switchNote: string;
   switchPorts: number;
   costRangeLabel: string;
+  /** e.g. "3× UniFi U6 Pro ($179 ea.)" */
+  wholeHomeApPlan: string;
 };
 
 const U6_LITE = 99;
@@ -112,117 +110,304 @@ const U6_ENT = 299;
 const U6_MESH = 179;
 const USW_LITE_8 = 109;
 
-function pickUbiquitiEquipment(
-  totalSqFt: number,
-  outdoor: boolean,
-): EquipmentRec {
-  let apModel: string;
-  let apUnit: number;
-  if (totalSqFt < 2000) {
-    apModel = `UniFi U6 Lite ($${U6_LITE})`;
-    apUnit = U6_LITE;
-  } else if (totalSqFt < 5000) {
-    apModel = `UniFi U6 Pro ($${U6_PRO})`;
-    apUnit = U6_PRO;
-  } else {
-    apModel = `UniFi U6 Enterprise ($${U6_ENT})`;
-    apUnit = U6_ENT;
+function ceilingNum(h: CeilingHeight): number {
+  switch (h) {
+    case "8":
+      return 8;
+    case "9":
+      return 9;
+    case "10":
+      return 10;
+    case "12":
+      return 12;
+    case "higher":
+      return 13;
+    default:
+      return 9;
   }
-  const outdoorApModel = outdoor
-    ? `UniFi U6 Mesh ($${U6_MESH})`
-    : null;
-  return {
-    apModel,
-    outdoorApModel,
-    switchNote: `UniFi USW Lite 8 PoE ($${USW_LITE_8}) — scale up if more than 8 powered devices`,
-    switchPorts: 0,
-    costRangeLabel: `Ubiquiti (AP ~$${apUnit}${outdoor ? ` + outdoor $${U6_MESH}` : ""} + switch ~$${USW_LITE_8})`,
-  };
 }
 
-/** Rough list-price units for cost math (not shown in EquipmentRec). */
+/** Exact scoring system from spec. */
+export function scoreRoom(
+  room: WifiRoomInput,
+  priority: PlanningPriority,
+): number {
+  let score = 0;
+  const area = Math.max(0, room.lengthFt) * Math.max(0, room.widthFt);
+  const ch = ceilingNum(room.ceilingHeight);
+  const devices = Math.max(0, room.expectedDevices);
+
+  if (room.outdoor) score += 5;
+  if (area >= 350) score += 4;
+  else if (area >= 180) score += 2;
+  else if (area > 0) score += 1;
+  if (ch >= 10) score += 2;
+  else if (ch >= 9) score += 1;
+  if (devices >= 15) score += 3;
+  else if (devices >= 8) score += 2;
+  else if (devices >= 3) score += 1;
+
+  if (
+    room.wallMaterial === "brick" ||
+    room.wallMaterial === "concrete_block"
+  ) {
+    score += 2;
+  } else if (
+    room.wallMaterial === "plaster" ||
+    room.wallMaterial === "mixed"
+  ) {
+    score += 1;
+  }
+
+  if (room.roomType === "office") score += 2;
+  if (room.roomType === "living_room" || room.roomType === "kitchen")
+    score += 1;
+
+  if (priority === "best_performance") score += 2;
+  if (priority === "future_proof") score += 3;
+  if (priority === "lowest_cost") score -= 2;
+
+  return score;
+}
+
+function zoneTypeForRoom(room: WifiRoomInput, score: number): string {
+  if (room.outdoor) return "Outdoor coverage zone";
+  if (room.roomType === "office" && room.expectedDevices >= 8) {
+    return "High-demand office";
+  }
+  if (score >= 12) return "Primary coverage zone";
+  if (score >= 8) return "Shared coverage zone";
+  if (score >= 5) return "Transition zone";
+  return "Likely shared coverage";
+}
+
+function isRoomComplete(r: WifiRoomInput): boolean {
+  if (!r.name.trim()) return false;
+  if (r.lengthFt <= 0 || r.widthFt <= 0) return false;
+  if (![1, 2, 3, 4].includes(r.floor)) return false;
+  if (r.expectedDevices < 0 || !Number.isFinite(r.expectedDevices)) {
+    return false;
+  }
+  return true;
+}
+
+function incompleteReason(r: WifiRoomInput): string {
+  if (!r.name.trim()) return "Room name required";
+  if (r.lengthFt <= 0 || r.widthFt <= 0) return "Length and width required";
+  if (![1, 2, 3, 4].includes(r.floor)) return "Floor 1–4 required";
+  if (r.expectedDevices < 0 || !Number.isFinite(r.expectedDevices)) {
+    return "Expected devices must be ≥ 0";
+  }
+  return "Incomplete";
+}
+
+/** Whole-home AP count (not one AP per room). */
+export function planAPs(
+  rooms: WifiRoomInput[],
+  priority: PlanningPriority,
+): { indoorAps: number; outdoorAps: number; planNotes: string[] } {
+  const complete = rooms.filter(isRoomComplete);
+  const indoorRooms = complete.filter((r) => !r.outdoor);
+  const outdoorRooms = complete.filter((r) => r.outdoor);
+
+  const indoorArea = indoorRooms.reduce(
+    (s, r) => s + r.lengthFt * r.widthFt,
+    0,
+  );
+  const totalDevices = complete.reduce(
+    (s, r) => s + Math.max(0, r.expectedDevices),
+    0,
+  );
+  const floorSet = new Set(indoorRooms.map((r) => r.floor));
+  const floorCount = floorSet.size;
+
+  const planNotes: string[] = [
+    "AP count is for a whole-home layout, not one access point per room.",
+  ];
+
+  let indoorAps = 0;
+  if (indoorRooms.length > 0) indoorAps = 1;
+  if (indoorArea > 1400) indoorAps += 1;
+  if (indoorArea > 2600) indoorAps += 1;
+  if (indoorArea > 3800) indoorAps += 1;
+  if (floorCount >= 2 && indoorArea > 1800) {
+    indoorAps += 1;
+    planNotes.push("Added AP for multi-floor coverage (2+ floors, >1,800 sq ft indoor).");
+  }
+  if (totalDevices > 35) {
+    indoorAps += 1;
+    planNotes.push("Added AP for high device count (>35).");
+  }
+
+  const hardWallRooms = indoorRooms.filter((r) =>
+    ["brick", "concrete_block", "mixed"].includes(r.wallMaterial),
+  ).length;
+  if (hardWallRooms >= 3) {
+    indoorAps += 1;
+    planNotes.push("Added AP for 3+ hard-wall (brick / block / mixed) rooms.");
+  }
+
+  const primaryCount = indoorRooms.filter((r) => {
+    const sc = scoreRoom(r, priority);
+    return zoneTypeForRoom(r, sc) === "Primary coverage zone";
+  }).length;
+  if (primaryCount >= 4) {
+    indoorAps += 1;
+    planNotes.push("Added AP for 4+ primary coverage zones.");
+  }
+
+  if (priority === "best_performance" || priority === "future_proof") {
+    indoorAps += 1;
+    planNotes.push(`Extra AP for ${priority.replace(/_/g, " ")} priority.`);
+  }
+
+  let outdoorAps = 0;
+  for (const r of outdoorRooms) {
+    const a = r.lengthFt * r.widthFt;
+    if (a >= 80) outdoorAps += 1;
+  }
+
+  if (indoorRooms.length > 0) indoorAps = Math.max(1, indoorAps);
+
+  return { indoorAps, outdoorAps, planNotes };
+}
+
+function applyCoverageGoalToIndoor(
+  indoorAps: number,
+  goal: CoverageGoal,
+): number {
+  if (indoorAps <= 0) return 0;
+  let n = indoorAps;
+  if (goal === "smart_home") n = Math.max(1, Math.ceil(n * 1.2));
+  if (goal === "commercial") n = Math.max(1, Math.ceil(n * 1.25));
+  if (goal === "high_density_iot") n += 1;
+  if (goal === "streaming") n += 1;
+  return Math.max(1, n);
+}
+
+function pickIndoorApSku(totalIndoorSqFt: number): {
+  label: string;
+  unit: number;
+} {
+  if (totalIndoorSqFt < 2000)
+    return { label: `UniFi U6 Lite ($${U6_LITE} ea.)`, unit: U6_LITE };
+  if (totalIndoorSqFt < 5000)
+    return { label: `UniFi U6 Pro ($${U6_PRO} ea.)`, unit: U6_PRO };
+  return { label: `UniFi U6 Enterprise ($${U6_ENT} ea.)`, unit: U6_ENT };
+}
+
 function hardwareUnitEstimates(
   vendor: VendorChoice,
-  totalSqFt: number,
-  outdoor: boolean,
+  totalIndoorSqFt: number,
+  outdoorCount: number,
 ): { apUnit: number; outdoorUnit: number; switchUnit: number } {
   if (vendor === "ubiquiti" || vendor === "none") {
-    let ap = U6_PRO;
-    if (totalSqFt < 2000) ap = U6_LITE;
-    else if (totalSqFt >= 5000) ap = U6_ENT;
+    const { unit } = pickIndoorApSku(totalIndoorSqFt);
     return {
-      apUnit: ap,
-      outdoorUnit: outdoor ? U6_MESH : 0,
+      apUnit: unit,
+      outdoorUnit: outdoorCount > 0 ? U6_MESH : 0,
       switchUnit: USW_LITE_8,
     };
   }
   if (vendor === "ruckus") {
     return {
-      apUnit: totalSqFt < 3000 ? 350 : 550,
-      outdoorUnit: outdoor ? 450 : 0,
+      apUnit: totalIndoorSqFt < 3000 ? 350 : 550,
+      outdoorUnit: outdoorCount > 0 ? 450 : 0,
       switchUnit: 400,
     };
   }
   if (vendor === "cisco_meraki") {
-    return { apUnit: 450, outdoorUnit: outdoor ? 600 : 0, switchUnit: 800 };
+    return { apUnit: 450, outdoorUnit: outdoorCount > 0 ? 600 : 0, switchUnit: 800 };
   }
   if (vendor === "tp_link") {
-    return { apUnit: 120, outdoorUnit: outdoor ? 90 : 0, switchUnit: 150 };
+    return { apUnit: 120, outdoorUnit: outdoorCount > 0 ? 90 : 0, switchUnit: 150 };
   }
-  return { apUnit: 400, outdoorUnit: outdoor ? 500 : 0, switchUnit: 450 };
+  return { apUnit: 400, outdoorUnit: outdoorCount > 0 ? 500 : 0, switchUnit: 450 };
 }
 
-function equipmentForVendor(
+function wholeHomeApPlanLine(
   vendor: VendorChoice,
-  totalSqFt: number,
-  outdoor: boolean,
-  budget: BudgetTier,
-): EquipmentRec {
-  const budgetHint =
-    budget === "under500"
-      ? " — favor value SKUs"
-      : budget === "5000_plus" || budget === "unlimited"
-        ? " — enterprise-grade options"
-        : "";
+  indoorAps: number,
+  outdoorAps: number,
+  totalIndoorSqFt: number,
+): { line: string; equipment: EquipmentRec } {
+  const outdoorLabel =
+    vendor === "ubiquiti" || vendor === "none"
+      ? `UniFi U6 Mesh ($${U6_MESH} ea.)`
+      : vendor === "ruckus"
+        ? "Ruckus T350 outdoor class"
+        : vendor === "cisco_meraki"
+          ? "Meraki outdoor AP class"
+          : vendor === "tp_link"
+            ? "Omada EAP225-Outdoor class"
+            : "Outdoor-rated AP (Access Networks line)";
 
-  switch (vendor) {
-    case "ubiquiti":
-      return pickUbiquitiEquipment(totalSqFt, outdoor);
-    case "ruckus":
-      return {
-        apModel: `Ruckus indoor AP (R350 / R550 class)${budgetHint}`,
-        outdoorApModel: outdoor ? "Ruckus T350 outdoor" : null,
-        switchNote: "Ruckus ICX or similar PoE+ switch sized to port count",
-        switchPorts: 0,
-        costRangeLabel: "Ruckus — request quote for AP + switch package",
-      };
-    case "cisco_meraki":
-      return {
-        apModel: `Meraki MR36 / MR46 class${budgetHint}`,
-        outdoorApModel: outdoor ? "Meraki MR outdoor model" : null,
-        switchNote: "Meraki MS PoE switch (license required)",
-        switchPorts: 0,
-        costRangeLabel: "Cisco Meraki — subscription + hardware",
-      };
-    case "tp_link":
-      return {
-        apModel: `Omada EAP650 / EAP670${budgetHint}`,
-        outdoorApModel: outdoor ? "Omada EAP225-Outdoor" : null,
-        switchNote: "Omada PoE+ switch",
-        switchPorts: 0,
-        costRangeLabel: "TP-Link Omada stack",
-      };
-    case "access_networks":
-      return {
-        apModel: `Access Networks line — size to floorplan${budgetHint}`,
-        outdoorApModel: outdoor ? "Outdoor-rated partner AP" : null,
-        switchNote: "Matched PoE switch from manufacturer line card",
-        switchPorts: 0,
-        costRangeLabel: "Access Networks — dealer pricing",
-      };
-    default:
-      return pickUbiquitiEquipment(totalSqFt, outdoor);
+  if (vendor === "ubiquiti" || vendor === "none") {
+    const indoor = pickIndoorApSku(totalIndoorSqFt);
+    const parts: string[] = [];
+    if (indoorAps > 0) parts.push(`${indoorAps}× ${indoor.label}`);
+    if (outdoorAps > 0) parts.push(`${outdoorAps}× ${outdoorLabel}`);
+    const line = parts.join(" · ") || "—";
+    const equipment: EquipmentRec = {
+      apModel: indoor.label.replace(" ea.", ""),
+      outdoorApModel: outdoorAps > 0 ? outdoorLabel : null,
+      switchNote: `UniFi USW Lite 8 PoE ($${USW_LITE_8}) — scale up with AP count`,
+      switchPorts: 0,
+      costRangeLabel: "Ubiquiti UniFi stack",
+      wholeHomeApPlan: line,
+    };
+    return { line, equipment };
   }
+
+  const genericIndoor =
+    vendor === "ruckus"
+      ? "Ruckus R350 / R550 class"
+      : vendor === "cisco_meraki"
+        ? "Meraki MR36 / MR46 class"
+        : vendor === "tp_link"
+          ? "Omada EAP650 / EAP670"
+          : "Access Networks indoor AP";
+  const parts: string[] = [];
+  if (indoorAps > 0) parts.push(`${indoorAps}× ${genericIndoor}`);
+  if (outdoorAps > 0) parts.push(`${outdoorAps}× ${outdoorLabel}`);
+  const line = parts.join(" · ") || "—";
+  return {
+    line,
+    equipment: {
+      apModel: `${indoorAps}× ${genericIndoor}`,
+      outdoorApModel: outdoorAps > 0 ? outdoorLabel : null,
+      switchNote:
+        vendor === "ruckus"
+          ? "Ruckus ICX PoE+ switch"
+          : vendor === "cisco_meraki"
+            ? "Meraki MS PoE (licensed)"
+            : vendor === "tp_link"
+              ? "Omada PoE+ switch"
+              : "Matched PoE switch (line card)",
+      switchPorts: 0,
+      costRangeLabel: `${vendor} stack`,
+      wholeHomeApPlan: line,
+    },
+  };
+}
+
+export function gatewayRecommendation(
+  vendor: VendorChoice,
+  indoorSqFt: number,
+  totalDevices: number,
+  priority: PlanningPriority,
+): string {
+  if (vendor !== "ubiquiti" && vendor !== "none") {
+    return "Use your selected vendor’s recommended security gateway or firewall (e.g. Meraki MX, Omada gateway, Ruckus edge appliance).";
+  }
+  const useMax =
+    indoorSqFt >= 3500 ||
+    totalDevices >= 40 ||
+    priority === "future_proof";
+  if (useMax) {
+    return "UniFi Cloud Gateway Max — for large homes, 40+ devices, future-proof priority, or 3,500+ sq ft indoor.";
+  }
+  return "UniFi Cloud Gateway Ultra — for standard residential and small-business installs.";
 }
 
 function budgetCostRange(b: BudgetTier): string {
@@ -249,6 +434,15 @@ export type WifiAnalyzerResults = {
   coveragePerApSqFt: number;
   totalCoverageSqFt: number;
   effectiveSqFtPerAp: number;
+  totalIndoorSqFt: number;
+  totalDevices: number;
+  totalRooms: number;
+  completeRooms: number;
+  incompleteRooms: number;
+  roomRows: RoomPlanRow[];
+  gatewayRecommendation: string;
+  planNotes: string[];
+  incompleteWarnings: string[];
   cat6Drops: number;
   cat6FootageLf: number;
   lvBrackets: number;
@@ -258,71 +452,126 @@ export type WifiAnalyzerResults = {
   switchLocationNote: string;
   equipment: EquipmentRec;
   estimatedHardwareCostRange: string;
-  /** Dollar estimate from list prices × counts (rough). */
   hardwareCostEstimateLabel: string;
   assumptionsLine: string;
+  summaryText: string;
 };
 
+function buildSummaryText(
+  inputs: WifiAnalyzerInputs,
+  r: WifiAnalyzerResults,
+): string {
+  const lines: string[] = [
+    "TPP Electrical Contractors Inc. — Wi-Fi plan summary",
+    `Project: ${inputs.projectName}`,
+    `Building: ${inputs.buildingType}`,
+    `Internet: ${inputs.internetSpeedMbps} Mbps`,
+    `Planning priority: ${inputs.planningPriority.replace(/_/g, " ")}`,
+    `Coverage goal: ${inputs.coverageGoal.replace(/_/g, " ")}`,
+    `Vendor: ${inputs.vendor}`,
+    `Budget tier: ${r.estimatedHardwareCostRange}`,
+    "",
+    "ROOMS",
+    ...r.roomRows.map((row) =>
+      row.complete
+        ? `- ${row.name} (fl ${row.floor}) · ${row.areaSqFt} sq ft · ${row.zoneType} · score ${row.score}`
+        : `- ${row.name || "(unnamed)"} · INCOMPLETE: ${row.incompleteReason ?? "fix inputs"}`,
+    ),
+    "",
+    "COVERAGE",
+    `Indoor sq ft: ${r.totalIndoorSqFt} · Devices (summed): ${r.totalDevices}`,
+    `APs: ${r.indoorAps} indoor + ${r.outdoorAps} outdoor (${r.recommendedAps} total)`,
+    `Avg indoor sq ft / indoor AP: ~${r.coveragePerApSqFt}`,
+    "",
+    "GATEWAY",
+    r.gatewayRecommendation,
+    "",
+    "WHOLE-HOME AP PLAN",
+    r.equipment.wholeHomeApPlan,
+    "",
+    "MATERIALS (low voltage)",
+    `CAT6: ${r.cat6FootageLf} LF · Drops: ${r.cat6Drops} · Brackets: ${r.lvBrackets} · Jacks: ${r.rj45Jacks} · Patch: ${r.patchCables} · PoE ports (target): ${r.poeSwitchPorts}`,
+    "",
+    "ESTIMATED HARDWARE",
+    r.hardwareCostEstimateLabel,
+    "",
+    "NOTES",
+    ...r.planNotes.map((n) => `• ${n}`),
+    ...(r.incompleteWarnings.length
+      ? ["", "WARNINGS", ...r.incompleteWarnings.map((w) => `• ${w}`)]
+      : []),
+    "",
+    r.assumptionsLine,
+  ];
+  return lines.join("\n");
+}
+
 export function computeWifiPlan(inputs: WifiAnalyzerInputs): WifiAnalyzerResults {
-  const floors = Math.max(1, Math.floor(inputs.floors) || 1);
-  const totalSqFt = Math.max(1, inputs.totalSqFt);
+  const rooms = inputs.rooms ?? [];
+  const totalRooms = rooms.length;
+  const completeRooms = rooms.filter(isRoomComplete).length;
+  const incompleteRooms = totalRooms - completeRooms;
 
-  const base = SQ_FT_PER_AP[inputs.wallMaterial];
-  let eff =
-    (base * highDeviceDensityFactor(inputs.deviceBand)) /
-    (coverageGoalFactor(inputs.coverageGoal) * ceilingFactor(inputs.ceilingHeight));
+  const roomRows: RoomPlanRow[] = rooms.map((r) => {
+    const areaSqFt = Math.round(
+      Math.max(0, r.lengthFt) * Math.max(0, r.widthFt),
+    );
+    const complete = isRoomComplete(r);
+    const score = complete ? scoreRoom(r, inputs.planningPriority) : 0;
+    const zoneType = complete
+      ? zoneTypeForRoom(r, score)
+      : "—";
+    return {
+      id: r.id,
+      name: r.name.trim() || "(unnamed)",
+      floor: r.floor,
+      areaSqFt,
+      complete,
+      incompleteReason: complete ? undefined : incompleteReason(r),
+      score,
+      zoneType,
+    };
+  });
 
-  const perFloorSq = totalSqFt / floors;
-  const apsPerFloor = Math.max(1, Math.ceil(perFloorSq / eff));
-  let indoorAps = apsPerFloor * floors;
-  const outdoorAps = inputs.outdoorNeeded ? 1 : 0;
-
-  if (inputs.coverageGoal === "smart_home") {
-    indoorAps = Math.max(1, Math.ceil(indoorAps * 1.2));
-  }
-  if (inputs.coverageGoal === "commercial") {
-    indoorAps = Math.max(1, Math.ceil(indoorAps * 1.25));
-  }
-
-  const totalAps = indoorAps + outdoorAps;
-
-  const rawEq = equipmentForVendor(
-    inputs.vendor,
-    totalSqFt,
-    inputs.outdoorNeeded,
-    inputs.budget,
+  const completeList = rooms.filter(isRoomComplete);
+  const indoorRooms = completeList.filter((r) => !r.outdoor);
+  const totalIndoorSqFt = indoorRooms.reduce(
+    (s, r) => s + r.lengthFt * r.widthFt,
+    0,
   );
-  const poeSwitchPorts = Math.min(48, totalAps + 4);
-  const equipment: EquipmentRec = {
-    ...rawEq,
-    switchPorts: poeSwitchPorts,
-  };
+  const totalDevices = completeList.reduce(
+    (s, r) => s + Math.max(0, r.expectedDevices),
+    0,
+  );
+
+  const { indoorAps: baseIndoor, outdoorAps, planNotes } = planAPs(
+    rooms,
+    inputs.planningPriority,
+  );
+  let indoorAps = applyCoverageGoalToIndoor(baseIndoor, inputs.coverageGoal);
+  if (indoorRooms.length === 0) indoorAps = 0;
+
+  const recommendedAps = indoorAps + outdoorAps;
+
+  const { equipment, line: wholePlanLine } = wholeHomeApPlanLine(
+    inputs.vendor,
+    indoorAps,
+    outdoorAps,
+    Math.max(1, totalIndoorSqFt),
+  );
+
+  const poeSwitchPorts = Math.min(48, recommendedAps + 4);
+  equipment.switchPorts = poeSwitchPorts;
+
   const units = hardwareUnitEstimates(
     inputs.vendor,
-    totalSqFt,
-    inputs.outdoorNeeded,
+    Math.max(1, totalIndoorSqFt),
+    outdoorAps,
   );
-
-  const avgRunFt = Math.min(
-    180,
-    Math.max(35, Math.round(Math.sqrt(perFloorSq) * 1.15 + 20)),
-  );
-  const cat6Drops = indoorAps + (outdoorAps > 0 ? 1 : 0);
-  const cat6FootageLf = Math.round(indoorAps * avgRunFt + outdoorAps * 55);
-  const lvBrackets = indoorAps;
-  const rj45Jacks = cat6Drops;
-  const patchCableCount = Math.min(24, totalAps + 2);
-
-  let switchLocationNote =
-    "Place PoE switch central to AP cluster — MDF for commercial, closet or rack for residential.";
-  if (inputs.buildingType === "warehouse") {
-    switchLocationNote =
-      "Warehouse: mount switch in protected IDF near power; homerun to MDF.";
-  }
-
   const apSpend = indoorAps * units.apUnit + outdoorAps * units.outdoorUnit;
+  const patchCableCount = Math.min(24, recommendedAps + 2);
   const switchSpend = Math.round(
-    units.switchUnit * Math.min(2.2, 1 + totalAps / 16),
+    units.switchUnit * Math.min(2.2, 1 + recommendedAps / 16),
   );
   const patchSpend = patchCableCount * 8;
   const rawTotal = apSpend + switchSpend + patchSpend;
@@ -330,15 +579,61 @@ export function computeWifiPlan(inputs: WifiAnalyzerInputs): WifiAnalyzerResults
   const high = Math.round(rawTotal * 1.2);
   const hardwareCostEstimateLabel = `$${low.toLocaleString()} – $${high.toLocaleString()} (est., MSRP-style)`;
 
-  const assumptionsLine = `Wall: ${inputs.wallMaterial.replace(/_/g, " ")} (${SQ_FT_PER_AP[inputs.wallMaterial]} sqft/AP baseline) · Ceiling: ${inputs.ceilingHeight} ft · Devices: ${inputs.deviceBand} · Goal: ${inputs.coverageGoal.replace(/_/g, " ")} · Floors: ${floors}`;
+  const floorCount = new Set(indoorRooms.map((r) => r.floor)).size;
+  const perFloorAvg =
+    floorCount > 0 ? totalIndoorSqFt / floorCount : totalIndoorSqFt;
+  const avgRunFt = Math.min(
+    180,
+    Math.max(35, Math.round(Math.sqrt(Math.max(1, perFloorAvg)) * 1.15 + 20)),
+  );
+  const cat6Drops = indoorAps + (outdoorAps > 0 ? outdoorAps : 0);
+  const cat6FootageLf = Math.round(indoorAps * avgRunFt + outdoorAps * 55);
+  const lvBrackets = indoorAps;
+  const rj45Jacks = cat6Drops;
 
-  return {
-    recommendedAps: totalAps,
+  let switchLocationNote =
+    "Place PoE switch central to AP cluster — MDF for commercial, closet or rack for residential.";
+  if (inputs.buildingType === "warehouse") {
+    switchLocationNote =
+      "Warehouse: mount switch in protected IDF; homerun to MDF.";
+  }
+
+  const gatewayRec = gatewayRecommendation(
+    inputs.vendor,
+    totalIndoorSqFt,
+    totalDevices,
+    inputs.planningPriority,
+  );
+
+  const incompleteWarnings = roomRows
+    .filter((row) => !row.complete)
+    .map((row) => `${row.name}: ${row.incompleteReason ?? "Incomplete"}`);
+
+  const coveragePerApSqFt =
+    indoorAps > 0 ? Math.round(totalIndoorSqFt / indoorAps) : 0;
+  const totalCoverageSqFt = completeList.reduce(
+    (s, r) => s + r.lengthFt * r.widthFt,
+    0,
+  );
+
+  const assumptionsLine = `Rooms: ${completeRooms}/${totalRooms} complete · Indoor ${totalIndoorSqFt} sq ft · Devices ${totalDevices} · Priority ${inputs.planningPriority.replace(/_/g, " ")} · Coverage goal ${inputs.coverageGoal.replace(/_/g, " ")} · Internet ${inputs.internetSpeedMbps} Mbps`;
+
+  const base: WifiAnalyzerResults = {
+    recommendedAps,
     indoorAps,
     outdoorAps,
-    coveragePerApSqFt: Math.round(totalSqFt / Math.max(1, indoorAps)),
-    totalCoverageSqFt: totalSqFt,
-    effectiveSqFtPerAp: Math.round(eff),
+    coveragePerApSqFt,
+    totalCoverageSqFt,
+    effectiveSqFtPerAp: coveragePerApSqFt,
+    totalIndoorSqFt,
+    totalDevices,
+    totalRooms,
+    completeRooms,
+    incompleteRooms,
+    roomRows,
+    gatewayRecommendation: gatewayRec,
+    planNotes,
+    incompleteWarnings,
     cat6Drops,
     cat6FootageLf,
     lvBrackets,
@@ -346,9 +641,12 @@ export function computeWifiPlan(inputs: WifiAnalyzerInputs): WifiAnalyzerResults
     patchCables: patchCableCount,
     poeSwitchPorts,
     switchLocationNote,
-    equipment,
+    equipment: { ...equipment, wholeHomeApPlan: wholePlanLine },
     estimatedHardwareCostRange: budgetCostRange(inputs.budget),
     hardwareCostEstimateLabel,
     assumptionsLine,
+    summaryText: "",
   };
+  base.summaryText = buildSummaryText(inputs, base);
+  return base;
 }

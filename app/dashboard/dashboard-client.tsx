@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { WideAppHeader } from "@/components/wide-app-header";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { fetchBlueprintSignedUrl } from "@/lib/fetch-blueprint-signed-url";
@@ -382,39 +383,7 @@ export function DashboardClient() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="border-b border-white/10 bg-[#071422]/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6 sm:px-8">
-          <Link
-            href="/"
-            className="flex items-baseline gap-3 transition-opacity hover:opacity-90"
-          >
-            <span className="text-lg font-semibold tracking-tight text-white">
-              Blueprint AI
-            </span>
-            <span className="hidden text-sm font-medium text-white/55 sm:inline">
-              Electrical contractors
-            </span>
-          </Link>
-          <nav
-            className="flex items-center gap-6 text-sm font-medium text-white/75 sm:gap-8"
-            aria-label="Primary"
-          >
-            <Link href="/" className="transition-colors hover:text-white">
-              Home
-            </Link>
-            <span className="text-white">Dashboard</span>
-            <Link
-              href="/dashboard/symbols"
-              className="transition-colors hover:text-white"
-            >
-              Symbol library
-            </Link>
-            <Link href="/upload" className="transition-colors hover:text-white">
-              Upload
-            </Link>
-          </nav>
-        </div>
-      </header>
+      <WideAppHeader active="dashboard" showTppSubtitle />
 
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 py-10 sm:py-12">
         {flashMessage ? (
@@ -428,14 +397,14 @@ export function DashboardClient() {
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+            <h1 className="border-l-4 border-[#E8C84A] pl-4 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
               My Projects
             </h1>
             {monthUsage && monthUsage.pages > 0 ? (
               <p className="mt-2 text-sm text-white/60">
                 This month: {monthUsage.pages} page
                 {monthUsage.pages === 1 ? "" : "s"} analyzed —{" "}
-                <span className="font-medium text-emerald-200/90">
+                <span className="font-semibold text-[#E8C84A]">
                   {formatUsd(monthUsage.cost)}
                 </span>
               </p>
@@ -444,19 +413,25 @@ export function DashboardClient() {
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
             <Link
               href="/tools/load-calculator"
-              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-sky-500/45 bg-sky-950/40 px-4 py-2.5 text-sm font-semibold text-sky-100 transition-colors hover:bg-sky-950/55"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-sky-500/45 bg-sky-950/40 px-4 py-2.5 text-sm font-semibold text-sky-100 transition-colors hover:border-[#E8C84A]/60 hover:bg-sky-950/55"
             >
               Load Calculator
             </Link>
             <Link
               href="/tools/nec-checker"
-              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-violet-500/45 bg-violet-950/35 px-4 py-2.5 text-sm font-semibold text-violet-100 transition-colors hover:bg-violet-950/50"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-violet-500/45 bg-violet-950/35 px-4 py-2.5 text-sm font-semibold text-violet-100 transition-colors hover:border-[#E8C84A]/60 hover:bg-violet-950/50"
             >
               NEC Checker
             </Link>
             <Link
+              href="/tools/wifi-analyzer"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-[#E8C84A]/50 bg-[#E8C84A]/10 px-4 py-2.5 text-sm font-semibold text-[#E8C84A] transition-colors hover:border-[#E8C84A] hover:bg-[#E8C84A]/25"
+            >
+              Wi-Fi Analyzer
+            </Link>
+            <Link
               href="/upload"
-              className="inline-flex shrink-0 items-center justify-center rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-[#0a1628] shadow-sm transition-colors hover:bg-white/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/80"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-white px-5 py-2.5 text-sm font-semibold text-[#0a1628] shadow-sm transition-colors hover:border-[#E8C84A] hover:bg-[#f0d56e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/80"
             >
               Upload New Blueprint
             </Link>

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
+import { ToolPageHeader } from "@/components/tool-page-header";
 import { createBrowserClient } from "@/lib/supabase/client";
 import {
   NEC_CHECKLIST_SECTIONS,
@@ -191,7 +192,7 @@ export function NecCheckerClient() {
   };
 
   const exportPdf = () => {
-    downloadNecChecklistPdf({
+    void downloadNecChecklistPdf({
       projectName,
       jurisdiction: state,
       permitDate: permitDate || "—",
@@ -214,20 +215,17 @@ export function NecCheckerClient() {
 
   return (
     <div className="min-h-screen bg-[#0a1628] text-white">
-      <header className="border-b border-white/10 bg-[#071422]">
-        <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-4 px-6 py-5">
-          <div>
-            <h1 className="text-xl font-semibold">NEC 2023 Code Checker</h1>
-            <p className="text-sm text-violet-200/85">New York State Edition</p>
-          </div>
-          <Link
-            href="/dashboard"
-            className="text-sm font-medium text-white/70 hover:text-white"
-          >
-            ← Dashboard
-          </Link>
-        </div>
-      </header>
+      <ToolPageHeader
+        title="NEC 2023 Code Checker"
+        subtitle="New York State Edition"
+      >
+        <Link
+          href="/dashboard"
+          className="text-sm font-medium text-[#E8C84A] hover:text-[#f0d56e]"
+        >
+          ← Dashboard
+        </Link>
+      </ToolPageHeader>
 
       <main className="mx-auto max-w-3xl px-6 py-8">
         <NecAiQuestionPanel jurisdiction={state} necEdition={effectiveEdition} />

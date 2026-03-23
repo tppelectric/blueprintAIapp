@@ -1,11 +1,11 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { ALL_CHECKLIST_ITEMS } from "@/lib/nec-checker-data";
+import { drawTppPdfLetterhead, fetchTppLogoDataUrl } from "@/lib/tpp-pdf-header";
 
-const BRAND = "TPP Electric";
-const FOOTER = "TPP Electric | blueprint-a-iapp.vercel.app";
+const FOOTER = "TPP Electrical Contractors Inc. | blueprint-a-iapp.vercel.app";
 
-export function downloadNecChecklistPdf(opts: {
+export async function downloadNecChecklistPdf(opts: {
   projectName: string;
   jurisdiction: string;
   permitDate: string;
@@ -13,25 +13,39 @@ export function downloadNecChecklistPdf(opts: {
   occupancyType: string;
   constructionType: string;
   answers: Record<string, boolean | undefined>;
-}): void {
+}): Promise<void> {
+  const logo = await fetchTppLogoDataUrl();
   const doc = new jsPDF({ unit: "pt", format: "letter" });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const margin = 44;
 
+  let y = drawTppPdfLetterhead(doc, margin, margin + 8, logo, {
+    logoWidthPt: 52,
+    pageWidth: pageW,
+  });
+
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(18);
-  doc.text(BRAND, margin, 56);
   doc.setFontSize(14);
-  doc.text("NEC Code Checklist Report", margin, 80);
+  doc.setTextColor(30, 30, 30);
+  doc.text("NEC Code Checklist Report", margin, y);
+  y += 22;
+
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
-  doc.text(`Project: ${opts.projectName || "—"}`, margin, 102);
-  doc.text(`Jurisdiction: ${opts.jurisdiction}`, margin, 118);
-  doc.text(`Permit date: ${opts.permitDate || "—"}`, margin, 134);
-  doc.text(`NEC edition used: ${opts.necEdition}`, margin, 150);
-  doc.text(`Occupancy: ${opts.occupancyType}`, margin, 166);
-  doc.text(`Construction: ${opts.constructionType}`, margin, 182);
+  doc.setTextColor(0, 0, 0);
+  doc.text(`Project: ${opts.projectName || "—"}`, margin, y);
+  y += 16;
+  doc.text(`Jurisdiction: ${opts.jurisdiction}`, margin, y);
+  y += 16;
+  doc.text(`Permit date: ${opts.permitDate || "—"}`, margin, y);
+  y += 16;
+  doc.text(`NEC edition used: ${opts.necEdition}`, margin, y);
+  y += 16;
+  doc.text(`Occupancy: ${opts.occupancyType}`, margin, y);
+  y += 16;
+  doc.text(`Construction: ${opts.constructionType}`, margin, y);
+  y += 24;
 
   const body: string[][] = [];
   for (const item of ALL_CHECKLIST_ITEMS) {
@@ -42,7 +56,7 @@ export function downloadNecChecklistPdf(opts: {
   }
 
   autoTable(doc, {
-    startY: 200,
+    startY: y,
     head: [["NEC ref", "Item", "Result", "If failing — resolution"]],
     body,
     theme: "striped",

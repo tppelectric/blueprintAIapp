@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { TppLogoPill } from "@/components/tpp-logo-pill";
 import {
   forwardRef,
   useCallback,
@@ -3283,6 +3284,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       <header className="shrink-0 border-b border-white/10 bg-[#071422]/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-[100vw] flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-3">
+            <TppLogoPill size="compact" className="hidden sm:inline-flex" />
             <Link
               href="/dashboard"
               className="shrink-0 rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-white/15"

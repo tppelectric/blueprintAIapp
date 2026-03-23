@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { HomeMarketingHeader } from "@/components/home-marketing-header";
 
 function LightningIcon({ className }: { className?: string }) {
   return (
@@ -36,56 +37,54 @@ function BookCheckIcon({ className }: { className?: string }) {
   );
 }
 
+function WifiIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M5 12.55a11 11 0 0 1 14.08 0" />
+      <path d="M1.42 9a16 16 0 0 1 21.16 0" />
+      <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+      <line x1="12" y1="20" x2="12.01" y2="20" />
+    </svg>
+  );
+}
+
 export default function Home() {
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="border-b border-white/10 bg-[#071422]/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6 sm:px-8">
-          <div className="flex items-baseline gap-3">
-            <span className="text-lg font-semibold tracking-tight text-white">
-              Blueprint AI
-            </span>
-            <span className="hidden text-sm font-medium text-white/55 sm:inline">
-              Electrical contractors
-            </span>
-          </div>
-          <nav
-            className="flex items-center gap-6 text-sm font-medium text-white/75 sm:gap-8"
-            aria-label="Primary"
-          >
-            <Link
-              href="/dashboard"
-              className="transition-colors hover:text-white"
-            >
-              Dashboard
-            </Link>
-            <a href="#product" className="transition-colors hover:text-white">
-              Product
-            </a>
-            <a href="#contact" className="transition-colors hover:text-white">
-              Contact
-            </a>
-          </nav>
-        </div>
-      </header>
+      <HomeMarketingHeader />
 
-      <main className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center sm:py-24">
+      <main
+        id="product"
+        className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center sm:py-24"
+      >
         <h1 className="max-w-3xl text-3xl font-semibold leading-tight tracking-tight text-white sm:text-4xl md:text-5xl">
-          Blueprint AI - Electrical Takeoff System
+          Blueprint AI — Electrical Takeoff System
         </h1>
+        <p className="mt-4 max-w-xl text-sm text-white/50">
+          Est. 1982 · Powered by Blueprint AI
+        </p>
         <Link
           href="/upload"
-          className="mt-10 inline-flex items-center justify-center rounded-lg bg-white px-6 py-3 text-base font-semibold text-[#0a1628] shadow-sm transition-colors hover:bg-white/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/80"
+          className="mt-10 inline-flex items-center justify-center rounded-lg border-2 border-[#E8C84A]/60 bg-[#E8C84A] px-6 py-3 text-base font-semibold text-[#0a1628] shadow-sm transition-colors hover:bg-[#f0d56e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]"
         >
           Start New Project
         </Link>
 
-        <div className="mx-auto mt-14 grid w-full max-w-3xl gap-4 sm:grid-cols-2 sm:gap-5">
+        <div className="mx-auto mt-14 grid w-full max-w-4xl gap-4 sm:grid-cols-2 lg:grid-cols-3 sm:gap-5">
           <Link
             href="/tools/load-calculator"
-            className="group flex flex-col rounded-2xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-sm transition-colors hover:border-sky-500/35 hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400/50"
+            className="group flex flex-col rounded-2xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-sm transition-colors hover:border-[#E8C84A] hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-500/15 text-sky-300 ring-1 ring-sky-400/25 transition-colors group-hover:bg-sky-500/25">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-500/15 text-sky-300 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-sky-500/25 group-hover:ring-[#E8C84A]/50">
               <LightningIcon className="h-6 w-6" />
             </div>
             <h2 className="mt-4 text-lg font-semibold text-white">
@@ -94,16 +93,16 @@ export default function Home() {
             <p className="mt-2 text-sm leading-relaxed text-white/60">
               Size your electrical service per NEC Article 220
             </p>
-            <span className="mt-4 text-sm font-medium text-sky-300/95 group-hover:text-sky-200">
+            <span className="mt-4 text-sm font-medium text-[#E8C84A] group-hover:text-[#f0d56e]">
               Open tool →
             </span>
           </Link>
 
           <Link
             href="/tools/nec-checker"
-            className="group flex flex-col rounded-2xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-sm transition-colors hover:border-violet-500/35 hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400/50"
+            className="group flex flex-col rounded-2xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-sm transition-colors hover:border-[#E8C84A] hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-500/15 text-violet-200 ring-1 ring-violet-400/25 transition-colors group-hover:bg-violet-500/25">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-500/15 text-violet-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-violet-500/25 group-hover:ring-[#E8C84A]/50">
               <BookCheckIcon className="h-6 w-6" />
             </div>
             <h2 className="mt-4 text-lg font-semibold text-white">
@@ -112,11 +111,33 @@ export default function Home() {
             <p className="mt-2 text-sm leading-relaxed text-white/60">
               Check NEC 2023 compliance and get instant code answers
             </p>
-            <span className="mt-4 text-sm font-medium text-violet-300/95 group-hover:text-violet-200">
+            <span className="mt-4 text-sm font-medium text-[#E8C84A] group-hover:text-[#f0d56e]">
+              Open tool →
+            </span>
+          </Link>
+
+          <Link
+            href="/tools/wifi-analyzer"
+            className="group flex flex-col rounded-2xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-sm transition-colors hover:border-[#E8C84A] hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50 sm:col-span-2 lg:col-span-1"
+          >
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-teal-500/15 text-teal-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-teal-500/25 group-hover:ring-[#E8C84A]/50">
+              <WifiIcon className="h-6 w-6" />
+            </div>
+            <h2 className="mt-4 text-lg font-semibold text-white">
+              Wi-Fi Analyzer
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-white/60">
+              AP counts, cable takeoff, and vendor recommendations
+            </p>
+            <span className="mt-4 text-sm font-medium text-[#E8C84A] group-hover:text-[#f0d56e]">
               Open tool →
             </span>
           </Link>
         </div>
+
+        <p id="contact" className="mt-16 text-sm text-white/45">
+          Questions? Reach your team through your usual TPP channels.
+        </p>
       </main>
     </div>
   );

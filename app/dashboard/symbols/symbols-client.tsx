@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { WideAppHeader } from "@/components/wide-app-header";
 import { useCallback, useEffect, useState } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import type { SymbolLibraryRow } from "@/lib/symbol-library-types";
@@ -95,24 +96,21 @@ export function SymbolsClient() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="border-b border-white/10 bg-[#071422]/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6 sm:px-8">
+      <WideAppHeader
+        active="symbols"
+        showTppSubtitle
+        extraLinks={
           <Link
             href="/dashboard"
-            className="text-lg font-semibold tracking-tight text-white transition-opacity hover:opacity-90"
+            className="text-sm font-medium text-white/75 transition-colors hover:text-[#E8C84A]"
           >
-            ← Dashboard
+            ← Projects
           </Link>
-          <nav className="flex items-center gap-6 text-sm font-medium text-white/75">
-            <Link href="/upload" className="transition-colors hover:text-white">
-              Upload
-            </Link>
-          </nav>
-        </div>
-      </header>
+        }
+      />
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10 sm:py-12">
-        <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+        <h1 className="border-l-4 border-[#E8C84A] pl-4 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
           Symbol library
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/60">

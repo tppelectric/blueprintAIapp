@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { WideAppHeader } from "@/components/wide-app-header";
 import { useCallback, useRef, useState } from "react";
 import {
   insertProjectAndSheets,
@@ -197,30 +197,7 @@ export function UploadBlueprintForm() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="border-b border-white/10 bg-[#071422]/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6 sm:px-8">
-          <Link
-            href="/"
-            className="flex items-baseline gap-3 transition-opacity hover:opacity-90"
-          >
-            <span className="text-lg font-semibold tracking-tight text-white">
-              Blueprint AI
-            </span>
-            <span className="hidden text-sm font-medium text-white/55 sm:inline">
-              Electrical contractors
-            </span>
-          </Link>
-          <nav
-            className="flex items-center gap-8 text-sm font-medium text-white/75"
-            aria-label="Primary"
-          >
-            <Link href="/" className="transition-colors hover:text-white">
-              Home
-            </Link>
-            <span className="text-white">Upload</span>
-          </nav>
-        </div>
-      </header>
+      <WideAppHeader active="upload" showTppSubtitle />
 
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-6 py-12 sm:py-16">
         <div className="mb-8">

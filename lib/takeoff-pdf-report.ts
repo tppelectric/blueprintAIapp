@@ -6,6 +6,7 @@ import {
   itemMatchesDetectedRoom,
   normalizeRoomLabel,
 } from "@/lib/room-item-match";
+import { drawTppPdfLetterhead } from "@/lib/tpp-pdf-header";
 import {
   exportEffectiveQty,
   exportPlanNoteText,
@@ -23,8 +24,8 @@ function lastTableY(doc: jsPDF): number {
   return typeof t?.finalY === "number" ? t.finalY : 100;
 }
 
-const BRAND = "TPP Electric";
-const FOOTER_LINE = "TPP Electric | blueprint-a-iapp.vercel.app";
+const FOOTER_LINE =
+  "TPP Electrical Contractors Inc. | blueprint-a-iapp.vercel.app";
 const FOOTER_DISCLAIMER = "AI counts are estimates — verify against plans";
 const PREPARED_BY = "Prepared by Blueprint AI";
 
@@ -69,6 +70,7 @@ export function buildTakeoffPdf(
   input: TakeoffExportProjectInput,
   organizeBy: TakeoffOrganizeBy,
   include: TakeoffExportInclude,
+  logoDataUrl: string | null = null,
 ): jsPDF {
   const { items, rooms: rawRooms, pageIndex } = prepareTakeoffRows(
     input,
@@ -100,18 +102,27 @@ export function buildTakeoffPdf(
   const margin = 48;
 
   // —— Cover ——
+  let coverY = drawTppPdfLetterhead(doc, margin, margin + 6, logoDataUrl, {
+    logoWidthPt: 52,
+    pageWidth: pageW,
+  });
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(22);
-  doc.text(BRAND, pageW / 2, 120, { align: "center" });
-  doc.setFontSize(16);
-  doc.setFont("helvetica", "normal");
-  doc.text("Electrical Takeoff Report", pageW / 2, 158, { align: "center" });
+  doc.setFontSize(18);
+  doc.text("Electrical Takeoff Report", pageW / 2, coverY + 18, {
+    align: "center",
+  });
+  coverY += 44;
   doc.setFontSize(11);
-  doc.text(`Project: ${input.projectName}`, margin, 210);
-  doc.text(`Date analyzed: ${input.analyzedAt.toLocaleString()}`, margin, 232);
-  doc.text(`Total pages scanned: ${input.totalPagesScanned}`, margin, 254);
+  doc.setFont("helvetica", "normal");
+  doc.text(`Project: ${input.projectName}`, margin, coverY);
+  doc.text(`Date analyzed: ${input.analyzedAt.toLocaleString()}`, margin, coverY + 22);
+  doc.text(
+    `Total pages scanned: ${input.totalPagesScanned}`,
+    margin,
+    coverY + 44,
+  );
   doc.setFont("helvetica", "italic");
-  doc.text(PREPARED_BY, margin, 286);
+  doc.text(PREPARED_BY, margin, coverY + 76);
   doc.setFont("helvetica", "normal");
 
   // —— Executive summary ——
@@ -314,13 +325,15 @@ export function buildTakeoffPdf(
   return doc;
 }
 
-export function downloadTakeoffPdfReport(
+export async function downloadTakeoffPdfReport(
   input: TakeoffExportProjectInput,
   organizeBy: TakeoffOrganizeBy,
   include: TakeoffExportInclude,
   opts?: { filename?: string },
-): void {
-  const doc = buildTakeoffPdf(input, organizeBy, include);
+): Promise<void> {
+  const { fetchTppLogoDataUrl } = await import("@/lib/tpp-pdf-header");
+  const logo = await fetchTppLogoDataUrl();
+  const doc = buildTakeoffPdf(input, organizeBy, include, logo);
   const name =
     opts?.filename ??
     `takeoff-${input.projectName.replace(/[^\w\- ]+/g, "").trim() || "project"}.pdf`;

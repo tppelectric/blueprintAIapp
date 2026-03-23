@@ -3,11 +3,13 @@
 :root {
   --background: #0a1628;
   --foreground: #ffffff;
+  --tpp-gold: #e8c84a;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-tpp-gold: #e8c84a;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

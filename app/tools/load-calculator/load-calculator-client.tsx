@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
+import { ToolPageHeader } from "@/components/tool-page-header";
 import { createBrowserClient } from "@/lib/supabase/client";
 import {
   computeCommercialLoad,
@@ -280,24 +281,17 @@ export function LoadCalculatorClient() {
 
   return (
     <div className="min-h-screen bg-[#0a1628] text-white">
-      <header className="border-b border-white/10 bg-[#071422]">
-        <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-4 px-6 py-5">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">
-              Electrical Load Calculator
-            </h1>
-            <p className="text-sm text-sky-200/80">
-              NEC Article 220 — 2023 Edition
-            </p>
-          </div>
-          <Link
-            href="/dashboard"
-            className="text-sm font-medium text-white/70 hover:text-white"
-          >
-            ← Dashboard
-          </Link>
-        </div>
-      </header>
+      <ToolPageHeader
+        title="Electrical Load Calculator"
+        subtitle="NEC Article 220 — 2023 Edition"
+      >
+        <Link
+          href="/dashboard"
+          className="text-sm font-medium text-[#E8C84A] hover:text-[#f0d56e]"
+        >
+          ← Dashboard
+        </Link>
+      </ToolPageHeader>
 
       <main className="mx-auto max-w-4xl px-6 py-8">
         <div className="flex gap-2 rounded-xl border border-white/10 bg-white/[0.04] p-1">
@@ -306,7 +300,7 @@ export function LoadCalculatorClient() {
             onClick={() => setTab("residential")}
             className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition-colors ${
               tab === "residential"
-                ? "bg-sky-600 text-white"
+                ? "bg-[#E8C84A] text-[#0a1628]"
                 : "text-white/65 hover:bg-white/10"
             }`}
           >
@@ -317,7 +311,7 @@ export function LoadCalculatorClient() {
             onClick={() => setTab("commercial")}
             className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition-colors ${
               tab === "commercial"
-                ? "bg-sky-600 text-white"
+                ? "bg-[#E8C84A] text-[#0a1628]"
                 : "text-white/65 hover:bg-white/10"
             }`}
           >

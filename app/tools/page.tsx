@@ -33,6 +33,18 @@ const tools = [
     tone: "border-[#E8C84A]/50 text-[#E8C84A]",
   },
   {
+    href: "/tools/av-analyzer",
+    title: "AV Analyzer",
+    desc: "Distributed audio, theater & display planning",
+    tone: "border-rose-500/45 text-rose-100",
+  },
+  {
+    href: "/tools/smarthome-analyzer",
+    title: "Smart Home Analyzer",
+    desc: "Automation, lighting & control design",
+    tone: "border-cyan-500/45 text-cyan-100",
+  },
+  {
     href: "/tools/project-breakdown",
     title: "Project breakdown",
     desc: "Cost, markup, sell price, and profit",

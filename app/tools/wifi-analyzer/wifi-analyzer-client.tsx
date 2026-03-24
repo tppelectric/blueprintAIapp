@@ -316,6 +316,44 @@ export function WifiAnalyzerClient() {
   const [woCopyMsg, setWoCopyMsg] = useState<string | null>(null);
   const [propCopyMsg, setPropCopyMsg] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = sessionStorage.getItem(
+      "blueprint-wifi-prefill-from-smarthome",
+    );
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as {
+        rooms?: { roomName: string; expectedDevices: number }[];
+      };
+      const hints = parsed?.rooms;
+      if (!hints?.length) {
+        sessionStorage.removeItem("blueprint-wifi-prefill-from-smarthome");
+        return;
+      }
+      setRooms((prev) =>
+        prev.map((room) => {
+          const match = hints.find(
+            (h) =>
+              h.roomName.trim().toLowerCase() ===
+              room.name.trim().toLowerCase(),
+          );
+          if (!match) return room;
+          return {
+            ...room,
+            expectedDevices: Math.max(
+              0,
+              Math.round(Number(match.expectedDevices)) || 0,
+            ),
+          };
+        }),
+      );
+    } catch {
+      /* ignore malformed payload */
+    }
+    sessionStorage.removeItem("blueprint-wifi-prefill-from-smarthome");
+  }, []);
+
   const [blueprintProjects, setBlueprintProjects] = useState<
     BlueprintProjectOption[]
   >([]);
@@ -820,12 +858,26 @@ export function WifiAnalyzerClient() {
         title="Wi-Fi Network Analyzer & Planner"
         subtitle="Coverage planning for residential and commercial installations"
       >
-        <Link
-          href="/dashboard"
-          className="text-sm font-medium text-[#E8C84A] hover:text-[#f0d56e]"
-        >
-          ← Dashboard
-        </Link>
+        <div className="flex flex-wrap gap-3 text-sm">
+          <Link
+            href="/dashboard"
+            className="font-medium text-[#E8C84A] hover:text-[#f0d56e]"
+          >
+            ← Dashboard
+          </Link>
+          <Link
+            href="/tools/av-analyzer"
+            className="text-white/70 hover:text-[#E8C84A]"
+          >
+            AV Analyzer
+          </Link>
+          <Link
+            href="/tools/smarthome-analyzer"
+            className="text-white/70 hover:text-[#E8C84A]"
+          >
+            Smart Home Analyzer
+          </Link>
+        </div>
       </ToolPageHeader>
 
       <main className="mx-auto max-w-3xl px-6 py-8">

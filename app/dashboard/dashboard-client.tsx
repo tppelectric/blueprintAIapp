@@ -509,6 +509,18 @@ export function DashboardClient() {
               Wi-Fi Analyzer
             </Link>
             <Link
+              href="/tools/av-analyzer"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-rose-500/45 bg-rose-950/35 px-4 py-2.5 text-sm font-semibold text-rose-100 transition-colors hover:border-[#E8C84A]/60 hover:bg-rose-950/50"
+            >
+              AV Analyzer
+            </Link>
+            <Link
+              href="/tools/smarthome-analyzer"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-cyan-500/45 bg-cyan-950/30 px-4 py-2.5 text-sm font-semibold text-cyan-100 transition-colors hover:border-[#E8C84A]/60 hover:bg-cyan-950/45"
+            >
+              Smart Home
+            </Link>
+            <Link
               href="/upload"
               className="inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-white px-5 py-2.5 text-sm font-semibold text-[#0a1628] shadow-sm transition-colors hover:border-[#E8C84A] hover:bg-[#f0d56e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/80"
             >

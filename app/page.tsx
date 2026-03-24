@@ -57,6 +57,44 @@ function WifiIcon({ className }: { className?: string }) {
   );
 }
 
+function SpeakerIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 6H8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h4l6 4V2l-6 4Z" />
+      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+      <path d="M17.66 6.34a8 8 0 0 1 0 11.32" />
+    </svg>
+  );
+}
+
+function SmartHomeIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-9.5Z" />
+      <path d="M12 9v3" />
+      <circle cx="12" cy="8" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export default function Home() {
   return (
     <div className="flex min-h-screen flex-col">
@@ -118,7 +156,7 @@ export default function Home() {
 
           <Link
             href="/tools/wifi-analyzer"
-            className="group flex flex-col rounded-2xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-sm transition-colors hover:border-[#E8C84A] hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50 sm:col-span-2 lg:col-span-1"
+            className="group flex flex-col rounded-2xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-sm transition-colors hover:border-[#E8C84A] hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
           >
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-teal-500/15 text-teal-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-teal-500/25 group-hover:ring-[#E8C84A]/50">
               <WifiIcon className="h-6 w-6" />
@@ -128,6 +166,42 @@ export default function Home() {
             </h2>
             <p className="mt-2 text-sm leading-relaxed text-white/60">
               AP counts, cable takeoff, and vendor recommendations
+            </p>
+            <span className="mt-4 text-sm font-medium text-[#E8C84A] group-hover:text-[#f0d56e]">
+              Open tool →
+            </span>
+          </Link>
+
+          <Link
+            href="/tools/av-analyzer"
+            className="group flex flex-col rounded-2xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-sm transition-colors hover:border-[#E8C84A] hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
+          >
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-500/15 text-rose-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-rose-500/25 group-hover:ring-[#E8C84A]/50">
+              <SpeakerIcon className="h-6 w-6" />
+            </div>
+            <h2 className="mt-4 text-lg font-semibold text-white">
+              AV Analyzer
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-white/60">
+              Speaker counts, displays, wiring takeoff, and proposals
+            </p>
+            <span className="mt-4 text-sm font-medium text-[#E8C84A] group-hover:text-[#f0d56e]">
+              Open tool →
+            </span>
+          </Link>
+
+          <Link
+            href="/tools/smarthome-analyzer"
+            className="group flex flex-col rounded-2xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-sm transition-colors hover:border-[#E8C84A] hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
+          >
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-cyan-500/25 group-hover:ring-[#E8C84A]/50">
+              <SmartHomeIcon className="h-6 w-6" />
+            </div>
+            <h2 className="mt-4 text-lg font-semibold text-white">
+              Smart Home Analyzer
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-white/60">
+              Automation design, device counts, and network guidance
             </p>
             <span className="mt-4 text-sm font-medium text-[#E8C84A] group-hover:text-[#f0d56e]">
               Open tool →

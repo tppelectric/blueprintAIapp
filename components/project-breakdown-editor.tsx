@@ -13,6 +13,8 @@ import {
   materialLineMarkupPct,
   materialLineProfit,
   newPbId,
+  type LaborPreset,
+  type MaterialPreset,
   type PBLaborLine,
   type PBMaterialLine,
   type ProjectBreakdownState,
@@ -32,6 +34,11 @@ type Props = {
   state: ProjectBreakdownState;
   onChange: (next: ProjectBreakdownState) => void;
   projectTitle: string;
+  /** Override Wi‑Fi material presets (e.g. AV / smart home tools). */
+  materialPresetList?: MaterialPreset[];
+  laborPresetList?: LaborPreset[];
+  /** When false, hide the equipment/BOM column (non–Wi‑Fi breakdowns). */
+  showEquipmentColumn?: boolean;
 };
 
 export function ProjectBreakdownEditor({
@@ -39,21 +46,26 @@ export function ProjectBreakdownEditor({
   state,
   onChange,
   projectTitle,
+  materialPresetList,
+  laborPresetList,
+  showEquipmentColumn = true,
 }: Props) {
+  const matList = materialPresetList ?? MATERIAL_PRESETS;
+  const labList = laborPresetList ?? LABOR_PRESETS;
+  const showEq = showEquipmentColumn;
+
   const [pdfBusy, setPdfBusy] = useState(false);
-  const [matPreset, setMatPreset] = useState(MATERIAL_PRESETS[0]!.id);
-  const [matDesc, setMatDesc] = useState(MATERIAL_PRESETS[0]!.label);
+  const [matPreset, setMatPreset] = useState(matList[0]!.id);
+  const [matDesc, setMatDesc] = useState(matList[0]!.label);
   const [matQty, setMatQty] = useState(1);
-  const [matUnit, setMatUnit] = useState(MATERIAL_PRESETS[0]!.unit);
-  const [matUnitCost, setMatUnitCost] = useState(
-    MATERIAL_PRESETS[0]!.defaultUnitCost,
-  );
+  const [matUnit, setMatUnit] = useState(matList[0]!.unit);
+  const [matUnitCost, setMatUnitCost] = useState(matList[0]!.defaultUnitCost);
   const [matMarkup, setMatMarkup] = useState<number | "">("");
   const [showMatForm, setShowMatForm] = useState(false);
 
-  const [labPreset, setLabPreset] = useState(LABOR_PRESETS[0]!.id);
-  const [labTask, setLabTask] = useState(LABOR_PRESETS[0]!.label);
-  const [labHours, setLabHours] = useState(LABOR_PRESETS[0]!.defaultHours);
+  const [labPreset, setLabPreset] = useState(labList[0]!.id);
+  const [labTask, setLabTask] = useState(labList[0]!.label);
+  const [labHours, setLabHours] = useState(labList[0]!.defaultHours);
   const [labTechs, setLabTechs] = useState<number | "">("");
   const [labRate, setLabRate] = useState<number | "">("");
   const [showLabForm, setShowLabForm] = useState(false);
@@ -72,7 +84,7 @@ export function ProjectBreakdownEditor({
 
   const applyMatPreset = (id: string) => {
     setMatPreset(id);
-    const p = MATERIAL_PRESETS.find((x) => x.id === id);
+    const p = matList.find((x) => x.id === id);
     if (!p) return;
     if (id !== "custom") {
       setMatDesc(p.label);
@@ -83,7 +95,7 @@ export function ProjectBreakdownEditor({
 
   const applyLabPreset = (id: string) => {
     setLabPreset(id);
-    const p = LABOR_PRESETS.find((x) => x.id === id);
+    const p = labList.find((x) => x.id === id);
     if (!p) return;
     if (id !== "custom") {
       setLabTask(p.label);
@@ -262,10 +274,14 @@ export function ProjectBreakdownEditor({
         </summary>
         <div className={variant === "full" ? "mt-4" : "mt-3"}>
           <div className="overflow-x-auto rounded-lg border border-[#E8C84A]/25">
-            <table className="w-full min-w-[820px] border-collapse text-sm text-white/90">
+            <table
+              className={`w-full border-collapse text-sm text-white/90 ${showEq ? "min-w-[820px]" : "min-w-[680px]"}`}
+            >
               <thead>
                 <tr className={th}>
-                  <th className="px-2 py-2">Equipment</th>
+                  {showEq ? (
+                    <th className="px-2 py-2">Equipment</th>
+                  ) : null}
                   <th className="px-2 py-2">Description</th>
                   <th className="px-2 py-2 text-right">Qty</th>
                   <th className="px-2 py-2">Unit</th>
@@ -289,25 +305,27 @@ export function ProjectBreakdownEditor({
                   >
                     {matEditId === m.id ? (
                       <>
-                        <td className="px-2 py-2 align-top text-white/45">
-                          {equipOpts ? (
-                            <select
-                              className="max-w-[10rem] rounded border border-white/20 bg-[#0a1628] px-1 py-1 text-xs text-white"
-                              value={m.equipOptionId ?? ""}
-                              onChange={(e) =>
-                                applyEquipPick(m, e.target.value)
-                              }
-                            >
-                              {equipOpts.map((o) => (
-                                <option key={o.id} value={o.id}>
-                                  {o.label} — ${o.unitPrice}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            "—"
-                          )}
-                        </td>
+                        {showEq ? (
+                          <td className="px-2 py-2 align-top text-white/45">
+                            {equipOpts ? (
+                              <select
+                                className="max-w-[10rem] rounded border border-white/20 bg-[#0a1628] px-1 py-1 text-xs text-white"
+                                value={m.equipOptionId ?? ""}
+                                onChange={(e) =>
+                                  applyEquipPick(m, e.target.value)
+                                }
+                              >
+                                {equipOpts.map((o) => (
+                                  <option key={o.id} value={o.id}>
+                                    {o.label} — ${o.unitPrice}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                        ) : null}
                         <td className="px-2 py-2">
                           <input
                             className="w-full rounded border border-white/20 bg-[#0a1628] px-2 py-1 text-sm"
@@ -393,29 +411,31 @@ export function ProjectBreakdownEditor({
                       </>
                     ) : (
                       <>
-                        <td className="max-w-[10rem] px-2 py-2 align-top">
-                          {equipOpts && m.qty > 0 ? (
-                            <select
-                              className="w-full max-w-[10rem] rounded border border-[#E8C84A]/35 bg-[#0a1628] px-1 py-1.5 text-xs text-white"
-                              value={
-                                m.equipOptionId ??
-                                equipOpts[0]?.id ??
-                                ""
-                              }
-                              onChange={(e) =>
-                                applyEquipPick(m, e.target.value)
-                              }
-                            >
-                              {equipOpts.map((o) => (
-                                <option key={o.id} value={o.id}>
-                                  {o.label} — ${o.unitPrice}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <span className="text-white/35">—</span>
-                          )}
-                        </td>
+                        {showEq ? (
+                          <td className="max-w-[10rem] px-2 py-2 align-top">
+                            {equipOpts && m.qty > 0 ? (
+                              <select
+                                className="w-full max-w-[10rem] rounded border border-[#E8C84A]/35 bg-[#0a1628] px-1 py-1.5 text-xs text-white"
+                                value={
+                                  m.equipOptionId ??
+                                  equipOpts[0]?.id ??
+                                  ""
+                                }
+                                onChange={(e) =>
+                                  applyEquipPick(m, e.target.value)
+                                }
+                              >
+                                {equipOpts.map((o) => (
+                                  <option key={o.id} value={o.id}>
+                                    {o.label} — ${o.unitPrice}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="text-white/35">—</span>
+                            )}
+                          </td>
+                        ) : null}
                         <td className="max-w-[200px] px-2 py-2">{m.description}</td>
                         <td className="px-2 py-2 text-right tabular-nums">
                           {m.qty}
@@ -481,7 +501,7 @@ export function ProjectBreakdownEditor({
                   value={matPreset}
                   onChange={(e) => applyMatPreset(e.target.value)}
                 >
-                  {MATERIAL_PRESETS.map((p) => (
+                  {matList.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.label}
                     </option>
@@ -735,7 +755,7 @@ export function ProjectBreakdownEditor({
                   value={labPreset}
                   onChange={(e) => applyLabPreset(e.target.value)}
                 >
-                  {LABOR_PRESETS.map((p) => (
+                  {labList.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.label}
                     </option>

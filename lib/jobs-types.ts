@@ -19,6 +19,8 @@ export const JOB_STATUSES = [
 export type JobAttachmentType =
   | "blueprint_project"
   | "wifi_calculation"
+  | "av_calculation"
+  | "smarthome_calculation"
   | "load_calculation"
   | "nec_checklist"
   | "project_breakdown"

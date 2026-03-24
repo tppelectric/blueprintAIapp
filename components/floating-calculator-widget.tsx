@@ -3,7 +3,240 @@
 import { useMemo, useState } from "react";
 import { useTheme } from "@/lib/theme-context";
 
-type Tab = "ohm" | "power" | "units";
+type Tab = "calc" | "ohm" | "power" | "units";
+
+type CalcOp = "+" | "-" | "×" | "÷";
+
+function calculate(a: number, b: number, op: CalcOp): number {
+  switch (op) {
+    case "+":
+      return a + b;
+    case "-":
+      return a - b;
+    case "×":
+      return a * b;
+    case "÷":
+      return b === 0 ? NaN : a / b;
+    default:
+      return b;
+  }
+}
+
+function fmtDisplay(n: number): string {
+  if (!Number.isFinite(n)) return "Error";
+  const r = Math.round(n * 1e12) / 1e12;
+  let s = String(r);
+  if (s.length > 14) s = n.toPrecision(10);
+  return s;
+}
+
+function StandardCalculatorPanel({ theme }: { theme: "dark" | "light" }) {
+  const [display, setDisplay] = useState("0");
+  const [memory, setMemory] = useState(0);
+  const [value, setValue] = useState<number | null>(null);
+  const [operator, setOperator] = useState<CalcOp | null>(null);
+  const [waitingForOperand, setWaitingForOperand] = useState(false);
+
+  const numClass =
+    theme === "light"
+      ? "rounded-lg border border-slate-200 bg-white py-3 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-50"
+      : "rounded-lg border border-white/20 bg-white py-3 text-sm font-semibold text-[#0a1628] shadow-sm hover:bg-white/90";
+  const opClass =
+    "rounded-lg border border-[#E8C84A]/70 bg-[#E8C84A] py-3 text-sm font-bold text-[#0a1628] shadow-sm hover:bg-[#f0d56e]";
+  const utilClass =
+    theme === "light"
+      ? "rounded-lg border border-slate-300 bg-slate-100 py-2.5 text-xs font-semibold text-slate-800 hover:bg-slate-200"
+      : "rounded-lg border border-white/25 bg-[#0a1628] py-2.5 text-xs font-semibold text-white/90 hover:bg-white/10";
+
+  const inputDigit = (d: string) => {
+    if (waitingForOperand) {
+      setDisplay(d === "." ? "0." : d);
+      setWaitingForOperand(false);
+    } else {
+      if (d === ".") {
+        if (display.includes(".")) return;
+        setDisplay(display + ".");
+      } else if (display === "0" && d !== ".") {
+        setDisplay(d);
+      } else {
+        setDisplay(display + d);
+      }
+    }
+  };
+
+  const inputOp = (next: CalcOp) => {
+    const inputValue = parseFloat(display);
+    if (Number.isNaN(inputValue)) return;
+
+    if (value === null) {
+      setValue(inputValue);
+    } else if (operator) {
+      const nv = calculate(value, inputValue, operator);
+      setDisplay(fmtDisplay(nv));
+      setValue(nv);
+    }
+    setWaitingForOperand(true);
+    setOperator(next);
+  };
+
+  const equals = () => {
+    if (operator === null || value === null) return;
+    const inputValue = parseFloat(display);
+    if (Number.isNaN(inputValue)) return;
+    const nv = calculate(value, inputValue, operator);
+    setDisplay(fmtDisplay(nv));
+    setValue(null);
+    setOperator(null);
+    setWaitingForOperand(true);
+  };
+
+  const clearAll = () => {
+    setDisplay("0");
+    setValue(null);
+    setOperator(null);
+    setWaitingForOperand(false);
+  };
+
+  const backspace = () => {
+    if (waitingForOperand) return;
+    if (display.length <= 1) setDisplay("0");
+    else setDisplay(display.slice(0, -1));
+  };
+
+  const percent = () => {
+    const n = parseFloat(display);
+    if (Number.isNaN(n)) return;
+    setDisplay(fmtDisplay(n / 100));
+  };
+
+  const toggleSign = () => {
+    const n = parseFloat(display);
+    if (Number.isNaN(n)) return;
+    setDisplay(fmtDisplay(-n));
+  };
+
+  const memAdd = () => {
+    const n = parseFloat(display);
+    if (Number.isNaN(n)) return;
+    setMemory((m) => m + n);
+  };
+  const memSub = () => {
+    const n = parseFloat(display);
+    if (Number.isNaN(n)) return;
+    setMemory((m) => m - n);
+  };
+  const memRecall = () => {
+    setDisplay(fmtDisplay(memory));
+    setWaitingForOperand(true);
+  };
+  const memClear = () => setMemory(0);
+
+  const screenBg =
+    theme === "light"
+      ? "border border-slate-200 bg-slate-50 text-slate-900"
+      : "border border-white/15 bg-[#050d18] text-white";
+
+  return (
+    <div className="space-y-2">
+      <div
+        className={`min-h-[3rem] rounded-lg px-3 py-2 text-right text-xl font-semibold tabular-nums tracking-tight ${screenBg}`}
+      >
+        {display}
+      </div>
+      <p
+        className={
+          theme === "light"
+            ? "text-[10px] text-slate-500"
+            : "text-[10px] text-white/40"
+        }
+      >
+        M: {memory !== 0 ? fmtDisplay(memory) : "0"}
+      </p>
+      <div className="grid grid-cols-4 gap-1.5">
+        <button type="button" className={utilClass} onClick={memClear}>
+          MC
+        </button>
+        <button type="button" className={utilClass} onClick={memRecall}>
+          MR
+        </button>
+        <button type="button" className={utilClass} onClick={memSub}>
+          M−
+        </button>
+        <button type="button" className={utilClass} onClick={memAdd}>
+          M+
+        </button>
+
+        <button type="button" className={utilClass} onClick={clearAll}>
+          C
+        </button>
+        <button type="button" className={utilClass} onClick={backspace}>
+          ⌫
+        </button>
+        <button type="button" className={utilClass} onClick={percent}>
+          %
+        </button>
+        <button type="button" className={opClass} onClick={() => inputOp("÷")}>
+          ÷
+        </button>
+
+        {(["7", "8", "9"] as const).map((d) => (
+          <button
+            key={d}
+            type="button"
+            className={numClass}
+            onClick={() => inputDigit(d)}
+          >
+            {d}
+          </button>
+        ))}
+        <button type="button" className={opClass} onClick={() => inputOp("×")}>
+          ×
+        </button>
+
+        {(["4", "5", "6"] as const).map((d) => (
+          <button
+            key={d}
+            type="button"
+            className={numClass}
+            onClick={() => inputDigit(d)}
+          >
+            {d}
+          </button>
+        ))}
+        <button type="button" className={opClass} onClick={() => inputOp("-")}>
+          −
+        </button>
+
+        {(["1", "2", "3"] as const).map((d) => (
+          <button
+            key={d}
+            type="button"
+            className={numClass}
+            onClick={() => inputDigit(d)}
+          >
+            {d}
+          </button>
+        ))}
+        <button type="button" className={opClass} onClick={() => inputOp("+")}>
+          +
+        </button>
+
+        <button type="button" className={utilClass} onClick={toggleSign}>
+          +/−
+        </button>
+        <button type="button" className={numClass} onClick={() => inputDigit("0")}>
+          0
+        </button>
+        <button type="button" className={numClass} onClick={() => inputDigit(".")}>
+          .
+        </button>
+        <button type="button" className={opClass} onClick={equals}>
+          =
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function num(v: string): number | null {
   const n = Number(v);
@@ -561,7 +794,7 @@ export function FloatingCalculatorWidget() {
   const { theme } = useTheme();
   const [open, setOpen] = useState(false);
   const [minimized, setMinimized] = useState(false);
-  const [tab, setTab] = useState<Tab>("ohm");
+  const [tab, setTab] = useState<Tab>("calc");
 
   const panelBg =
     theme === "light"
@@ -610,6 +843,7 @@ export function FloatingCalculatorWidget() {
           <div className="flex border-b border-white/10">
             {(
               [
+                ["calc", "Calculator"],
                 ["ohm", "Ohm"],
                 ["power", "Power"],
                 ["units", "Units"],
@@ -630,6 +864,7 @@ export function FloatingCalculatorWidget() {
             ))}
           </div>
           <div className="max-h-[min(72vh,32rem)] overflow-y-auto p-4 text-sm">
+            {tab === "calc" ? <StandardCalculatorPanel theme={theme} /> : null}
             {tab === "ohm" ? <OhmLawPanel theme={theme} /> : null}
             {tab === "power" ? <PowerPanel theme={theme} /> : null}
             {tab === "units" ? <UnitsPanel theme={theme} /> : null}

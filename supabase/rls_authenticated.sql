@@ -115,6 +115,15 @@ create policy "projects_update_auth" on public.projects
 create policy "projects_delete_auth" on public.projects
   for delete to authenticated using (true);
 
+-- ── nec_questions ─────────────────────────────────────────────────────────
+drop policy if exists "nec_questions_select_all" on public.nec_questions;
+drop policy if exists "nec_questions_insert_all" on public.nec_questions;
+
+create policy "nec_questions_select_auth" on public.nec_questions
+  for select to authenticated using (true);
+create policy "nec_questions_insert_auth" on public.nec_questions
+  for insert to authenticated with check (true);
+
 -- Note: `api_usage` is written only via service-role API routes; leave RLS off or
 -- add service-only policies as needed. `electrical_items` / scan tables:
 -- apply the same `to authenticated` pattern if they currently use `using (true)`.

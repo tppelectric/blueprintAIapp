@@ -56,6 +56,9 @@ export function HomeMarketingHeader() {
           <Link href="/jobs" className={NAV_IDLE}>
             Jobs
           </Link>
+          <Link href="/customers" className={NAV_IDLE}>
+            Customers
+          </Link>
           <HeaderToolsMenu idleClassName={NAV_IDLE} activeClassName={NAV_ACTIVE} />
           <Link href="/upload" className={NAV_IDLE}>
             Upload

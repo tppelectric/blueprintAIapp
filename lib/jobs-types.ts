@@ -66,6 +66,7 @@ export type JobListRow = {
   status: string;
   job_type: string;
   updated_at: string;
+  created_at?: string;
   customer_id?: string | null;
   address?: string | null;
   city?: string | null;

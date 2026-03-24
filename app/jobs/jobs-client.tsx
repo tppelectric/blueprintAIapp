@@ -25,6 +25,39 @@ function formatDate(iso: string): string {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString();
 }
 
+function escapeCsvField(v: string): string {
+  const s = String(v ?? "");
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function jobCustomerExportName(j: JobListRow): string {
+  const raw = j.customers;
+  const c = Array.isArray(raw) ? raw[0] : raw;
+  if (!c) return "";
+  return String(c.company_name || c.contact_name || "").trim();
+}
+
+function formatCreatedDateForCsv(iso: string | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
+function downloadCsv(filename: string, headerRow: string, bodyLines: string[]) {
+  const bom = "\uFEFF";
+  const blob = new Blob([bom + headerRow + "\n" + bodyLines.join("\n")], {
+    type: "text/csv;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 type JobFormState = {
   job_name: string;
   customer_id: string;
@@ -83,7 +116,7 @@ export function JobsClient() {
       const { data, error: qe } = await sb
         .from("jobs")
         .select(
-          "id,job_name,job_number,status,job_type,address,city,state,zip,description,notes,updated_at,customer_id, customers(company_name,contact_name)",
+          "id,job_name,job_number,status,job_type,address,city,state,zip,description,notes,created_at,updated_at,customer_id, customers(company_name,contact_name)",
         )
         .order("updated_at", { ascending: false });
       if (qe) throw qe;
@@ -132,6 +165,46 @@ export function JobsClient() {
     const c = Array.isArray(raw) ? raw[0] : raw;
     if (!c) return "—";
     return c.company_name || c.contact_name || "—";
+  };
+
+  const exportJobTreadCsv = () => {
+    const headers = [
+      "Job Name",
+      "Job Number",
+      "Customer Name",
+      "Status",
+      "Job Type",
+      "Address",
+      "City",
+      "State",
+      "Zip",
+      "Description",
+      "Notes",
+      "Created Date",
+    ];
+    const lines = jobs.map((j) =>
+      [
+        j.job_name,
+        j.job_number,
+        jobCustomerExportName(j),
+        j.status,
+        j.job_type,
+        j.address ?? "",
+        j.city ?? "",
+        j.state ?? "",
+        j.zip ?? "",
+        j.description ?? "",
+        j.notes ?? "",
+        formatCreatedDateForCsv(j.created_at),
+      ]
+        .map(escapeCsvField)
+        .join(","),
+    );
+    downloadCsv(
+      `jobtread-jobs-${new Date().toISOString().slice(0, 10)}.csv`,
+      headers.map(escapeCsvField).join(","),
+      lines,
+    );
   };
 
   const openCreate = () => {
@@ -348,6 +421,14 @@ export function JobsClient() {
             >
               Customers
             </Link>
+            <button
+              type="button"
+              disabled={jobs.length === 0}
+              onClick={exportJobTreadCsv}
+              className="rounded-lg border border-[#E8C84A]/50 px-4 py-2.5 text-sm font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Export for JobTread
+            </button>
           </div>
         </div>
 

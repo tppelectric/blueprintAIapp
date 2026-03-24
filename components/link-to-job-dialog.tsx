@@ -10,21 +10,35 @@ import {
   type JobListRow,
 } from "@/lib/jobs-types";
 
+export type NecQuestionLinkPayload = {
+  question: string;
+  answer: string;
+  jurisdiction: string;
+  necEdition: string;
+};
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  attachmentType: JobAttachmentType;
-  attachmentId: string | null;
+  /** When set, linking saves Q&A to `nec_questions` with `job_id` instead of job_attachments. */
+  necQuestionLink?: NecQuestionLinkPayload;
+  /** Required when not using `necQuestionLink`. */
+  attachmentType?: JobAttachmentType;
+  attachmentId?: string | null;
   attachmentLabel?: string;
 };
 
 export function LinkToJobDialog({
   open,
   onOpenChange,
+  necQuestionLink,
   attachmentType,
   attachmentId,
   attachmentLabel,
 }: Props) {
+  const isNecMode = Boolean(necQuestionLink);
+  const canLink = isNecMode ? true : Boolean(attachmentId);
+
   const [jobs, setJobs] = useState<JobListRow[]>([]);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [search, setSearch] = useState("");
@@ -75,22 +89,42 @@ export function LinkToJobDialog({
   });
 
   const linkToJob = async (jobId: string) => {
-    if (!attachmentId) {
-      setMsg("Save this item first so it has an ID, then link again.");
+    if (!canLink) {
+      setMsg(
+        isNecMode
+          ? "Missing question or answer."
+          : "Save this item first so it has an ID, then link again.",
+      );
       return;
     }
     setBusy(true);
     setMsg(null);
     try {
       const sb = createBrowserClient();
-      const { error } = await sb.from("job_attachments").insert({
-        job_id: jobId,
-        attachment_type: attachmentType,
-        attachment_id: attachmentId,
-        label: attachmentLabel?.trim() || null,
-      });
-      if (error) throw error;
-      setMsg("Linked successfully.");
+      if (necQuestionLink) {
+        const { error } = await sb.from("nec_questions").insert({
+          question: necQuestionLink.question.trim(),
+          answer: necQuestionLink.answer.trim(),
+          jurisdiction: necQuestionLink.jurisdiction,
+          nec_edition: necQuestionLink.necEdition,
+          job_id: jobId,
+        });
+        if (error) throw error;
+        setMsg("Answer saved to job.");
+      } else {
+        if (!attachmentType) {
+          setMsg("Missing attachment type.");
+          return;
+        }
+        const { error } = await sb.from("job_attachments").insert({
+          job_id: jobId,
+          attachment_type: attachmentType,
+          attachment_id: attachmentId!,
+          label: attachmentLabel?.trim() || null,
+        });
+        if (error) throw error;
+        setMsg("Linked successfully.");
+      }
       window.setTimeout(() => onOpenChange(false), 900);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Link failed.");
@@ -100,8 +134,12 @@ export function LinkToJobDialog({
   };
 
   const createAndLink = async () => {
-    if (!attachmentId) {
-      setMsg("Save this item first so it has an ID, then link again.");
+    if (!canLink) {
+      setMsg(
+        isNecMode
+          ? "Missing question or answer."
+          : "Save this item first so it has an ID, then link again.",
+      );
       return;
     }
     const name = newJobName.trim();
@@ -126,14 +164,31 @@ export function LinkToJobDialog({
       if (error) throw error;
       const jobId = data?.id as string | undefined;
       if (!jobId) throw new Error("No job id returned.");
-      const { error: attErr } = await sb.from("job_attachments").insert({
-        job_id: jobId,
-        attachment_type: attachmentType,
-        attachment_id: attachmentId,
-        label: attachmentLabel?.trim() || null,
-      });
-      if (attErr) throw attErr;
-      setMsg("Created job and linked.");
+
+      if (necQuestionLink) {
+        const { error: nqErr } = await sb.from("nec_questions").insert({
+          question: necQuestionLink.question.trim(),
+          answer: necQuestionLink.answer.trim(),
+          jurisdiction: necQuestionLink.jurisdiction,
+          nec_edition: necQuestionLink.necEdition,
+          job_id: jobId,
+        });
+        if (nqErr) throw nqErr;
+        setMsg("Answer saved to job.");
+      } else {
+        if (!attachmentType) {
+          setMsg("Missing attachment type.");
+          return;
+        }
+        const { error: attErr } = await sb.from("job_attachments").insert({
+          job_id: jobId,
+          attachment_type: attachmentType,
+          attachment_id: attachmentId!,
+          label: attachmentLabel?.trim() || null,
+        });
+        if (attErr) throw attErr;
+        setMsg("Created job and linked.");
+      }
       window.setTimeout(() => onOpenChange(false), 900);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Create failed.");
@@ -153,13 +208,15 @@ export function LinkToJobDialog({
     >
       <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/15 bg-[#0a1628] p-6 shadow-xl">
         <h2 id="link-job-title" className="text-lg font-semibold text-white">
-          Link to job
+          {isNecMode ? "Save NEC answer to job" : "Link to job"}
         </h2>
         <p className="mt-1 text-xs text-white/55">
-          Attach this record to a job for tracking. Requires a saved record ID.
+          {isNecMode
+            ? "Choose a job to store this question and full answer in your records."
+            : "Attach this record to a job for tracking. Requires a saved record ID."}
         </p>
 
-        {!attachmentId ? (
+        {!isNecMode && !attachmentId ? (
           <p className="mt-4 rounded-lg border border-amber-500/35 bg-amber-950/30 px-3 py-2 text-sm text-amber-100">
             Save this item first (database save), then open Link to job again.
           </p>
@@ -187,7 +244,7 @@ export function LinkToJobDialog({
               <button
                 key={j.id}
                 type="button"
-                disabled={busy || !attachmentId}
+                disabled={busy || !canLink}
                 onClick={() => void linkToJob(j.id)}
                 className="flex w-full flex-col items-start border-b border-white/5 px-3 py-2 text-left text-sm hover:bg-white/5 disabled:opacity-40"
               >
@@ -261,11 +318,11 @@ export function LinkToJobDialog({
           </label>
           <button
             type="button"
-            disabled={busy || !attachmentId}
+            disabled={busy || !canLink}
             onClick={() => void createAndLink()}
             className="mt-3 w-full rounded-lg bg-[#E8C84A] py-2.5 text-sm font-semibold text-[#0a1628] disabled:opacity-45"
           >
-            Create job & link
+            {isNecMode ? "Create job & save answer" : "Create job & link"}
           </button>
         </div>
 

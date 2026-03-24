@@ -69,6 +69,13 @@ export function WideAppHeader({
               Jobs
             </Link>
           )}
+          {active === "customers" ? (
+            <span className={NAV_ACTIVE}>Customers</span>
+          ) : (
+            <Link href="/customers" className={NAV_IDLE}>
+              Customers
+            </Link>
+          )}
           <HeaderToolsMenu idleClassName={NAV_IDLE} activeClassName={NAV_ACTIVE} />
           {active === "upload" ? (
             <span className={NAV_ACTIVE}>Upload</span>

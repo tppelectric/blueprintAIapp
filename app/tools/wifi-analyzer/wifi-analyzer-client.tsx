@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ToolBlueprintFloorPlanPanel } from "@/components/tool-blueprint-floor-plan-panel";
 import { ToolPageHeader } from "@/components/tool-page-header";
 import { LinkToJobDialog } from "@/components/link-to-job-dialog";
 import { createBrowserClient } from "@/lib/supabase/client";
@@ -15,6 +16,7 @@ import {
   readPdfFileAsArrayBuffer,
   WIFI_PDF_LOAD_ERROR,
 } from "@/lib/wifi-blueprint-preview";
+import { floorPlanScanToWifiRooms } from "@/lib/tool-floor-plan-scan";
 import {
   computeWifiPlan,
   isMeshVendor,
@@ -1151,8 +1153,11 @@ export function WifiAnalyzerClient() {
           <section className="space-y-4">
             <SectionTitle>Blueprint upload (optional)</SectionTitle>
             <p className="text-xs text-white/50">
-              PDFs stay in your browser for heat map overlay — nothing is
-              uploaded to storage.
+              PDFs stay in your browser for the heat map overlay. Use{" "}
+              <strong className="text-white/70">Scan page with AI</strong> below
+              to read room names, approximate sizes, and floors from the
+              selected page (image is sent to our AI for that request only).
+              Manual room entry still works anytime.
             </p>
             {pdfError ? (
               <p className="rounded-lg border border-red-500/40 bg-red-950/35 px-3 py-2 text-sm text-red-200/95">
@@ -1248,6 +1253,27 @@ export function WifiAnalyzerClient() {
                     />
                   </label>
                 ) : null}
+                {pdfArrayBuffer ? (
+                  <div className="mt-4 border-t border-white/10 pt-4">
+                    <ToolBlueprintFloorPlanPanel
+                      tool="wifi"
+                      embedded={{
+                        pdfArrayBuffer,
+                        selectedPage: selectedPdfPage,
+                        pdfPageCount,
+                        previewDataUrl: blueprintDataUrl,
+                      }}
+                      onApplyScan={(res, mode) => {
+                        const mapped = floorPlanScanToWifiRooms(
+                          res.rooms,
+                          newId,
+                        );
+                        if (mode === "replace") setRooms(mapped);
+                        else setRooms((prev) => [...prev, ...mapped]);
+                      }}
+                    />
+                  </div>
+                ) : null}
                 <button
                   type="button"
                   onClick={clearBlueprint}
@@ -1272,7 +1298,8 @@ export function WifiAnalyzerClient() {
             </div>
             <p className="text-xs text-white/50">
               Enter each space; square footage is length × width. Outdoor rooms
-              add outdoor APs when area ≥ 80 sq ft.
+              add outdoor APs when area ≥ 80 sq ft. After a PDF scan, edit any
+              row to fine-tune names, dimensions, or device counts.
             </p>
             <div className="space-y-4">
               {rooms.map((room) => {

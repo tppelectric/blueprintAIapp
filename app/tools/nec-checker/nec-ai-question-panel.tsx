@@ -3,6 +3,7 @@
 import { jsPDF } from "jspdf";
 import type { ReactNode } from "react";
 import { useCallback, useMemo, useRef, useState } from "react";
+import { LinkToJobDialog } from "@/components/link-to-job-dialog";
 
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -361,6 +362,7 @@ export function NecAiQuestionPanel({
   const [lastQuestion, setLastQuestion] = useState<string | null>(null);
   const [rawAnswer, setRawAnswer] = useState<string | null>(null);
   const [copyMsg, setCopyMsg] = useState<string | null>(null);
+  const [jobLinkOpen, setJobLinkOpen] = useState(false);
   const askAbortRef = useRef<AbortController | null>(null);
 
   const parsed = useMemo(() => {
@@ -424,11 +426,11 @@ export function NecAiQuestionPanel({
       <textarea
         value={qInput}
         onChange={(e) => setQInput(e.target.value)}
-        rows={8}
+        rows={4}
         placeholder={
           "Example: Does a bathroom need a dedicated circuit? What GFCI protection is required in a kitchen? What is the minimum service size for a new single family home in NY?"
         }
-        className="mt-4 min-h-[200px] w-full resize-y rounded-xl border-2 border-violet-400/35 bg-[#071422] px-4 py-4 text-base leading-relaxed text-white placeholder:text-white/35 shadow-inner shadow-black/20 outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/35 print:border-gray-300 print:bg-white print:text-black"
+        className="mt-4 min-h-[120px] w-full resize-y rounded-xl border-2 border-violet-400/35 bg-[#071422] px-4 py-3 text-sm leading-relaxed text-white placeholder:text-white/35 shadow-inner shadow-black/20 outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/35 print:border-gray-300 print:bg-white print:text-black md:text-base"
         disabled={loading}
       />
       <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -528,6 +530,13 @@ export function NecAiQuestionPanel({
           <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-white/10 pt-4 print:border-gray-200">
             <button
               type="button"
+              onClick={() => setJobLinkOpen(true)}
+              className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-sky-500 print:bg-sky-800"
+            >
+              Save to Job
+            </button>
+            <button
+              type="button"
               onClick={async () => {
                 const text = buildNecAnswerClipboardText({
                   question: lastQuestion,
@@ -562,6 +571,19 @@ export function NecAiQuestionPanel({
             ) : null}
           </div>
         </div>
+      ) : null}
+
+      {lastQuestion && rawAnswer ? (
+        <LinkToJobDialog
+          open={jobLinkOpen}
+          onOpenChange={setJobLinkOpen}
+          necQuestionLink={{
+            question: lastQuestion,
+            answer: rawAnswer,
+            jurisdiction,
+            necEdition,
+          }}
+        />
       ) : null}
     </section>
   );

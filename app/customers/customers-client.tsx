@@ -157,6 +157,52 @@ export function CustomersClient() {
   const inp =
     "mt-1 w-full rounded-lg border border-white/15 bg-[#0a1628] px-3 py-2 text-sm text-white";
 
+  const escapeCsvField = (v: string) => {
+    const s = String(v ?? "");
+    if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+
+  const exportJobTreadCsv = () => {
+    const headers = [
+      "Company Name",
+      "Contact Name",
+      "Email",
+      "Phone",
+      "Address",
+      "City",
+      "State",
+      "Zip",
+      "Notes",
+    ];
+    const lines = rows.map((c) =>
+      [
+        c.company_name ?? "",
+        c.contact_name ?? "",
+        c.email ?? "",
+        c.phone ?? "",
+        c.address ?? "",
+        c.city ?? "",
+        c.state ?? "",
+        c.zip ?? "",
+        c.notes ?? "",
+      ]
+        .map(escapeCsvField)
+        .join(","),
+    );
+    const bom = "\uFEFF";
+    const blob = new Blob(
+      [bom + headers.map(escapeCsvField).join(",") + "\n" + lines.join("\n")],
+      { type: "text/csv;charset=utf-8" },
+    );
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `jobtread-customers-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="flex min-h-screen flex-col">
       <WideAppHeader active="customers" showTppSubtitle />
@@ -188,6 +234,14 @@ export function CustomersClient() {
             >
               Jobs →
             </Link>
+            <button
+              type="button"
+              disabled={rows.length === 0}
+              onClick={exportJobTreadCsv}
+              className="rounded-lg border border-[#E8C84A]/50 px-4 py-2.5 text-sm font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Export for JobTread
+            </button>
           </div>
         </div>
         {loading ? (

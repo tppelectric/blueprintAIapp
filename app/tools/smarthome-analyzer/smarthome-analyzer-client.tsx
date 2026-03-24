@@ -4,10 +4,12 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ToolBlueprintFloorPlanPanel } from "@/components/tool-blueprint-floor-plan-panel";
 import { ToolPageHeader } from "@/components/tool-page-header";
 import { LinkToJobDialog } from "@/components/link-to-job-dialog";
 import { ProjectBreakdownEditor } from "@/components/project-breakdown-editor";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { floorPlanScanToSmartHomeRooms } from "@/lib/tool-floor-plan-scan";
 import {
   computeSmartHomePlan,
   type ShBudget,
@@ -437,6 +439,15 @@ export function SmartHomeAnalyzerClient() {
               </select>
             </label>
           </section>
+
+          <ToolBlueprintFloorPlanPanel
+            tool="smarthome"
+            onApplyScan={(res, mode) => {
+              const mapped = floorPlanScanToSmartHomeRooms(res.rooms, newId);
+              if (mode === "replace") setRooms(mapped);
+              else setRooms((prev) => [...prev, ...mapped]);
+            }}
+          />
 
           <section className="space-y-4">
             <SectionTitle>Room by room devices</SectionTitle>

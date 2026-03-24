@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS public.nec_questions (
   answer TEXT,
   jurisdiction TEXT DEFAULT 'NY',
   nec_edition TEXT DEFAULT '2023',
+  job_id UUID REFERENCES public.jobs (id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -20,3 +21,7 @@ ALTER TABLE public.nec_questions ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "nec_questions_select_all" ON public.nec_questions;
 CREATE POLICY "nec_questions_select_all"
   ON public.nec_questions FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "nec_questions_insert_all" ON public.nec_questions;
+CREATE POLICY "nec_questions_insert_all"
+  ON public.nec_questions FOR INSERT WITH CHECK (true);

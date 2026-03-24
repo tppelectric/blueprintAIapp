@@ -2,12 +2,11 @@
 
 import { TPP_LOGO_PATH } from "@/lib/tpp-branding";
 
-/** Outer circle is navy; inner box keeps image square at every size. */
 const SIZES = {
-  hero: "h-32 w-32",
-  header: "h-24 w-24",
-  tool: "h-20 w-20",
-  compact: "h-16 w-16",
+  hero: "h-40 w-40",
+  header: "h-32 w-32",
+  tool: "h-24 w-24",
+  compact: "h-20 w-20",
 } as const;
 
 export function TppLogoPill({
@@ -19,7 +18,7 @@ export function TppLogoPill({
 }) {
   return (
     <span
-      className={`flex shrink-0 items-center justify-center rounded-full bg-[#0a1628] p-2 ${SIZES[size]} ${className}`}
+      className={`flex shrink-0 items-center justify-center bg-transparent ${SIZES[size]} ${className}`}
     >
       <span className="flex h-full min-h-0 w-full min-w-0 flex-1 items-center justify-center">
         {/* eslint-disable-next-line @next/next/no-img-element -- public asset */}

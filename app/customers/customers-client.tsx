@@ -29,6 +29,9 @@ export function CustomersClient() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [formMsg, setFormMsg] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CustomerRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -63,6 +66,12 @@ export function CustomersClient() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!toastMsg) return;
+    const t = window.setTimeout(() => setToastMsg(null), 3200);
+    return () => window.clearTimeout(t);
+  }, [toastMsg]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -110,9 +119,11 @@ export function CustomersClient() {
           .update(payload)
           .eq("id", editingId);
         if (ue) throw ue;
+        setToastMsg("Customer updated.");
       } else {
         const { error: ie } = await sb.from("customers").insert(payload);
         if (ie) throw ie;
+        setToastMsg("Customer saved.");
       }
       setModalOpen(false);
       void load();
@@ -123,21 +134,23 @@ export function CustomersClient() {
     }
   };
 
-  const deleteCustomer = async (c: CustomerRow) => {
-    if (
-      !window.confirm(
-        `Delete customer "${c.company_name || c.contact_name || "this record"}"? Jobs may keep a null customer link.`,
-      )
-    ) {
-      return;
-    }
+  const confirmDeleteCustomer = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
       const sb = createBrowserClient();
-      const { error: de } = await sb.from("customers").delete().eq("id", c.id);
+      const { error: de } = await sb
+        .from("customers")
+        .delete()
+        .eq("id", deleteTarget.id);
       if (de) throw de;
+      setDeleteTarget(null);
+      setToastMsg("Customer deleted.");
       void load();
     } catch (e) {
       window.alert(e instanceof Error ? e.message : "Delete failed.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -147,16 +160,27 @@ export function CustomersClient() {
   return (
     <div className="flex min-h-screen flex-col">
       <WideAppHeader active="customers" showTppSubtitle />
+      {toastMsg ? (
+        <div
+          className="fixed bottom-6 right-6 z-[250] max-w-sm rounded-xl border border-emerald-500/40 bg-emerald-950/95 px-4 py-3 text-sm font-medium text-emerald-100 shadow-lg"
+          role="status"
+        >
+          {toastMsg}
+        </div>
+      ) : null}
       <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-10">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <h1 className="text-3xl font-semibold text-white">Customers</h1>
-          <div className="flex flex-wrap gap-2">
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
               onClick={openCreate}
-              className="rounded-lg bg-[#E8C84A] px-4 py-2.5 text-sm font-semibold text-[#0a1628] shadow-sm hover:bg-[#f0d56e]"
+              className="inline-flex items-center gap-2 rounded-xl bg-[#E8C84A] px-6 py-3 text-base font-bold text-[#0a1628] shadow-md hover:bg-[#f0d56e]"
             >
-              + Add Customer
+              <span className="text-xl leading-none" aria-hidden>
+                +
+              </span>
+              Add Customer
             </button>
             <Link
               href="/jobs"
@@ -205,7 +229,7 @@ export function CustomersClient() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => void deleteCustomer(c)}
+                      onClick={() => setDeleteTarget(c)}
                       className="rounded-lg border border-red-500/40 px-3 py-1.5 text-xs font-semibold text-red-200 hover:bg-red-950/40"
                     >
                       Delete
@@ -217,6 +241,51 @@ export function CustomersClient() {
           </ul>
         )}
       </main>
+
+      {deleteTarget ? (
+        <div
+          className="fixed inset-0 z-[210] flex items-center justify-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-cust-title"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-white/15 bg-[#0a1628] p-6 shadow-xl">
+            <h2
+              id="delete-cust-title"
+              className="text-lg font-semibold text-white"
+            >
+              Delete customer?
+            </h2>
+            <p className="mt-3 text-sm text-white/70">
+              Remove{" "}
+              <strong className="text-white">
+                {deleteTarget.company_name ||
+                  deleteTarget.contact_name ||
+                  "this record"}
+              </strong>
+              ? Linked jobs may keep a null customer reference.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => void confirmDeleteCustomer()}
+                className="rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+              >
+                Delete
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => setDeleteTarget(null)}
+                className="rounded-lg border border-white/20 px-4 py-2.5 text-sm text-white/80 hover:bg-white/5"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {modalOpen ? (
         <div

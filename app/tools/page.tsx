@@ -67,6 +67,26 @@ export default function ToolsHubPage() {
         showToolsBackLink={false}
       />
       <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-12">
+        <nav
+          className="mb-10 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm font-medium"
+          aria-label="Leave tools hub"
+        >
+          <Link
+            href="/dashboard"
+            className="text-[#E8C84A] transition-colors hover:text-[#f0d56e]"
+          >
+            ← Dashboard
+          </Link>
+          <span className="text-white/30" aria-hidden>
+            |
+          </span>
+          <Link
+            href="/"
+            className="text-white/75 transition-colors hover:text-[#E8C84A]"
+          >
+            🏠 Home
+          </Link>
+        </nav>
         <ul className="space-y-4">
           {tools.map((t) => (
             <li key={t.href}>

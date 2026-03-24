@@ -52,6 +52,9 @@ export function WideAppHeader({
           className="order-last flex w-full flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm font-medium md:order-none md:flex-1 md:justify-center"
           aria-label="Primary"
         >
+          <Link href="/" className={NAV_IDLE}>
+            Home
+          </Link>
           {active === "dashboard" ? (
             <span className={NAV_ACTIVE}>Dashboard</span>
           ) : (

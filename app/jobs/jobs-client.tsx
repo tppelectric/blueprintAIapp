@@ -57,6 +57,9 @@ export function JobsClient() {
   const [form, setForm] = useState<JobFormState>(emptyJobForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<JobListRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const loadCustomers = useCallback(async () => {
     try {
@@ -65,7 +68,8 @@ export function JobsClient() {
         .from("customers")
         .select("id,company_name,contact_name,email")
         .order("created_at", { ascending: false });
-      if (!ce) setCustomers((data ?? []) as CustomerRow[]);
+      if (ce) throw ce;
+      setCustomers((data ?? []) as CustomerRow[]);
     } catch {
       setCustomers([]);
     }
@@ -110,8 +114,18 @@ export function JobsClient() {
   }, [load]);
 
   useEffect(() => {
+    void loadCustomers();
+  }, [loadCustomers]);
+
+  useEffect(() => {
     if (modalOpen) void loadCustomers();
   }, [modalOpen, loadCustomers]);
+
+  useEffect(() => {
+    if (!toastMsg) return;
+    const t = window.setTimeout(() => setToastMsg(null), 3200);
+    return () => window.clearTimeout(t);
+  }, [toastMsg]);
 
   const customerLabel = (j: JobListRow) => {
     const raw = j.customers;
@@ -184,9 +198,11 @@ export function JobsClient() {
           .update(payload)
           .eq("id", editingId);
         if (ue) throw ue;
+        setToastMsg("Job updated.");
       } else {
         const { error: ie } = await sb.from("jobs").insert(payload);
         if (ie) throw ie;
+        setToastMsg("Job saved.");
       }
       setModalOpen(false);
       void load();
@@ -197,21 +213,23 @@ export function JobsClient() {
     }
   };
 
-  const deleteJob = async (j: JobListRow) => {
-    if (
-      !window.confirm(
-        `Delete job "${j.job_number} · ${j.job_name}"? This cannot be undone.`,
-      )
-    ) {
-      return;
-    }
+  const confirmDeleteJob = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
       const sb = createBrowserClient();
-      const { error: de } = await sb.from("jobs").delete().eq("id", j.id);
+      const { error: de } = await sb
+        .from("jobs")
+        .delete()
+        .eq("id", deleteTarget.id);
       if (de) throw de;
+      setDeleteTarget(null);
+      setToastMsg("Job deleted.");
       void load();
     } catch (e) {
       window.alert(e instanceof Error ? e.message : "Delete failed.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -250,7 +268,7 @@ export function JobsClient() {
         </button>
         <button
           type="button"
-          onClick={() => void deleteJob(j)}
+          onClick={() => setDeleteTarget(j)}
           className="rounded-md border border-red-500/35 px-2 py-1 text-[11px] font-semibold text-red-200 hover:bg-red-950/35"
         >
           Delete
@@ -262,7 +280,14 @@ export function JobsClient() {
           >
             Customer
           </Link>
-        ) : null}
+        ) : (
+          <Link
+            href="/customers"
+            className="rounded-md border border-white/20 px-2 py-1 text-[11px] font-semibold text-white/70 hover:bg-white/10"
+          >
+            Link customer
+          </Link>
+        )}
       </div>
     </div>
   );
@@ -273,16 +298,27 @@ export function JobsClient() {
   return (
     <div className="flex min-h-screen flex-col">
       <WideAppHeader active="jobs" showTppSubtitle />
+      {toastMsg ? (
+        <div
+          className="fixed bottom-6 right-6 z-[250] max-w-sm rounded-xl border border-emerald-500/40 bg-emerald-950/95 px-4 py-3 text-sm font-medium text-emerald-100 shadow-lg"
+          role="status"
+        >
+          {toastMsg}
+        </div>
+      ) : null}
       <main className="mx-auto w-full max-w-7xl flex-1 px-6 py-10">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <h1 className="text-3xl font-semibold text-white">Jobs</h1>
-          <div className="flex flex-wrap gap-2">
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
               onClick={openCreate}
-              className="rounded-lg bg-[#E8C84A] px-4 py-2.5 text-sm font-semibold text-[#0a1628] shadow-sm hover:bg-[#f0d56e]"
+              className="inline-flex items-center gap-2 rounded-xl bg-[#E8C84A] px-6 py-3 text-base font-bold text-[#0a1628] shadow-md hover:bg-[#f0d56e]"
             >
-              + Add Job
+              <span className="text-xl leading-none" aria-hidden>
+                +
+              </span>
+              Add Job
             </button>
             <button
               type="button"
@@ -353,6 +389,49 @@ export function JobsClient() {
           </div>
         )}
       </main>
+
+      {deleteTarget ? (
+        <div
+          className="fixed inset-0 z-[210] flex items-center justify-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-job-title"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-white/15 bg-[#0a1628] p-6 shadow-xl">
+            <h2
+              id="delete-job-title"
+              className="text-lg font-semibold text-white"
+            >
+              Delete job?
+            </h2>
+            <p className="mt-3 text-sm text-white/70">
+              Permanently remove{" "}
+              <strong className="text-white">
+                {deleteTarget.job_number} · {deleteTarget.job_name}
+              </strong>
+              ? This cannot be undone.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => void confirmDeleteJob()}
+                className="rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+              >
+                Delete
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => setDeleteTarget(null)}
+                className="rounded-lg border border-white/20 px-4 py-2.5 text-sm text-white/80 hover:bg-white/5"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {modalOpen ? (
         <div

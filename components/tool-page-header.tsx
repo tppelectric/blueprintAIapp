@@ -21,12 +21,23 @@ export function ToolPageHeader({
     <header className="app-tool-header border-b">
       {showToolsBackLink ? (
         <div className="mx-auto max-w-5xl px-6 pt-4">
-          <Link
-            href="/tools"
-            className="inline-flex items-center gap-1 text-sm font-medium text-[#E8C84A] transition-colors hover:text-[#f0d56e]"
-          >
-            ← Back to Tools
-          </Link>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium sm:text-sm">
+            <Link
+              href="/dashboard"
+              className="text-[#E8C84A] transition-colors hover:text-[#f0d56e]"
+            >
+              🏠 Home
+            </Link>
+            <span className="text-white/25" aria-hidden>
+              |
+            </span>
+            <Link
+              href="/tools"
+              className="text-white/70 transition-colors hover:text-[#E8C84A]"
+            >
+              ← Back to Tools
+            </Link>
+          </div>
         </div>
       ) : null}
       <div className="mx-auto flex max-w-5xl flex-col gap-4 px-6 py-5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">

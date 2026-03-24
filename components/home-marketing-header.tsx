@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { HeaderAuthMenu } from "@/components/header-auth-menu";
 import { GlobalNavSearch } from "@/components/global-nav-search";
 import { HeaderToolsMenu } from "@/components/header-tools-menu";
@@ -17,6 +18,9 @@ const NAV_ACTIVE =
   "font-semibold text-[#E8C84A] rounded-md px-1 py-0.5";
 
 export function HomeMarketingHeader() {
+  const pathname = usePathname();
+  const onHome = pathname === "/";
+
   return (
     <header className="app-header-wide border-b backdrop-blur-md">
       <div className="mx-auto flex max-w-6xl flex-col gap-3 px-6 py-3 sm:px-8 md:flex-row md:items-center md:gap-4">
@@ -39,6 +43,13 @@ export function HomeMarketingHeader() {
           className="order-last flex w-full flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm font-medium md:order-none md:flex-1 md:justify-center"
           aria-label="Primary"
         >
+          {onHome ? (
+            <span className={NAV_ACTIVE}>Home</span>
+          ) : (
+            <Link href="/" className={NAV_IDLE}>
+              Home
+            </Link>
+          )}
           <Link href="/dashboard" className={NAV_IDLE}>
             Dashboard
           </Link>

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import { ToolPageHeader } from "@/components/tool-page-header";
 import { LinkToJobDialog } from "@/components/link-to-job-dialog";
@@ -15,14 +16,34 @@ import { NecQuickReferenceGuides } from "./nec-quick-reference";
 
 const NYS_CUTOFF = new Date("2025-12-30T23:59:59.999Z");
 
-function GoldSectionTitle({ children }: { children: string }) {
+function NecCheckerSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
   return (
-    <div className="mb-4">
-      <h2 className="border-l-4 border-[#E8C84A] pl-3 text-base font-bold uppercase tracking-wide text-white/95">
-        {children}
+    <section className="rounded-2xl border border-[#E8C84A]/20 bg-gradient-to-b from-white/[0.07] to-white/[0.02] p-6 shadow-lg shadow-black/20 md:p-8">
+      <h2 className="text-xl font-bold tracking-tight text-white md:text-2xl">
+        {title}
       </h2>
-      <div className="mt-3 h-px bg-gradient-to-r from-[#E8C84A]/50 via-[#E8C84A]/20 to-transparent" />
-    </div>
+      <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/60">
+        {description}
+      </p>
+      <div className="mt-6">{children}</div>
+    </section>
+  );
+}
+
+function GoldSectionDivider() {
+  return (
+    <div
+      className="my-10 h-px w-full bg-gradient-to-r from-transparent via-[#E8C84A]/55 to-transparent"
+      aria-hidden
+    />
   );
 }
 
@@ -213,24 +234,33 @@ export function NecCheckerClient() {
         </Link>
       </ToolPageHeader>
 
-      <main className="mx-auto max-w-3xl space-y-12 px-6 py-8">
-        <section>
-          <GoldSectionTitle>AI question</GoldSectionTitle>
+      <main className="mx-auto max-w-3xl px-6 py-8">
+        <NecCheckerSection
+          title="AI Code Assistant"
+          description="Ask any NEC question and get instant answers with code references"
+        >
           <NecAiQuestionPanel
             jurisdiction={state}
             necEdition={effectiveEdition}
           />
-        </section>
+        </NecCheckerSection>
 
-        <section>
-          <GoldSectionTitle>Quick reference</GoldSectionTitle>
+        <GoldSectionDivider />
+
+        <NecCheckerSection
+          title="Quick Reference Guides"
+          description="Common electrical code cheat sheets for field use"
+        >
           <NecQuickReferenceGuides />
-        </section>
+        </NecCheckerSection>
 
-        <section>
-          <GoldSectionTitle>Pre-inspection checklist</GoldSectionTitle>
+        <GoldSectionDivider />
 
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+        <NecCheckerSection
+          title="Pre-Inspection Checklist"
+          description="Walk through code requirements before your inspection"
+        >
+          <div className="rounded-xl border border-white/10 bg-black/20 p-5">
             <p className="text-xs text-white/55">
               Set jurisdiction and job context for exports and NEC edition logic.
             </p>
@@ -419,9 +449,9 @@ export function NecCheckerClient() {
               Answer all checklist items to see the summary banner.
             </p>
           )}
-        </section>
+        </NecCheckerSection>
 
-        <p className="text-xs text-white/45">
+        <p className="mt-10 text-xs text-white/45">
           Checklist is a field aid only. Always confirm requirements with the
           adopted code, local amendments, and your AHJ.
         </p>

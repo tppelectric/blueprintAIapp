@@ -15,6 +15,7 @@ import type { WifiAnalyzerInputs, WifiAnalyzerResults } from "@/lib/wifi-analyze
 import {
   averageIndoorCoverageRadiusFt,
   blueprintContainRect,
+  buildHeatMapRoomLayoutNorm,
   canvasToNormalized,
   drawWifiHeatMap,
   exportHeatMapPng,
@@ -98,6 +99,11 @@ export function WifiHeatMapCard({
     return Math.max(b, results.totalIndoorSqFt || 0);
   }, [results]);
 
+  const layoutRooms = useMemo(
+    () => (!blueprintDataUrl ? buildHeatMapRoomLayoutNorm(inputs) : null),
+    [blueprintDataUrl, inputs],
+  );
+
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
     const wrap = wrapRef.current;
@@ -117,11 +123,20 @@ export function WifiHeatMapCard({
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     try {
-      drawWifiHeatMap(ctx, rw, rh, img, markers, radiusFt, buildingSpanFt);
+      drawWifiHeatMap(
+        ctx,
+        rw,
+        rh,
+        img,
+        markers,
+        radiusFt,
+        buildingSpanFt,
+        layoutRooms,
+      );
     } catch (e) {
       console.error("[WifiHeatMapCard] draw failed:", e);
     }
-  }, [img, markers, radiusFt, buildingSpanFt]);
+  }, [img, markers, radiusFt, buildingSpanFt, layoutRooms]);
 
   useIsoLayoutEffect(() => {
     redraw();
@@ -265,7 +280,7 @@ export function WifiHeatMapCard({
             ring = nominal coverage edge. Drag markers; double-click removes;
             single-click empty canvas adds indoor AP. Export adds TPP watermark.
             {!blueprintDataUrl
-              ? " Without a PDF, a dark grid shows estimated AP positions."
+              ? " Without a PDF, rooms render as a proportional layout; colors update as you drag APs."
               : null}
           </p>
           {heatMapInitError ? (

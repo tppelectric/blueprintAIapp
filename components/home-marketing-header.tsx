@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { HeaderAuthMenu } from "@/components/header-auth-menu";
 import { TppLogoPill } from "@/components/tpp-logo-pill";
 import {
   TPP_COMPANY_FULL,
@@ -26,7 +27,7 @@ export function HomeMarketingHeader() {
           </div>
         </div>
         <nav
-          className="flex items-center gap-6 text-sm font-medium text-white/75 sm:gap-8"
+          className="flex flex-wrap items-center gap-5 text-sm font-medium text-white/75 sm:gap-7"
           aria-label="Primary"
         >
           <Link
@@ -34,6 +35,24 @@ export function HomeMarketingHeader() {
             className="transition-colors hover:text-[#E8C84A]"
           >
             Dashboard
+          </Link>
+          <Link
+            href="/jobs"
+            className="transition-colors hover:text-[#E8C84A]"
+          >
+            Jobs
+          </Link>
+          <Link
+            href="/tools"
+            className="transition-colors hover:text-[#E8C84A]"
+          >
+            Tools
+          </Link>
+          <Link
+            href="/upload"
+            className="transition-colors hover:text-[#E8C84A]"
+          >
+            Upload
           </Link>
           <a
             href="#product"
@@ -47,6 +66,7 @@ export function HomeMarketingHeader() {
           >
             Contact
           </a>
+          <HeaderAuthMenu />
         </nav>
       </div>
     </header>

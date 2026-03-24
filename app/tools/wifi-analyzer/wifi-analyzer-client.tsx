@@ -4,9 +4,11 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ToolPageHeader } from "@/components/tool-page-header";
+import { LinkToJobDialog } from "@/components/link-to-job-dialog";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { WifiHeatMapCard } from "@/components/wifi-heatmap-card";
 import { WifiProjectCostCard } from "@/components/wifi-project-cost-card";
+import { WifiProposalTiersCard } from "@/components/wifi-proposal-tiers-card";
 import { WifiVendorComparisonModal } from "@/components/wifi-vendor-comparison-modal";
 import {
   loadPdfDocumentFromArrayBuffer,
@@ -36,8 +38,6 @@ import {
   type WifiRoomInput,
   type YesNoChoice,
 } from "@/lib/wifi-analyzer-engine";
-import { buildWifiBomCsv, downloadWifiBomPdf } from "@/lib/wifi-bom-pdf";
-import { buildProjectCostSummary } from "@/lib/wifi-project-cost";
 import {
   MESH_VS_ENTERPRISE_NOTE,
   WIFI_VENDOR_SELECT_OPTIONS,
@@ -52,6 +52,12 @@ import {
   buildWorkOrderText,
   generateWifiDocumentNumber,
 } from "@/lib/wifi-field-documents";
+import type { ProposalTierId } from "@/lib/wifi-proposal-tiers";
+
+const U6_PRO_TIER_OVERRIDE = {
+  label: "UniFi U6 Pro ($179 ea.)",
+  unit: 179,
+} as const;
 
 function newId() {
   return typeof crypto !== "undefined" && crypto.randomUUID
@@ -296,6 +302,8 @@ export function WifiAnalyzerClient() {
   const [results, setResults] = useState<WifiAnalyzerResults | null>(null);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [savedWifiCalcId, setSavedWifiCalcId] = useState<string | null>(null);
+  const [jobLinkOpen, setJobLinkOpen] = useState(false);
   const [copyMsg, setCopyMsg] = useState<string | null>(null);
   const [calculating, setCalculating] = useState(false);
   const [calcError, setCalcError] = useState<string | null>(null);
@@ -337,6 +345,11 @@ export function WifiAnalyzerClient() {
   const [calcGeneration, setCalcGeneration] = useState(0);
   const [laborRatePerHour, setLaborRatePerHour] = useState(85);
   const [compareOpen, setCompareOpen] = useState(false);
+  const [ubiquitiApOverride, setUbiquitiApOverride] = useState<{
+    label: string;
+    unit: number;
+  } | null>(null);
+  const [tierToast, setTierToast] = useState<string | null>(null);
 
   const resultsAnchorRef = useRef<HTMLDivElement>(null);
 
@@ -550,6 +563,20 @@ export function WifiAnalyzerClient() {
     setRooms((prev) => prev.filter((r) => r.id !== id));
   };
 
+  const duplicateRoom = (id: string) => {
+    setRooms((prev) => {
+      const idx = prev.findIndex((r) => r.id === id);
+      if (idx === -1) return prev;
+      const src = prev[idx];
+      const copy: WifiRoomInput = {
+        ...src,
+        id: newId(),
+        name: `${src.name.trim()} (Copy)`,
+      };
+      return [...prev.slice(0, idx + 1), copy, ...prev.slice(idx + 1)];
+    });
+  };
+
   const runCalc = useCallback(() => {
     setCalcError(null);
     setSaveMsg(null);
@@ -559,11 +586,15 @@ export function WifiAnalyzerClient() {
     const started = Date.now();
     window.setTimeout(() => {
       try {
-        const next = computeWifiPlan(inputs);
+        const stackOpts =
+          vendor === "ubiquiti" && ubiquitiApOverride
+            ? { stackOpts: { ubiquitiIndoorOverride: ubiquitiApOverride } }
+            : undefined;
+        const next = computeWifiPlan(inputs, stackOpts);
         setResults(next);
         setCalcGeneration((g) => g + 1);
       } catch (e) {
-        console.error(e);
+        if (process.env.NODE_ENV === "development") console.error(e);
         setCalcError(
           e instanceof Error ? e.message : "Calculation failed. Check inputs.",
         );
@@ -581,11 +612,12 @@ export function WifiAnalyzerClient() {
         }, pad);
       }
     }, 0);
-  }, [inputs]);
+  }, [inputs, vendor, ubiquitiApOverride]);
 
   const selectVendorAndRecalc = useCallback(
     (v: VendorChoice) => {
       setCompareOpen(false);
+      setUbiquitiApOverride(null);
       setVendor(v);
       setCalcError(null);
       setSaveMsg(null);
@@ -594,9 +626,63 @@ export function WifiAnalyzerClient() {
         setResults(next);
         setCalcGeneration((g) => g + 1);
       } catch (e) {
-        console.error(e);
+        if (process.env.NODE_ENV === "development") console.error(e);
         setCalcError(
           e instanceof Error ? e.message : "Calculation failed. Check inputs.",
+        );
+      }
+    },
+    [inputs],
+  );
+
+  const applyProposalTier = useCallback(
+    (tier: ProposalTierId) => {
+      setCalcError(null);
+      setSaveMsg(null);
+      try {
+        const tpR = computeWifiPlan(inputs, { vendorForStack: "tp_link" });
+        const eeR = computeWifiPlan(inputs, { vendorForStack: "eero" });
+        const accessR = computeWifiPlan(inputs, {
+          vendorForStack: "access_networks",
+        });
+        const arakR = computeWifiPlan(inputs, { vendorForStack: "araknis" });
+
+        if (tier === "good") {
+          const goodV: VendorChoice =
+            tpR.materialSubtotalMid <= eeR.materialSubtotalMid
+              ? "tp_link"
+              : "eero";
+          setVendor(goodV);
+          setUbiquitiApOverride(null);
+          setResults(computeWifiPlan({ ...inputs, vendor: goodV }));
+        } else if (tier === "better") {
+          setVendor("ubiquiti");
+          setUbiquitiApOverride({ ...U6_PRO_TIER_OVERRIDE });
+          setResults(
+            computeWifiPlan(
+              { ...inputs, vendor: "ubiquiti" },
+              {
+                stackOpts: {
+                  ubiquitiIndoorOverride: { ...U6_PRO_TIER_OVERRIDE },
+                },
+              },
+            ),
+          );
+        } else {
+          const bestV: VendorChoice =
+            accessR.materialSubtotalMid <= arakR.materialSubtotalMid
+              ? "access_networks"
+              : "araknis";
+          setVendor(bestV);
+          setUbiquitiApOverride(null);
+          setResults(computeWifiPlan({ ...inputs, vendor: bestV }));
+        }
+        setCalcGeneration((g) => g + 1);
+        setTierToast("Tier updated");
+        window.setTimeout(() => setTierToast(null), 2800);
+      } catch (e) {
+        setCalcError(
+          e instanceof Error ? e.message : "Could not apply tier.",
         );
       }
     },
@@ -651,8 +737,13 @@ export function WifiAnalyzerClient() {
       if (linkedProjectId) {
         row.project_id = linkedProjectId;
       }
-      const { error } = await sb.from("wifi_calculations").insert(row);
+      const { data, error } = await sb
+        .from("wifi_calculations")
+        .insert(row)
+        .select("id")
+        .single();
       if (error) throw error;
+      if (data?.id) setSavedWifiCalcId(String(data.id));
       setSaveMsg("Saved successfully");
     } catch (e) {
       setSaveMsg(
@@ -1168,13 +1259,22 @@ export function WifiAnalyzerClient() {
                           {area > 0 ? `${Math.round(area)} sq ft` : "—"}
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => removeRoom(room.id)}
-                        className="text-xs font-medium text-red-300/90 hover:text-red-200"
-                      >
-                        Remove
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => duplicateRoom(room.id)}
+                          className="text-xs font-medium text-sky-300/90 hover:text-sky-200"
+                        >
+                          Duplicate
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeRoom(room.id)}
+                          className="text-xs font-medium text-red-300/90 hover:text-red-200"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
                     {!complete ? (
                       <p className="mb-2 text-xs text-amber-200/90">
@@ -1344,7 +1444,10 @@ export function WifiAnalyzerClient() {
                     type="radio"
                     name="vendor"
                     checked={vendor === v}
-                    onChange={() => setVendor(v as VendorChoice)}
+                    onChange={() => {
+                      setUbiquitiApOverride(null);
+                      setVendor(v as VendorChoice);
+                    }}
                     className="accent-[#E8C84A]"
                   />
                   {lab}
@@ -1425,6 +1528,13 @@ export function WifiAnalyzerClient() {
               </button>
               <button
                 type="button"
+                onClick={() => setJobLinkOpen(true)}
+                className="rounded-lg border border-sky-500/45 bg-sky-500/15 px-4 py-2.5 text-sm font-semibold text-sky-100 hover:bg-sky-500/25"
+              >
+                Link to job
+              </button>
+              <button
+                type="button"
                 onClick={exportPdf}
                 className="rounded-lg border border-[#E8C84A]/50 bg-[#E8C84A]/15 px-4 py-2.5 text-sm font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/25"
               >
@@ -1476,29 +1586,19 @@ export function WifiAnalyzerClient() {
               </div>
             ) : null}
 
+            <WifiProposalTiersCard
+              inputs={inputs}
+              onSelectTier={applyProposalTier}
+              toast={tierToast}
+            />
+
             <WifiProjectCostCard
               results={results}
+              calcGeneration={calcGeneration}
               laborRatePerHour={laborRatePerHour}
               onLaborRatePerHourChange={setLaborRatePerHour}
-              onExportBomPdf={() =>
-                downloadWifiBomPdf(inputs, results, laborRatePerHour)
-              }
-              onExportBomCsv={() => {
-                const summary = buildProjectCostSummary(
-                  results,
-                  laborRatePerHour,
-                );
-                const csv = buildWifiBomCsv(inputs, results, summary);
-                const blob = new Blob([csv], {
-                  type: "text/csv;charset=utf-8",
-                });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = `wifi-bom-${(inputs.projectName || "export").replace(/\s+/g, "-")}.csv`;
-                a.click();
-                URL.revokeObjectURL(url);
-              }}
+              projectName={projectName}
+              wifiVendor={vendor}
             />
 
             <section className="rounded-2xl border border-emerald-500/30 bg-emerald-950/25 p-6">
@@ -1859,6 +1959,14 @@ export function WifiAnalyzerClient() {
           inputs={inputs}
           currentVendor={vendor}
           onSelectVendorAndRecalc={selectVendorAndRecalc}
+        />
+
+        <LinkToJobDialog
+          open={jobLinkOpen}
+          onOpenChange={setJobLinkOpen}
+          attachmentType="wifi_calculation"
+          attachmentId={savedWifiCalcId}
+          attachmentLabel={projectName || inputs.projectName}
         />
       </main>
     </div>

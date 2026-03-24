@@ -147,10 +147,6 @@ export async function POST(request: Request) {
 
   const userLine = `Look ONLY for the following on this page. Count every instance precisely.\n\nTARGET: ${targetQuery}\n\nReturn ONLY the JSON object with electrical_items and rooms.`;
 
-  console.log(
-    `[analyze-target] Image decoded ${decodedBytes} bytes, mediaType=${claudeMediaType} (client target max ${MAX_IMAGE_BYTES} B)`,
-  );
-
   const anthropic = new Anthropic({ apiKey });
 
   let assistantText: string;

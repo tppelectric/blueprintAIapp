@@ -19,14 +19,16 @@ export function TppLogoPill({
 }) {
   return (
     <span
-      className={`inline-flex shrink-0 items-center justify-center rounded-xl bg-white p-2 ${SIZES[size]} ${className}`}
+      className={`flex shrink-0 items-center justify-center rounded-xl bg-white p-2 ${SIZES[size]} ${className}`}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element -- public asset */}
-      <img
-        src={TPP_LOGO_PATH}
-        alt="TPP Electric"
-        className="h-auto w-full object-contain"
-      />
+      <span className="flex h-full min-h-0 w-full min-w-0 items-center justify-center">
+        {/* eslint-disable-next-line @next/next/no-img-element -- public asset */}
+        <img
+          src={TPP_LOGO_PATH}
+          alt="TPP Electric"
+          className="max-h-full max-w-full object-contain"
+        />
+      </span>
     </span>
   );
 }

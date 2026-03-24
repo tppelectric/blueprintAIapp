@@ -1,9 +1,16 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { HeaderAuthMenu } from "@/components/header-auth-menu";
 import { TppLogoPill } from "@/components/tpp-logo-pill";
 import { TPP_COMPANY_FULL, TPP_TAGLINE } from "@/lib/tpp-branding";
 
-type NavKey = "home" | "dashboard" | "upload" | "symbols";
+type NavKey =
+  | "home"
+  | "dashboard"
+  | "jobs"
+  | "customers"
+  | "tools"
+  | "upload";
 
 const activeNav =
   "border-b-2 border-[#E8C84A] pb-0.5 font-semibold text-[#E8C84A]";
@@ -43,7 +50,7 @@ export function WideAppHeader({
           </div>
         </Link>
         <nav
-          className="flex flex-wrap items-center gap-5 text-sm font-medium sm:gap-8"
+          className="flex flex-wrap items-center gap-4 text-sm font-medium sm:gap-6"
           aria-label="Primary"
         >
           {active === "home" ? (
@@ -60,11 +67,25 @@ export function WideAppHeader({
               Dashboard
             </Link>
           )}
-          {active === "symbols" ? (
-            <span className={activeNav}>Symbol library</span>
+          {active === "jobs" ? (
+            <span className={activeNav}>Jobs</span>
           ) : (
-            <Link href="/dashboard/symbols" className={idleNav}>
-              Symbol library
+            <Link href="/jobs" className={idleNav}>
+              Jobs
+            </Link>
+          )}
+          {active === "customers" ? (
+            <span className={activeNav}>Customers</span>
+          ) : (
+            <Link href="/customers" className={idleNav}>
+              Customers
+            </Link>
+          )}
+          {active === "tools" ? (
+            <span className={activeNav}>Tools</span>
+          ) : (
+            <Link href="/tools" className={idleNav}>
+              Tools
             </Link>
           )}
           {active === "upload" ? (
@@ -75,6 +96,7 @@ export function WideAppHeader({
             </Link>
           )}
           {extraLinks}
+          <HeaderAuthMenu />
         </nav>
       </div>
     </header>

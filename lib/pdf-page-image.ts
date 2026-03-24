@@ -129,9 +129,6 @@ export async function renderPdfPageToPngBase64(
     }
     const bytes = decodedBase64ByteLength(base64);
     if (bytes <= MAX_IMAGE_BYTES) {
-      console.log(
-        `[pdf-page-image] Page ${pageNumber}: rendered at scale ${scale.toFixed(3)}, final size ${bytes} bytes, format: PNG`,
-      );
       return { base64, mediaType: "image/png" };
     }
 
@@ -160,9 +157,6 @@ export async function renderPdfPageToPngBase64(
     }
     const bytes = decodedBase64ByteLength(base64);
     if (bytes <= MAX_IMAGE_BYTES) {
-      console.log(
-        `[pdf-page-image] Page ${pageNumber}: rendered at scale ${scale.toFixed(3)}, final size ${bytes} bytes, format: JPEG`,
-      );
       return { base64, mediaType: "image/jpeg" };
     }
     q -= JPEG_QUALITY_STEP;

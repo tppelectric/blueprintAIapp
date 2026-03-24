@@ -109,10 +109,6 @@ export async function POST(request: Request) {
 
   const validIds = new Set(inputLines.map((l) => l.id));
 
-  console.log(
-    `[verify-counts] Image decoded ${decodedBytes} bytes, mime=${openAiMime} (client target max ${MAX_IMAGE_BYTES} B)`,
-  );
-
   const prompt = `You are an electrical estimator verifying a blueprint takeoff. Another AI listed these line items with counts for THIS PAGE ONLY:
 
 ${JSON.stringify(inputLines, null, 2)}

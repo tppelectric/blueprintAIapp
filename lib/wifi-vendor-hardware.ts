@@ -24,7 +24,8 @@ export type HardwareBomLine = {
 const CAT6_LF = 0.25;
 const KEYSTONE_EA = 4;
 const LV_BRACKET_EA = 5;
-const PATCH_EA = 5;
+const PATCH_3FT = 5;
+const PATCH_6FT = 8;
 
 /** Ubiquiti MSRP reference (user spec). */
 const U6_LITE = 99;
@@ -36,6 +37,7 @@ const CGW_ULTRA = 179;
 const CGW_MAX = 299;
 const USW_LITE_8 = 109;
 const USW_PRO_16 = 299;
+const USW_PRO_24 = 499;
 
 function pickUbiquitiIndoor(totalIndoorSqFt: number): {
   label: string;
@@ -76,9 +78,14 @@ function ubiquitiSwitch(indoorAps: number): { label: string; unit: number } {
       label: `UniFi USW Lite 8 PoE ($${USW_LITE_8})`,
       unit: USW_LITE_8,
     };
+  if (indoorAps <= 12)
+    return {
+      label: `UniFi USW Pro 16 PoE ($${USW_PRO_16})`,
+      unit: USW_PRO_16,
+    };
   return {
-    label: `UniFi USW Pro 16 PoE ($${USW_PRO_16})`,
-    unit: USW_PRO_16,
+    label: `UniFi USW Pro 24 PoE ($${USW_PRO_24})`,
+    unit: USW_PRO_24,
   };
 }
 
@@ -96,6 +103,11 @@ export type VendorMaterialPlan = {
   gatewayRecommendation: string;
 };
 
+export type PlanStackOptions = {
+  /** Force a specific UniFi indoor AP SKU (e.g. proposal “Better” tier). */
+  ubiquitiIndoorOverride?: { label: string; unit: number };
+};
+
 export function planVendorMaterialStack(
   vendor: string,
   indoorAps: number,
@@ -103,13 +115,15 @@ export function planVendorMaterialStack(
   totalIndoorSqFt: number,
   totalDevices: number,
   priority: string,
+  stackOpts?: PlanStackOptions,
 ): VendorMaterialPlan {
   const outdoorUni = `UniFi U6 Mesh / outdoor ($${U6_MESH} ea.)`;
 
   const mesh = vendor === "eero" || vendor === "google_nest" || vendor === "netgear_orbi";
 
   if (vendor === "ubiquiti" || vendor === "none") {
-    const indoor = pickUbiquitiIndoor(totalIndoorSqFt);
+    const indoor =
+      stackOpts?.ubiquitiIndoorOverride ?? pickUbiquitiIndoor(totalIndoorSqFt);
     const sw = ubiquitiSwitch(indoorAps);
     const gw = ubiquitiGateway(totalIndoorSqFt, totalDevices, priority);
     const parts: string[] = [];
@@ -256,7 +270,7 @@ export function planVendorMaterialStack(
         wholeHomeApPlan: line,
       },
       apUnit: indoor.unit,
-      outdoorUnit: outdoorAps > 0 ? 90 : 0,
+      outdoorUnit: outdoorAps > 0 ? 120 : 0,
       switchUnit: 79,
       gatewayUnit: 0,
       gatewayBomLabel: null,
@@ -357,24 +371,32 @@ export function planVendorMaterialStack(
   }
 
   if (vendor === "ruckus") {
-    const apU = totalIndoorSqFt < 3000 ? 350 : 550;
+    const indoorPick =
+      totalIndoorSqFt < 2200
+        ? { label: `Ruckus R350 ($299 ea.)`, unit: 299 }
+        : totalIndoorSqFt < 4000
+          ? { label: `Ruckus R370 ($399 ea.)`, unit: 399 }
+          : { label: `Ruckus R670 ($599 ea.)`, unit: 599 };
+    const t350 = 499;
     const parts: string[] = [];
-    if (indoorAps > 0) parts.push(`${indoorAps}× Ruckus R350 / R550 class ($${apU} ea.)`);
-    if (outdoorAps > 0) parts.push(`${outdoorAps}× Ruckus T350 outdoor ($450 ea.)`);
+    if (indoorAps > 0) parts.push(`${indoorAps}× ${indoorPick.label}`);
+    if (outdoorAps > 0)
+      parts.push(`${outdoorAps}× Ruckus T350 outdoor ($${t350} ea.)`);
     const line = parts.join(" · ") || "—";
     return {
       line,
       equipment: {
-        apModel: "Ruckus R350 / R550 class",
-        outdoorApModel: outdoorAps > 0 ? "Ruckus T350 outdoor" : null,
-        switchNote: "Ruckus ICX PoE+ switch",
+        apModel: indoorPick.label.replace(" ea.", ""),
+        outdoorApModel:
+          outdoorAps > 0 ? `Ruckus T350 outdoor ($${t350} ea.)` : null,
+        switchNote: `Ruckus ICX 7150-C08P switch ($899) — scale on site`,
         switchPorts: 0,
         costRangeLabel: "Ruckus",
         wholeHomeApPlan: line,
       },
-      apUnit: apU,
-      outdoorUnit: outdoorAps > 0 ? 450 : 0,
-      switchUnit: 400,
+      apUnit: indoorPick.unit,
+      outdoorUnit: outdoorAps > 0 ? t350 : 0,
+      switchUnit: 899,
       gatewayUnit: 0,
       gatewayBomLabel: null,
       switchSpendFactor: Math.min(2.2, 1 + indoorAps / 16),
@@ -516,7 +538,14 @@ export function buildHardwareBomLines(
   add("cat6", "CAT6 cable (estimated run length)", cat6FootageLf, "LF", CAT6_LF);
   add("lv-bracket", "Low-voltage mounting bracket", lvBrackets, "ea", LV_BRACKET_EA);
   add("keystone", "RJ45 keystone jack", rj45Jacks, "ea", KEYSTONE_EA);
-  add("patch", "Patch cable (3 ft / 1 ft est.)", patchCables, "ea", PATCH_EA);
+  const nPatch3 = Math.max(0, Math.floor(patchCables / 2));
+  const nPatch6 = Math.max(0, patchCables - nPatch3);
+  if (nPatch3 > 0) {
+    add("patch-3", "Patch cable (3 ft)", nPatch3, "ea", PATCH_3FT);
+  }
+  if (nPatch6 > 0) {
+    add("patch-6", "Patch cable (6 ft)", nPatch6, "ea", PATCH_6FT);
+  }
 
   return lines;
 }

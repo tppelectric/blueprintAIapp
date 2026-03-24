@@ -468,10 +468,6 @@ export async function POST(request: Request) {
       .length;
     const noteCount = allRows.length - symbolOnly;
 
-    console.log(
-      `[detect-legend] inserted ${insertedAll.length} row(s) (${symbolOnly} symbols, ${noteCount} notes) for project=${projectId}`,
-    );
-
     return NextResponse.json({
       ok: true,
       primaryLegendPage,

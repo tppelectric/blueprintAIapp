@@ -97,7 +97,7 @@ export function SymbolsClient() {
   return (
     <div className="flex min-h-screen flex-col">
       <WideAppHeader
-        active="symbols"
+        active="dashboard"
         showTppSubtitle
         extraLinks={
           <Link

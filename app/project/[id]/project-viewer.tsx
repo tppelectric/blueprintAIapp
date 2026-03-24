@@ -56,6 +56,7 @@ import { ScanHistoryPanel } from "./scan-history-panel";
 import { SymbolLegendPanel } from "./symbol-legend-panel";
 import { TakeoffExportDialog } from "./takeoff-export-dialog";
 import { ScanModeDialog } from "./scan-mode-dialog";
+import { LinkToJobDialog } from "@/components/link-to-job-dialog";
 import {
   ScanProgressOverlay,
   type ScanProgressPageRow,
@@ -536,6 +537,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const [takeoffExportOpen, setTakeoffExportOpen] = useState(false);
   const [takeoffExportRoom, setTakeoffExportRoom] =
     useState<DetectedRoomRow | null>(null);
+  const [jobLinkOpen, setJobLinkOpen] = useState(false);
 
   const [scanModeDialogOpen, setScanModeDialogOpen] = useState(false);
   const [scanModeDialogTarget, setScanModeDialogTarget] = useState<
@@ -3291,6 +3293,13 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
             >
               ← Back
             </Link>
+            <button
+              type="button"
+              onClick={() => setJobLinkOpen(true)}
+              className="shrink-0 rounded-lg border border-sky-500/45 bg-sky-500/15 px-3 py-1.5 text-sm font-semibold text-sky-100 hover:bg-sky-500/25"
+            >
+              Link to job
+            </button>
             <div className="min-w-0">
               <h1 className="truncate text-lg font-semibold text-white sm:text-xl">
                 {name}
@@ -4705,6 +4714,14 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         onStartMatch={startSymbolMatch}
         legendRescanBusy={legendManualRescanBusy}
         onLegendRescan={runLegendRescan}
+      />
+
+      <LinkToJobDialog
+        open={jobLinkOpen}
+        onOpenChange={setJobLinkOpen}
+        attachmentType="blueprint_project"
+        attachmentId={projectId}
+        attachmentLabel={name}
       />
     </div>
   );

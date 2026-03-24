@@ -249,11 +249,6 @@ export async function POST(request: Request) {
   const claudeMediaType =
     mediaTypeRaw === "image/jpeg" ? "image/jpeg" : "image/png";
 
-  const base64StringBytes = Buffer.byteLength(imageBase64, "utf8");
-  console.log(
-    `[analyze-page] Image sent to Claude — base64 string: ${base64StringBytes} bytes, decoded: ${decodedBytes} bytes, mediaType=${claudeMediaType} (client target max ${MAX_IMAGE_BYTES} B, project=${projectId} page=${pageNumber})`,
-  );
-
   let legendAppendix = "";
   try {
     const supabaseLegend = createServiceRoleClient();
@@ -543,10 +538,6 @@ No project-specific symbol legend is on file for this project — use standard N
         scanErr.details,
         scanErr.hint,
         scanErr.code,
-      );
-    } else {
-      console.log(
-        `[analyze-page] saved_scans snapshot "${scanName}" (project=${projectId} page=${pageNumber} items=${rows.length} rooms=${roomRows.length})`,
       );
     }
   } catch (e) {

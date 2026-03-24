@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { HeaderAuthMenu } from "@/components/header-auth-menu";
 import { TppLogoPill } from "@/components/tpp-logo-pill";
 
 export function ToolPageHeader({
@@ -24,7 +25,10 @@ export function ToolPageHeader({
             ) : null}
           </div>
         </div>
-        {children}
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          {children}
+          <HeaderAuthMenu />
+        </div>
       </div>
     </header>
   );

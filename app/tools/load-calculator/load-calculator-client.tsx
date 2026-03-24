@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import { ToolPageHeader } from "@/components/tool-page-header";
+import { LinkToJobDialog } from "@/components/link-to-job-dialog";
 import { createBrowserClient } from "@/lib/supabase/client";
 import {
   computeCommercialLoad,
@@ -78,6 +79,8 @@ export function LoadCalculatorClient() {
   const [saved, setSaved] = useState<SavedRow[]>([]);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [loadBusy, setLoadBusy] = useState(false);
+  const [savedLoadCalcId, setSavedLoadCalcId] = useState<string | null>(null);
+  const [jobLinkOpen, setJobLinkOpen] = useState(false);
 
   const resSquareFootage = sqFt === "" ? 0 : sqFt;
   const comSquareFootage = cSq === "" ? 0 : cSq;
@@ -199,13 +202,18 @@ export function LoadCalculatorClient() {
           : { tab: "commercial", ...comInput };
       const results =
         tab === "residential" ? resResults : comResults;
-      const { error } = await sb.from("load_calculations").insert({
-        project_name: projectName.trim() || "Untitled",
-        building_type: tab,
-        inputs_json: inputs,
-        results_json: results,
-      });
+      const { data, error } = await sb
+        .from("load_calculations")
+        .insert({
+          project_name: projectName.trim() || "Untitled",
+          building_type: tab,
+          inputs_json: inputs,
+          results_json: results,
+        })
+        .select("id")
+        .single();
       if (error) throw error;
+      if (data?.id) setSavedLoadCalcId(String(data.id));
       setSaveMsg("Saved.");
       void refreshSaved();
     } catch (e) {
@@ -285,12 +293,21 @@ export function LoadCalculatorClient() {
         title="Electrical Load Calculator"
         subtitle="NEC Article 220 — 2023 Edition"
       >
-        <Link
-          href="/dashboard"
-          className="text-sm font-medium text-[#E8C84A] hover:text-[#f0d56e]"
-        >
-          ← Dashboard
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setJobLinkOpen(true)}
+            className="rounded-lg border border-sky-500/45 bg-sky-500/15 px-3 py-2 text-sm font-semibold text-sky-100 hover:bg-sky-500/25"
+          >
+            Link to job
+          </button>
+          <Link
+            href="/dashboard"
+            className="rounded-lg border border-white/20 px-3 py-2 text-sm font-medium text-[#E8C84A] hover:bg-white/5"
+          >
+            ← Dashboard
+          </Link>
+        </div>
       </ToolPageHeader>
 
       <main className="mx-auto max-w-4xl px-6 py-8">
@@ -760,6 +777,14 @@ export function LoadCalculatorClient() {
           For estimation and education only. Verify all load calculations and
           code requirements with a licensed professional and your AHJ.
         </p>
+
+        <LinkToJobDialog
+          open={jobLinkOpen}
+          onOpenChange={setJobLinkOpen}
+          attachmentType="load_calculation"
+          attachmentId={savedLoadCalcId}
+          attachmentLabel={projectName}
+        />
       </main>
     </div>
   );

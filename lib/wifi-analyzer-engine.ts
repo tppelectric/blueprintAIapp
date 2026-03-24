@@ -5,6 +5,7 @@ import {
   planVendorMaterialStack,
   sumBomMaterialSubtotal,
   type HardwareBomLine,
+  type PlanStackOptions,
 } from "@/lib/wifi-vendor-hardware";
 
 export type { HardwareBomLine };
@@ -443,6 +444,7 @@ export function gatewayRecommendation(
   indoorSqFt: number,
   totalDevices: number,
   priority: PlanningPriority,
+  stackOpts?: PlanStackOptions,
 ): string {
   return planVendorMaterialStack(
     vendor,
@@ -451,8 +453,17 @@ export function gatewayRecommendation(
     Math.max(1, indoorSqFt),
     totalDevices,
     priority,
+    stackOpts,
   ).gatewayRecommendation;
 }
+
+/** Optional stack overrides (e.g. proposal tiers). */
+export type ComputeWifiPlanOptions = {
+  /** Use this vendor for hardware BOM instead of `inputs.vendor`. */
+  vendorForStack?: VendorChoice;
+  /** Passed through when the stack vendor is UniFi. */
+  stackOpts?: PlanStackOptions;
+};
 
 function budgetCostRange(b: BudgetTier): string {
   switch (b) {
@@ -566,7 +577,10 @@ function buildSummaryText(
   return lines.join("\n");
 }
 
-export function computeWifiPlan(inputs: WifiAnalyzerInputs): WifiAnalyzerResults {
+export function computeWifiPlan(
+  inputs: WifiAnalyzerInputs,
+  options?: ComputeWifiPlanOptions,
+): WifiAnalyzerResults {
   const rooms = inputs.rooms ?? [];
   const totalRooms = rooms.length;
   const completeRooms = rooms.filter(isRoomComplete).length;
@@ -643,13 +657,15 @@ export function computeWifiPlan(inputs: WifiAnalyzerInputs): WifiAnalyzerResults
 
   const recommendedAps = indoorAps + outdoorAps;
 
+  const stackVendor = options?.vendorForStack ?? inputs.vendor;
   const stack = planVendorMaterialStack(
-    inputs.vendor,
+    stackVendor,
     indoorAps,
     outdoorAps,
     Math.max(1, totalIndoorSqFt),
     totalDevices,
     inputs.planningPriority,
+    options?.stackOpts,
   );
   const equipment: EquipmentRec = { ...stack.equipment };
   const wholePlanLine = stack.line;
@@ -695,7 +711,7 @@ export function computeWifiPlan(inputs: WifiAnalyzerInputs): WifiAnalyzerResults
   }
 
   const hardwareBomLines = buildHardwareBomLines(
-    inputs.vendor,
+    stackVendor,
     stack,
     indoorAps,
     outdoorAps,

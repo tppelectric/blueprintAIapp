@@ -14,6 +14,93 @@ export type HeatMapMarker = {
   label: number;
 };
 
+export type HeatMapRoomZoneTier = "strong" | "good" | "marginal" | "poor";
+
+/** Room rectangle in normalized coordinates (full canvas) when no PDF is loaded. */
+export type HeatMapLayoutRoom = {
+  id: string;
+  name: string;
+  sqFt: number;
+  floor: number;
+  outdoor: boolean;
+  nx: number;
+  ny: number;
+  nw: number;
+  nh: number;
+};
+
+/**
+ * Proportional room tiles by floor (highest floor at top, floor 1 lower, outdoor bottom).
+ */
+export function buildHeatMapRoomLayoutNorm(
+  inputs: WifiAnalyzerInputs,
+): HeatMapLayoutRoom[] {
+  const rooms = inputs.rooms ?? [];
+  const complete = rooms.filter((r) => isRoomCompleteLike(r));
+  if (!complete.length) return [];
+
+  const pad = 0.05;
+  const W = 1 - 2 * pad;
+  const H = 1 - 2 * pad;
+
+  const indoor = complete.filter((r) => !r.outdoor);
+  const outdoor = complete.filter((r) => r.outdoor);
+  const totalArea = complete.reduce(
+    (s, r) => s + Math.max(0, r.lengthFt) * Math.max(0, r.widthFt),
+    0,
+  );
+  if (totalArea <= 0) return [];
+
+  const floors = [...new Set(indoor.map((r) => r.floor))].sort((a, b) => b - a);
+
+  type Seg =
+    | { tag: "indoor"; floor: number; rooms: typeof complete }
+    | { tag: "outdoor"; rooms: typeof complete };
+  const segments: Seg[] = [];
+  for (const f of floors) {
+    const fr = indoor.filter((r) => r.floor === f);
+    if (fr.length) segments.push({ tag: "indoor", floor: f, rooms: fr });
+  }
+  if (outdoor.length) segments.push({ tag: "outdoor", rooms: outdoor });
+
+  const out: HeatMapLayoutRoom[] = [];
+  let y = pad;
+
+  for (const seg of segments) {
+    const floorArea = seg.rooms.reduce(
+      (s, r) => s + Math.max(0, r.lengthFt) * Math.max(0, r.widthFt),
+      0,
+    );
+    const bandH = (floorArea / totalArea) * H;
+    const sortedRooms = [...seg.rooms].sort(
+      (a, b) => b.lengthFt * b.widthFt - a.lengthFt * a.widthFt,
+    );
+    let x = pad;
+    for (const room of sortedRooms) {
+      const area = Math.max(0, room.lengthFt) * Math.max(0, room.widthFt);
+      const rw = (area / floorArea) * W;
+      const nh = bandH * 0.88;
+      const vOff = (bandH - nh) / 2;
+      const gap = rw * 0.02;
+      out.push({
+        id: room.id,
+        name: room.name.trim() || "Room",
+        sqFt: Math.round(area),
+        floor: seg.tag === "outdoor" ? 0 : seg.floor,
+        outdoor: seg.tag === "outdoor",
+        nx: x + gap / 2,
+        ny: y + vOff,
+        nw: Math.max(0.02, rw - gap),
+        nh,
+      });
+      x += rw;
+    }
+    y += bandH;
+  }
+
+  return out;
+}
+
 function isRoomCompleteLike(r: {
   name: string;
   lengthFt: number;
@@ -98,6 +185,22 @@ export function suggestWifiHeatMapMarkers(
   const cols = Math.max(1, Math.ceil(Math.sqrt(Math.max(1, indoor))));
   const rows = Math.max(1, Math.ceil(indoor / cols));
 
+  const layoutNorm = buildHeatMapRoomLayoutNorm(inputs);
+  const indoorLayoutCenters = layoutNorm
+    .filter((r) => !r.outdoor)
+    .sort((a, b) => b.sqFt - a.sqFt)
+    .map((r) => ({
+      nx: Math.min(0.97, Math.max(0.03, r.nx + r.nw / 2)),
+      ny: Math.min(0.97, Math.max(0.03, r.ny + r.nh / 2)),
+    }));
+  const outdoorLayoutCenters = layoutNorm
+    .filter((r) => r.outdoor)
+    .sort((a, b) => b.sqFt - a.sqFt)
+    .map((r) => ({
+      nx: Math.min(0.97, Math.max(0.03, r.nx + r.nw / 2)),
+      ny: Math.min(0.97, Math.max(0.03, r.ny + r.nh / 2)),
+    }));
+
   for (let i = 0; i < indoor; i++) {
     let nx: number;
     let ny: number;
@@ -115,6 +218,9 @@ export function suggestWifiHeatMapMarkers(
         nx = Math.min(0.92, Math.max(0.08, nx));
         ny = Math.min(0.88, Math.max(0.1, ny));
       }
+    } else if (indoorLayoutCenters[i] !== undefined) {
+      nx = indoorLayoutCenters[i].nx;
+      ny = indoorLayoutCenters[i].ny;
     } else {
       const col = i % cols;
       const row = Math.floor(i / cols);
@@ -131,8 +237,18 @@ export function suggestWifiHeatMapMarkers(
   }
 
   for (let j = 0; j < outdoor; j++) {
-    const nx = outdoor <= 1 ? 0.5 : 0.2 + (j / Math.max(1, outdoor - 1)) * 0.6;
-    const ny = hasBlueprint ? 0.88 : 0.86;
+    let nx: number;
+    let ny: number;
+    if (hasBlueprint) {
+      nx = outdoor <= 1 ? 0.5 : 0.2 + (j / Math.max(1, outdoor - 1)) * 0.6;
+      ny = 0.88;
+    } else if (outdoorLayoutCenters[j] !== undefined) {
+      nx = outdoorLayoutCenters[j].nx;
+      ny = outdoorLayoutCenters[j].ny;
+    } else {
+      nx = outdoor <= 1 ? 0.5 : 0.2 + (j / Math.max(1, outdoor - 1)) * 0.6;
+      ny = 0.86;
+    }
     markers.push({
       id: newMarkerId(),
       nx,
@@ -185,6 +301,62 @@ function markerCanvasXY(
   };
 }
 
+function zoneTierFromMarkerDistance(
+  distPx: number,
+  rStrongPx: number,
+): HeatMapRoomZoneTier {
+  if (!Number.isFinite(distPx) || distPx === Infinity) return "poor";
+  if (distPx < rStrongPx * 0.38) return "strong";
+  if (distPx < rStrongPx * 0.72) return "good";
+  if (distPx < rStrongPx * 1.05) return "marginal";
+  return "poor";
+}
+
+function minDistToKindPx(
+  cx: number,
+  cy: number,
+  markers: HeatMapMarker[],
+  rect: BlueprintLayoutRect,
+  kind: "indoor" | "outdoor",
+): number {
+  let d = Infinity;
+  for (const m of markers) {
+    if (m.kind !== kind) continue;
+    const { x, y } = markerCanvasXY(m, rect);
+    const dist = Math.hypot(cx - x, cy - y);
+    if (dist < d) d = dist;
+  }
+  return d;
+}
+
+function roomZoneTierFromMarkers(
+  room: HeatMapLayoutRoom,
+  markers: HeatMapMarker[],
+  rect: BlueprintLayoutRect,
+  rStrongPx: number,
+  cw: number,
+  ch: number,
+): HeatMapRoomZoneTier {
+  const rcx = (room.nx + room.nw / 2) * cw;
+  const rcy = (room.ny + room.nh / 2) * ch;
+  const kind = room.outdoor ? "outdoor" : "indoor";
+  const dist = minDistToKindPx(rcx, rcy, markers, rect, kind);
+  return zoneTierFromMarkerDistance(dist, rStrongPx);
+}
+
+function roomFillForTier(tier: HeatMapRoomZoneTier): string {
+  switch (tier) {
+    case "strong":
+      return "rgba(34,197,94,0.5)";
+    case "good":
+      return "rgba(234,179,8,0.44)";
+    case "marginal":
+      return "rgba(249,115,22,0.48)";
+    default:
+      return "rgba(239,68,68,0.5)";
+  }
+}
+
 export function drawWifiHeatMap(
   ctx: CanvasRenderingContext2D,
   cw: number,
@@ -193,15 +365,21 @@ export function drawWifiHeatMap(
   markers: HeatMapMarker[],
   radiusFt: number,
   buildingSpanFt: number,
+  layoutRooms: HeatMapLayoutRoom[] | null = null,
 ): void {
   ctx.clearRect(0, 0, cw, ch);
   ctx.fillStyle = "#0f172a";
   ctx.fillRect(0, 0, cw, ch);
 
   let rect: BlueprintLayoutRect = { x: 0, y: 0, w: cw, h: ch };
+  const useRoomLayout = !bg && layoutRooms && layoutRooms.length > 0;
+
   if (bg && bg.naturalWidth > 0) {
     rect = blueprintContainRect(cw, ch, bg.naturalWidth, bg.naturalHeight);
     ctx.drawImage(bg, rect.x, rect.y, rect.w, rect.h);
+  } else if (useRoomLayout) {
+    ctx.fillStyle = "#0f172a";
+    ctx.fillRect(0, 0, cw, ch);
   } else {
     ctx.fillStyle = "#1e293b";
     ctx.fillRect(0, 0, cw, ch);
@@ -242,10 +420,50 @@ export function drawWifiHeatMap(
   const rMid = rStrong * 0.75;
   const rWeak = rStrong * 0.5;
 
+  if (useRoomLayout && layoutRooms) {
+    for (const room of layoutRooms) {
+      const x = room.nx * cw;
+      const y = room.ny * ch;
+      const w = room.nw * cw;
+      const hpx = room.nh * ch;
+      const tier = roomZoneTierFromMarkers(
+        room,
+        markers,
+        rect,
+        rStrong,
+        cw,
+        ch,
+      );
+      ctx.fillStyle = roomFillForTier(tier);
+      ctx.fillRect(x, y, w, hpx);
+      ctx.strokeStyle = "rgba(255,255,255,0.28)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, w, hpx);
+      const label =
+        room.name.length > 20 ? `${room.name.slice(0, 18)}…` : room.name;
+      ctx.fillStyle = "rgba(248,250,252,0.95)";
+      ctx.font = "600 11px system-ui,sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, x + w / 2, y + hpx / 2 - 8);
+      ctx.font = "10px system-ui,sans-serif";
+      ctx.fillStyle = "rgba(226,232,240,0.88)";
+      ctx.fillText(`${room.sqFt} sq ft`, x + w / 2, y + hpx / 2 + 8);
+      const flLabel = room.outdoor ? "Outdoor" : `Fl ${room.floor}`;
+      ctx.font = "9px system-ui,sans-serif";
+      ctx.fillStyle = "rgba(148,163,184,0.95)";
+      ctx.fillText(flLabel, x + w / 2, y + hpx / 2 + 22);
+    }
+    ctx.textAlign = "start";
+    ctx.textBaseline = "alphabetic";
+  }
+
   ctx.save();
   ctx.globalCompositeOperation = "source-over";
-  ctx.fillStyle = "rgba(239,68,68,0.09)";
-  ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+  if (!useRoomLayout) {
+    ctx.fillStyle = "rgba(239,68,68,0.09)";
+    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+  }
   ctx.restore();
 
   ctx.save();

@@ -9,6 +9,9 @@ export type LaborCostLine = {
   lineTotal: number;
 };
 
+/** Aligns with Wi‑Fi BOM lines for per-line equipment pickers. */
+export type PBEquipSlot = "indoor-ap" | "outdoor-ap" | "poe-switch";
+
 export type CostMaterialRow = {
   key: string;
   item: string;
@@ -16,6 +19,7 @@ export type CostMaterialRow = {
   unit: string;
   unitCost: number;
   total: number;
+  bomSlot?: PBEquipSlot | null;
 };
 
 export type ProjectCostSummary = {
@@ -44,19 +48,26 @@ export function buildCostCardMaterialRows(
 
   const inL = bomLine(results, "indoor-ap");
   const outL = bomLine(results, "outdoor-ap");
-  if (inL || outL) {
-    const qty = (inL?.quantity ?? 0) + (outL?.quantity ?? 0);
-    const total = (inL?.lineTotal ?? 0) + (outL?.lineTotal ?? 0);
-    const parts: string[] = [];
-    if (inL) parts.push(inL.description);
-    if (outL) parts.push(outL.description);
+  if (inL) {
     rows.push({
-      key: "aps",
-      item: `Wireless APs — ${parts.join(" · ")}`,
-      qty,
+      key: "indoor-ap",
+      item: `Wireless indoor AP — ${inL.description}`,
+      qty: inL.quantity,
       unit: "EA",
-      unitCost: qty > 0 ? Math.round((total / qty) * 100) / 100 : 0,
-      total,
+      unitCost: inL.unitPrice,
+      total: inL.lineTotal,
+      bomSlot: "indoor-ap",
+    });
+  }
+  if (outL) {
+    rows.push({
+      key: "outdoor-ap",
+      item: `Wireless outdoor AP — ${outL.description}`,
+      qty: outL.quantity,
+      unit: "EA",
+      unitCost: outL.unitPrice,
+      total: outL.lineTotal,
+      bomSlot: "outdoor-ap",
     });
   }
 
@@ -70,6 +81,7 @@ export function buildCostCardMaterialRows(
       unit: "EA",
       unitCost: 0,
       total: 0,
+      bomSlot: null,
     });
     rows.push({
       key: "gateway",
@@ -89,6 +101,7 @@ export function buildCostCardMaterialRows(
       unit: "EA",
       unitCost: sw || oc ? swTot : 0,
       total: swTot,
+      bomSlot: "poe-switch",
     });
     const gw = bomLine(results, "gateway");
     rows.push({
@@ -136,15 +149,18 @@ export function buildCostCardMaterialRows(
       total: ks.lineTotal,
     });
   }
-  const patch = bomLine(results, "patch");
-  if (patch) {
+  const patch3 = bomLine(results, "patch-3");
+  const patch6 = bomLine(results, "patch-6");
+  if (patch3 || patch6) {
+    const qty = (patch3?.quantity ?? 0) + (patch6?.quantity ?? 0);
+    const total = (patch3?.lineTotal ?? 0) + (patch6?.lineTotal ?? 0);
     rows.push({
       key: "patch",
-      item: "Patch cables",
-      qty: patch.quantity,
+      item: "Patch cables (3 ft & 6 ft)",
+      qty,
       unit: "EA",
-      unitCost: patch.unitPrice,
-      total: patch.lineTotal,
+      unitCost: qty > 0 ? Math.round((total / qty) * 100) / 100 : 0,
+      total,
     });
   }
 

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import { ToolPageHeader } from "@/components/tool-page-header";
+import { LinkToJobDialog } from "@/components/link-to-job-dialog";
 import { createBrowserClient } from "@/lib/supabase/client";
 import {
   NEC_CHECKLIST_SECTIONS,
@@ -92,6 +93,8 @@ export function NecCheckerClient() {
   const [runEdition, setRunEdition] = useState<"2023" | "2017">("2023");
   const [saved, setSaved] = useState<SavedNec[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
+  const [savedNecId, setSavedNecId] = useState<string | null>(null);
+  const [jobLinkOpen, setJobLinkOpen] = useState(false);
 
   const permitAsDate = useMemo(() => {
     if (!permitDate) return null;
@@ -172,16 +175,21 @@ export function NecCheckerClient() {
     setMsg(null);
     try {
       const sb = createBrowserClient();
-      const { error } = await sb.from("nec_checklists").insert({
-        project_name: projectName.trim() || "Untitled",
-        jurisdiction: state,
-        permit_date: permitDate || null,
-        nec_edition: effectiveEdition,
-        occupancy_type: occupancyType,
-        answers_json: answers,
-        violations_count: fail,
-      });
+      const { data, error } = await sb
+        .from("nec_checklists")
+        .insert({
+          project_name: projectName.trim() || "Untitled",
+          jurisdiction: state,
+          permit_date: permitDate || null,
+          nec_edition: effectiveEdition,
+          occupancy_type: occupancyType,
+          answers_json: answers,
+          violations_count: fail,
+        })
+        .select("id")
+        .single();
       if (error) throw error;
+      if (data?.id) setSavedNecId(String(data.id));
       setMsg("Checklist saved.");
       void refreshSaved();
     } catch (e) {
@@ -219,12 +227,21 @@ export function NecCheckerClient() {
         title="NEC 2023 Code Checker"
         subtitle="New York State Edition"
       >
-        <Link
-          href="/dashboard"
-          className="text-sm font-medium text-[#E8C84A] hover:text-[#f0d56e]"
-        >
-          ← Dashboard
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setJobLinkOpen(true)}
+            className="rounded-lg border border-sky-500/45 bg-sky-500/15 px-3 py-2 text-sm font-semibold text-sky-100 hover:bg-sky-500/25"
+          >
+            Link to job
+          </button>
+          <Link
+            href="/dashboard"
+            className="rounded-lg border border-white/20 px-3 py-2 text-sm font-medium text-[#E8C84A] hover:bg-white/5"
+          >
+            ← Dashboard
+          </Link>
+        </div>
       </ToolPageHeader>
 
       <main className="mx-auto max-w-3xl px-6 py-8">
@@ -446,6 +463,14 @@ export function NecCheckerClient() {
           Checklist is a field aid only. Always confirm requirements with the
           adopted code, local amendments, and your AHJ.
         </p>
+
+        <LinkToJobDialog
+          open={jobLinkOpen}
+          onOpenChange={setJobLinkOpen}
+          attachmentType="nec_checklist"
+          attachmentId={savedNecId}
+          attachmentLabel={projectName}
+        />
       </main>
     </div>
   );

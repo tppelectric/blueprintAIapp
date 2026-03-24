@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { DashboardApiUsageCard } from "@/components/dashboard-api-usage-card";
 import { WideAppHeader } from "@/components/wide-app-header";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { fetchBlueprintSignedUrl } from "@/lib/fetch-blueprint-signed-url";
 import { getPdfjs } from "@/lib/pdfjs-worker";
 import { formatUsd } from "@/lib/scan-modes";
+import type { JobListRow } from "@/lib/jobs-types";
 
 type SheetPageRow = {
   page_count: number | null;
@@ -224,6 +226,7 @@ export function DashboardClient() {
   const [savedProjectId, setSavedProjectId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProjectRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [recentJobs, setRecentJobs] = useState<JobListRow[]>([]);
   const savedTimerRef = useRef<number | null>(null);
   const editShellRef = useRef<HTMLElement | null>(null);
 
@@ -245,11 +248,21 @@ export function DashboardClient() {
         return;
       }
       setProjects((data ?? []) as ProjectRow[]);
+
+      const { data: jData } = await supabase
+        .from("jobs")
+        .select(
+          "id,job_name,job_number,status,job_type,updated_at,customers(company_name,contact_name)",
+        )
+        .order("updated_at", { ascending: false })
+        .limit(5);
+      setRecentJobs((jData ?? []) as unknown as JobListRow[]);
     } catch (e) {
       setError(
         e instanceof Error ? e.message : "Could not load projects. Try again.",
       );
       setProjects([]);
+      setRecentJobs([]);
     } finally {
       setLoading(false);
     }
@@ -412,6 +425,24 @@ export function DashboardClient() {
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
             <Link
+              href="/jobs"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:border-[#E8C84A]/55 hover:bg-white/[0.14]"
+            >
+              Jobs
+            </Link>
+            <Link
+              href="/customers"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:border-[#E8C84A]/55 hover:bg-white/[0.14]"
+            >
+              Customers
+            </Link>
+            <Link
+              href="/tools"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-[#E8C84A]/40 bg-[#E8C84A]/10 px-4 py-2.5 text-sm font-semibold text-[#E8C84A] transition-colors hover:bg-[#E8C84A]/20"
+            >
+              Tools
+            </Link>
+            <Link
               href="/tools/load-calculator"
               className="inline-flex shrink-0 items-center justify-center rounded-lg border border-sky-500/45 bg-sky-950/40 px-4 py-2.5 text-sm font-semibold text-sky-100 transition-colors hover:border-[#E8C84A]/60 hover:bg-sky-950/55"
             >
@@ -438,6 +469,8 @@ export function DashboardClient() {
           </div>
         </div>
 
+        <DashboardApiUsageCard />
+
         {loading && (
           <div
             className="mt-16 flex flex-col items-center justify-center gap-4"
@@ -460,6 +493,37 @@ export function DashboardClient() {
           >
             {error}
           </div>
+        )}
+
+        {!loading && !error && recentJobs.length > 0 && (
+          <section className="mt-10 rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold text-white">Recent jobs</h2>
+              <Link
+                href="/jobs"
+                className="text-sm font-medium text-[#E8C84A] hover:underline"
+              >
+                View all →
+              </Link>
+            </div>
+            <ul className="mt-4 space-y-2">
+              {recentJobs.map((j) => (
+                <li key={j.id}>
+                  <Link
+                    href={`/jobs/${j.id}`}
+                    className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border border-white/8 bg-[#0a1628]/50 px-3 py-2 text-sm hover:border-[#E8C84A]/35"
+                  >
+                    <span className="font-medium text-white">
+                      {j.job_number} · {j.job_name}
+                    </span>
+                    <span className="text-xs text-white/45">
+                      {j.status} · {j.job_type}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
 
         {!loading && !error && projects.length === 0 && (

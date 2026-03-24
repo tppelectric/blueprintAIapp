@@ -61,7 +61,11 @@ const tools = [
 export default function ToolsHubPage() {
   return (
     <div className="flex min-h-screen flex-col">
-      <ToolPageHeader title="Tools" subtitle="Calculators, checklists & planners" />
+      <ToolPageHeader
+        title="Tools"
+        subtitle="Calculators, checklists & planners"
+        showToolsBackLink={false}
+      />
       <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-12">
         <ul className="space-y-4">
           {tools.map((t) => (

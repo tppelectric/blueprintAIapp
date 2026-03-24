@@ -8,10 +8,27 @@ import type { CustomerRow } from "@/lib/jobs-types";
 
 type Row = CustomerRow & { job_count?: number };
 
+const emptyForm = {
+  company_name: "",
+  contact_name: "",
+  email: "",
+  phone: "",
+  address: "",
+  city: "",
+  state: "",
+  zip: "",
+  notes: "",
+};
+
 export function CustomersClient() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
+  const [formMsg, setFormMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -47,18 +64,107 @@ export function CustomersClient() {
     void load();
   }, [load]);
 
+  const openCreate = () => {
+    setEditingId(null);
+    setForm(emptyForm);
+    setFormMsg(null);
+    setModalOpen(true);
+  };
+
+  const openEdit = (c: CustomerRow) => {
+    setEditingId(c.id);
+    setForm({
+      company_name: c.company_name ?? "",
+      contact_name: c.contact_name ?? "",
+      email: c.email ?? "",
+      phone: c.phone ?? "",
+      address: c.address ?? "",
+      city: c.city ?? "",
+      state: c.state ?? "",
+      zip: c.zip ?? "",
+      notes: c.notes ?? "",
+    });
+    setFormMsg(null);
+    setModalOpen(true);
+  };
+
+  const saveCustomer = async () => {
+    setSaving(true);
+    setFormMsg(null);
+    try {
+      const sb = createBrowserClient();
+      const payload = {
+        company_name: form.company_name.trim() || null,
+        contact_name: form.contact_name.trim() || null,
+        email: form.email.trim() || null,
+        phone: form.phone.trim() || null,
+        address: form.address.trim() || null,
+        city: form.city.trim() || null,
+        state: form.state.trim() || null,
+        zip: form.zip.trim() || null,
+        notes: form.notes.trim() || null,
+      };
+      if (editingId) {
+        const { error: ue } = await sb
+          .from("customers")
+          .update(payload)
+          .eq("id", editingId);
+        if (ue) throw ue;
+      } else {
+        const { error: ie } = await sb.from("customers").insert(payload);
+        if (ie) throw ie;
+      }
+      setModalOpen(false);
+      void load();
+    } catch (e) {
+      setFormMsg(e instanceof Error ? e.message : "Save failed.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteCustomer = async (c: CustomerRow) => {
+    if (
+      !window.confirm(
+        `Delete customer "${c.company_name || c.contact_name || "this record"}"? Jobs may keep a null customer link.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      const sb = createBrowserClient();
+      const { error: de } = await sb.from("customers").delete().eq("id", c.id);
+      if (de) throw de;
+      void load();
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Delete failed.");
+    }
+  };
+
+  const inp =
+    "mt-1 w-full rounded-lg border border-white/15 bg-[#0a1628] px-3 py-2 text-sm text-white";
+
   return (
     <div className="flex min-h-screen flex-col">
       <WideAppHeader active="customers" showTppSubtitle />
       <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-10">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <h1 className="text-3xl font-semibold text-white">Customers</h1>
-          <Link
-            href="/jobs"
-            className="text-sm text-[#E8C84A] hover:underline"
-          >
-            Jobs →
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={openCreate}
+              className="rounded-lg bg-[#E8C84A] px-4 py-2.5 text-sm font-semibold text-[#0a1628] shadow-sm hover:bg-[#f0d56e]"
+            >
+              + Add Customer
+            </button>
+            <Link
+              href="/jobs"
+              className="rounded-lg border border-white/20 px-4 py-2.5 text-sm font-medium text-[#E8C84A] hover:bg-white/5"
+            >
+              Jobs →
+            </Link>
+          </div>
         </div>
         {loading ? (
           <p className="mt-10 text-white/60">Loading…</p>
@@ -69,26 +175,176 @@ export function CustomersClient() {
         ) : (
           <ul className="mt-8 space-y-3">
             {rows.map((c) => (
-              <li key={c.id}>
-                <Link
-                  href={`/customers/${c.id}`}
-                  className="block rounded-xl border border-white/10 bg-white/[0.04] p-4 hover:border-[#E8C84A]/45"
-                >
-                  <p className="font-semibold text-white">
-                    {c.company_name || c.contact_name || "Customer"}
-                  </p>
-                  <p className="text-sm text-white/55">
-                    {c.phone} · {c.email}
-                  </p>
-                  <p className="mt-1 text-xs text-white/40">
-                    {c.job_count ?? 0} job{(c.job_count ?? 0) === 1 ? "" : "s"}
-                  </p>
-                </Link>
+              <li
+                key={c.id}
+                className="rounded-xl border border-white/10 bg-white/[0.04] p-4"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <Link
+                    href={`/customers/${c.id}`}
+                    className="min-w-0 flex-1 hover:text-[#E8C84A]"
+                  >
+                    <p className="font-semibold text-white">
+                      {c.company_name || c.contact_name || "Customer"}
+                    </p>
+                    <p className="text-sm text-white/55">
+                      {c.phone} · {c.email}
+                    </p>
+                    <p className="mt-1 text-xs text-white/40">
+                      {c.job_count ?? 0} job
+                      {(c.job_count ?? 0) === 1 ? "" : "s"}
+                    </p>
+                  </Link>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(c)}
+                      className="rounded-lg border border-white/25 px-3 py-1.5 text-xs font-semibold text-white/90 hover:bg-white/10"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deleteCustomer(c)}
+                      className="rounded-lg border border-red-500/40 px-3 py-1.5 text-xs font-semibold text-red-200 hover:bg-red-950/40"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
               </li>
             ))}
           </ul>
         )}
       </main>
+
+      {modalOpen ? (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cust-modal-title"
+        >
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/15 bg-[#0a1628] p-6 shadow-xl">
+            <h2 id="cust-modal-title" className="text-lg font-semibold text-white">
+              {editingId ? "Edit customer" : "Add customer"}
+            </h2>
+            {formMsg ? (
+              <p className="mt-2 text-sm text-amber-200">{formMsg}</p>
+            ) : null}
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm sm:col-span-2">
+                <span className="text-white/70">Company name</span>
+                <input
+                  className={inp}
+                  value={form.company_name}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, company_name: e.target.value }))
+                  }
+                />
+              </label>
+              <label className="block text-sm sm:col-span-2">
+                <span className="text-white/70">Contact name</span>
+                <input
+                  className={inp}
+                  value={form.contact_name}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, contact_name: e.target.value }))
+                  }
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="text-white/70">Email</span>
+                <input
+                  type="email"
+                  className={inp}
+                  value={form.email}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, email: e.target.value }))
+                  }
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="text-white/70">Phone</span>
+                <input
+                  className={inp}
+                  value={form.phone}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, phone: e.target.value }))
+                  }
+                />
+              </label>
+              <label className="block text-sm sm:col-span-2">
+                <span className="text-white/70">Address</span>
+                <input
+                  className={inp}
+                  value={form.address}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, address: e.target.value }))
+                  }
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="text-white/70">City</span>
+                <input
+                  className={inp}
+                  value={form.city}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, city: e.target.value }))
+                  }
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="text-white/70">State</span>
+                <input
+                  className={inp}
+                  value={form.state}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, state: e.target.value }))
+                  }
+                />
+              </label>
+              <label className="block text-sm sm:col-span-2">
+                <span className="text-white/70">Zip</span>
+                <input
+                  className={inp}
+                  value={form.zip}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, zip: e.target.value }))
+                  }
+                />
+              </label>
+              <label className="block text-sm sm:col-span-2">
+                <span className="text-white/70">Notes</span>
+                <textarea
+                  className={inp + " min-h-[80px]"}
+                  value={form.notes}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, notes: e.target.value }))
+                  }
+                />
+              </label>
+            </div>
+            <div className="mt-6 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void saveCustomer()}
+                className="rounded-lg bg-[#E8C84A] px-4 py-2.5 text-sm font-semibold text-[#0a1628] disabled:opacity-50"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => setModalOpen(false)}
+                className="rounded-lg border border-white/20 px-4 py-2.5 text-sm text-white/80 hover:bg-white/5"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

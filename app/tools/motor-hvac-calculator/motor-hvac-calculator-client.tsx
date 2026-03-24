@@ -64,8 +64,11 @@ function printSection(title: string, elementId: string, nec: string) {
   w.close();
 }
 
+type CalcTab = "motor" | "hvac" | "xf" | "gen";
+
 export function MotorHvacCalculatorClient() {
   const shell = useThemedPageShell();
+  const [calcTab, setCalcTab] = useState<CalcTab>("motor");
 
   const [motorType, setMotorType] = useState<
     "sp_ac" | "tp_ac" | "dc" | "wound"
@@ -180,32 +183,48 @@ export function MotorHvacCalculatorClient() {
         title="Motor & HVAC Calculator"
         subtitle="NEC 430, 440 (ref.) — rule-based only"
       >
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href="/tools/electrical-reference"
-            className="rounded-lg border border-sky-500/45 bg-sky-950/30 px-3 py-2 text-sm font-medium text-sky-100 hover:bg-sky-950/45"
-          >
-            Electrical Reference
-          </Link>
-          <Link
-            href="/tools"
-            className="rounded-lg border border-white/20 px-3 py-2 text-sm font-medium text-[#E8C84A] hover:bg-white/5"
-          >
-            ← Tools
-          </Link>
-        </div>
+        <Link
+          href="/tools/electrical-reference"
+          className="rounded-lg border border-sky-500/45 bg-sky-950/30 px-3 py-2 text-sm font-medium text-sky-100 hover:bg-sky-950/45"
+        >
+          Electrical Reference
+        </Link>
       </ToolPageHeader>
 
-      <main className="mx-auto max-w-4xl space-y-10 px-6 py-8">
+      <main className="mx-auto max-w-4xl space-y-6 px-6 py-8">
         <p className="tool-muted text-sm">
           Use nameplate data where shown. DC / wound-rotor: enter nameplate FLA
           (NEC 430.6). Verify all OCPD with NEC and manufacturer data.
         </p>
 
-        {/* Motor */}
+        <div className="flex flex-wrap gap-2 border-b border-white/10 pb-4">
+          {(
+            [
+              ["motor", "Motor Calculator"],
+              ["hvac", "HVAC / AC Condenser"],
+              ["xf", "Transformer"],
+              ["gen", "Generator Sizing"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setCalcTab(id)}
+              className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+                calcTab === id
+                  ? "bg-[#E8C84A] text-[#0a1628]"
+                  : "border border-white/20 text-white/85 hover:bg-white/5"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {calcTab === "motor" ? (
         <section className="tool-surface-card space-y-4 p-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold">1 — Motor (NEC 430)</h2>
+            <h2 className="text-lg font-semibold">Motor (NEC 430)</h2>
             <button
               type="button"
               className="text-xs font-semibold text-[#E8C84A] hover:underline"
@@ -369,11 +388,24 @@ export function MotorHvacCalculatorClient() {
               </tbody>
             </table>
           </div>
-        </section>
 
-        {/* HVAC */}
+        <div className="border-t border-white/10 pt-6">
+          <h2 className="text-lg font-semibold">Motor nameplate decoder</h2>
+          <ul className="mt-3 space-y-2 text-sm">
+            {nameplateFields.map((f) => (
+              <li key={f.k} className="rounded-lg border border-white/10 p-2">
+                <span className="font-semibold text-[#E8C84A]">{f.k}</span>
+                <span className="tool-muted"> — {f.t}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        </section>
+        ) : null}
+
+        {calcTab === "hvac" ? (
         <section className="tool-surface-card space-y-4 p-6">
-          <h2 className="text-lg font-semibold">2 — HVAC / condenser (440)</h2>
+          <h2 className="text-lg font-semibold">HVAC / condenser (440)</h2>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm sm:col-span-2">
               <span className="tool-muted block">Unit type</span>
@@ -543,10 +575,11 @@ export function MotorHvacCalculatorClient() {
             </div>
           </div>
         </section>
+        ) : null}
 
-        {/* Transformer */}
+        {calcTab === "xf" ? (
         <section className="tool-surface-card space-y-4 p-6">
-          <h2 className="text-lg font-semibold">3 — Transformer</h2>
+          <h2 className="text-lg font-semibold">Transformer</h2>
           <p className="tool-muted text-xs">NEC 450 — enter one load value</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm">
@@ -628,23 +661,11 @@ export function MotorHvacCalculatorClient() {
             </ul>
           </div>
         </section>
+        ) : null}
 
-        {/* Nameplate */}
-        <section className="tool-surface-card space-y-3 p-6">
-          <h2 className="text-lg font-semibold">4 — Motor nameplate decoder</h2>
-          <ul className="space-y-2 text-sm">
-            {nameplateFields.map((f) => (
-              <li key={f.k} className="rounded-lg border border-white/10 p-2">
-                <span className="font-semibold text-[#E8C84A]">{f.k}</span>
-                <span className="tool-muted"> — {f.t}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        {/* Generator */}
+        {calcTab === "gen" ? (
         <section className="tool-surface-card space-y-4 p-6">
-          <h2 className="text-lg font-semibold">5 — Generator sizing</h2>
+          <h2 className="text-lg font-semibold">Generator sizing</h2>
           <p className="tool-muted text-xs">
             Running total + motor-start multiplier (illustrative). NEC 702.
           </p>
@@ -702,6 +723,7 @@ export function MotorHvacCalculatorClient() {
             </ul>
           </div>
         </section>
+        ) : null}
       </main>
     </div>
   );

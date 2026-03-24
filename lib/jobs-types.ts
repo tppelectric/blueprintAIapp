@@ -66,10 +66,13 @@ export type JobListRow = {
   status: string;
   job_type: string;
   updated_at: string;
+  customer_id?: string | null;
   address?: string | null;
   city?: string | null;
   state?: string | null;
   zip?: string | null;
+  description?: string | null;
+  notes?: string | null;
   customers?: Pick<CustomerRow, "company_name" | "contact_name"> | null;
 };
 

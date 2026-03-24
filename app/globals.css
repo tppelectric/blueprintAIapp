@@ -140,6 +140,17 @@ body {
   color: #f1f5f9;
 }
 
+.app-nav-search-trigger {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+[data-theme="light"] .app-nav-search-trigger {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+
 .tool-surface-card {
   border-radius: 1rem;
   border: 1px solid var(--border);

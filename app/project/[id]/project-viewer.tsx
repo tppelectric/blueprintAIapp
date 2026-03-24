@@ -3291,7 +3291,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
               href="/dashboard"
               className="shrink-0 rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-white/15"
             >
-              ← Back
+              ← Dashboard
             </Link>
             <button
               type="button"

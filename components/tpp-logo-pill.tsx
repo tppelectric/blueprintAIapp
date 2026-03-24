@@ -2,7 +2,7 @@
 
 import { TPP_LOGO_PATH } from "@/lib/tpp-branding";
 
-/** Square boxes (w = h) so the logo centers in the pill at every size. */
+/** Outer circle is navy; inner box keeps image square at every size. */
 const SIZES = {
   hero: "h-32 w-32",
   header: "h-24 w-24",
@@ -19,7 +19,7 @@ export function TppLogoPill({
 }) {
   return (
     <span
-      className={`flex shrink-0 items-center justify-center rounded-xl bg-white p-2 ${SIZES[size]} ${className}`}
+      className={`flex shrink-0 items-center justify-center rounded-full bg-[#0a1628] p-2 ${SIZES[size]} ${className}`}
     >
       <span className="flex h-full min-h-0 w-full min-w-0 flex-1 items-center justify-center">
         {/* eslint-disable-next-line @next/next/no-img-element -- public asset */}

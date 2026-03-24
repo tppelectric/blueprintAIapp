@@ -18,14 +18,14 @@ export function TppLogoPill({
 }) {
   return (
     <span
-      className={`flex shrink-0 items-center justify-center rounded-xl bg-white p-2 shadow-md ring-1 ring-[#E8C84A]/30 ${SIZES[size]} ${className}`}
+      className={`flex shrink-0 items-center justify-center rounded-full bg-[#0d1f3c] p-2 shadow-md ring-1 ring-[#E8C84A]/25 ${SIZES[size]} ${className}`}
     >
-      <span className="flex w-full min-w-0 items-center justify-center overflow-hidden rounded-lg">
-        {/* eslint-disable-next-line @next/next/no-img-element -- public asset (JPG may have baked-in white) */}
+      <span className="flex w-full min-w-0 items-center justify-center overflow-hidden rounded-full">
+        {/* eslint-disable-next-line @next/next/no-img-element -- JPG may have baked-in white; dark pill + filter softens edges */}
         <img
           src={TPP_LOGO_PATH}
           alt="TPP Electric"
-          className="h-auto w-full object-contain"
+          className="h-auto w-full object-contain [filter:drop-shadow(0_0_0_transparent)]"
         />
       </span>
     </span>

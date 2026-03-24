@@ -57,15 +57,8 @@ export type GeneratedProjectPackage = {
   laborEstimate: string;
 };
 
-/**
- * Pull a single JSON object from model output: markdown fences, preamble, or trailing text.
- */
-export function extractJsonObjectFromModelText(text: string): string | null {
-  const trimmed = text.trim();
-  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const body = (fence ? fence[1] : trimmed).trim();
-  const start = body.indexOf("{");
-  if (start === -1) return null;
+function sliceBalancedJsonObject(body: string, start: number): string | null {
+  if (start < 0 || start >= body.length || body[start] !== "{") return null;
   let depth = 0;
   let inStr = false;
   let esc = false;
@@ -89,6 +82,37 @@ export function extractJsonObjectFromModelText(text: string): string | null {
       depth--;
       if (depth === 0) return body.slice(start, i + 1);
     }
+  }
+  return null;
+}
+
+/**
+ * Pull a single JSON object from model output: markdown fences, preamble, or trailing text.
+ * Tries several likely `{` positions (first brace, or object that starts with projectTypes).
+ */
+export function extractJsonObjectFromModelText(text: string): string | null {
+  const trimmed = text.trim();
+  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const body = (fence ? fence[1] : trimmed).trim();
+
+  const startCandidates: number[] = [];
+  const firstBrace = body.indexOf("{");
+  if (firstBrace !== -1) startCandidates.push(firstBrace);
+  const pt = body.search(/\{\s*"projectTypes"\s*:/);
+  if (pt !== -1 && !startCandidates.includes(pt)) startCandidates.push(pt);
+  const ptSnake = body.search(/\{\s*"project_types"\s*:/);
+  if (ptSnake !== -1 && !startCandidates.includes(ptSnake)) {
+    startCandidates.push(ptSnake);
+  }
+  // Regex fallback: first `{` that opens an object with a string key (common LLM pattern)
+  const keyOpen = body.search(/\{\s*"/);
+  if (keyOpen !== -1 && !startCandidates.includes(keyOpen)) {
+    startCandidates.push(keyOpen);
+  }
+
+  for (const start of startCandidates.sort((a, b) => a - b)) {
+    const slice = sliceBalancedJsonObject(body, start);
+    if (slice) return slice;
   }
   return null;
 }

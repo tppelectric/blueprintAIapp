@@ -1,4 +1,5 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createBrowserClient as createSupabaseSSRBrowserClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
  * One shared browser client per tab. Creating a new client on every call
@@ -7,11 +8,13 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 let browserClient: SupabaseClient | null = null;
 
 /**
- * Browser-safe Supabase client. Use this in Client Components.
- * `NEXT_PUBLIC_*` variables are available in the browser.
+ * Browser Supabase client for Client Components. Uses `@supabase/ssr` so the
+ * session is stored in cookies — the same source `middleware` and server
+ * `createServerClient` read. Plain `@supabase/supabase-js` `createClient` keeps
+ * the session only in localStorage, so after sign-in middleware still sees no
+ * user and redirects back to `/login`.
  *
- * Never put `SUPABASE_SERVICE_ROLE_KEY` in `NEXT_PUBLIC_*` or import the
- * service role client from client-side code — that would expose full DB access.
+ * Never put `SUPABASE_SERVICE_ROLE_KEY` in `NEXT_PUBLIC_*`.
  */
 export function createBrowserClient(): SupabaseClient {
   if (browserClient) return browserClient;
@@ -25,6 +28,6 @@ export function createBrowserClient(): SupabaseClient {
     );
   }
 
-  browserClient = createClient(url, anonKey);
+  browserClient = createSupabaseSSRBrowserClient(url, anonKey);
   return browserClient;
 }

@@ -29,21 +29,36 @@ export function LoginClient() {
       e.preventDefault();
       setBusy(true);
       setError(null);
+      const trimmedEmail = email.trim();
       try {
         const sb = createBrowserClient();
-        const { error: signErr } = await sb.auth.signInWithPassword({
-          email: email.trim(),
+        console.log("Sign in attempt:", trimmedEmail);
+        const { data, error: signErr } = await sb.auth.signInWithPassword({
+          email: trimmedEmail,
           password,
         });
+        console.log("Auth response:", { data, error: signErr });
+
         if (signErr) {
-          setError(signErr.message);
+          setError(signErr.message || "Sign-in failed.");
           return;
         }
+
+        if (!data.session) {
+          setError(
+            "No session returned after sign-in. Check Supabase URL/keys and cookie settings.",
+          );
+          return;
+        }
+
         const safe = nextPath.startsWith("/") ? nextPath : "/dashboard";
-        router.replace(safe);
+        router.push(safe);
         router.refresh();
       } catch (ex) {
-        setError(ex instanceof Error ? ex.message : "Sign-in failed.");
+        const msg =
+          ex instanceof Error ? ex.message : "Sign-in failed unexpectedly.";
+        console.error("Sign-in exception:", ex);
+        setError(msg);
       } finally {
         setBusy(false);
       }
@@ -122,11 +137,6 @@ export function LoginClient() {
             Admin account created. Sign in below.
           </p>
         ) : null}
-        {error ? (
-          <p className="text-sm text-red-300/95" role="alert">
-            {error}
-          </p>
-        ) : null}
 
         <button
           type="submit"
@@ -135,6 +145,15 @@ export function LoginClient() {
         >
           {busy ? "Signing in…" : "Sign In"}
         </button>
+
+        {error ? (
+          <p
+            className="text-center text-sm font-medium text-red-400"
+            role="alert"
+          >
+            {error}
+          </p>
+        ) : null}
 
         <button
           type="button"

@@ -7,7 +7,7 @@ export async function updateSession(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
   if (!url || !anon) {
-    console.error("[middleware] Missing NEXT_PUBLIC Supabase env");
+    console.error("[proxy] Missing NEXT_PUBLIC Supabase env");
     return supabaseResponse;
   }
 
@@ -33,6 +33,8 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const path = request.nextUrl.pathname;
+
+  /** Must stay in sync with browser auth: use `createBrowserClient` from `@/lib/supabase/client` (SSR cookie client). */
 
   const isPublic =
     path === "/login" ||

@@ -18,6 +18,10 @@ import {
 } from "@/lib/ai-api-retries";
 import { checkAiRouteRateLimit } from "@/lib/rate-limit";
 import { recordAnalyzePageApiUsage } from "@/lib/record-analyze-page-usage";
+import {
+  imageBufferAppearsBlank,
+  reencodeForAnalyzeRetry,
+} from "@/lib/analyze-page-image";
 
 export const maxDuration = 180;
 
@@ -45,6 +49,95 @@ function tryExtractAnalyzePayload(
     return null;
   }
 }
+
+type ParsedAnalyzePayload = {
+  electrical_items: unknown[];
+  rooms: unknown[];
+};
+
+type ElectricalItemInsertRow = {
+  project_id: string;
+  page_number: number;
+  verification_status: string;
+  category: string;
+  description: string;
+  specification: string;
+  quantity: number;
+  unit: string;
+  confidence: number;
+  which_room: string;
+  raw_note: string | null;
+  gpt_count: null;
+  final_count: null;
+  verified_by: null;
+};
+
+type DetectedRoomInsertRow = {
+  project_id: string;
+  page_number: number;
+  room_name: string;
+  room_type: string;
+  width_ft: number | null;
+  length_ft: number | null;
+  sq_ft: number | null;
+  confidence: number;
+};
+
+function materializeElectricalItemRows(
+  projectId: string,
+  pageNumber: number,
+  payload: ParsedAnalyzePayload,
+): ElectricalItemInsertRow[] {
+  const rows: ElectricalItemInsertRow[] = [];
+  for (const entry of payload.electrical_items) {
+    if (!entry || typeof entry !== "object") continue;
+    const normalized = normalizeAnalysisItem(entry as IncomingItem);
+    if (normalized) {
+      rows.push({
+        project_id: projectId,
+        page_number: pageNumber,
+        ...normalized,
+        verification_status: "pending",
+        gpt_count: null,
+        final_count: null,
+        verified_by: null,
+      });
+    }
+  }
+  return rows;
+}
+
+function materializeRoomRows(
+  projectId: string,
+  pageNumber: number,
+  payload: ParsedAnalyzePayload,
+): DetectedRoomInsertRow[] {
+  const roomRows: DetectedRoomInsertRow[] = [];
+  for (const entry of payload.rooms) {
+    if (!entry || typeof entry !== "object") continue;
+    const nr = normalizeAnalysisRoom(entry as IncomingRoom);
+    if (nr)
+      roomRows.push({
+        project_id: projectId,
+        page_number: pageNumber,
+        ...nr,
+      });
+  }
+  return roomRows;
+}
+
+const CRITICAL_EMPTY_ITEMS_ADDENDUM = `
+
+CRITICAL: Your previous response returned no electrical items but this page clearly has electrical content. You MUST find and return at least one item.
+
+Look more carefully at:
+- Any lines, symbols or marks on the page
+- Any text that could be electrical notes
+- Any tables or schedules
+- Any symbols even if unclear
+
+Return at least one item even if you are not sure what it is.
+Use confidence 0.5 for uncertain items.`;
 
 const SYSTEM_PROMPT = `You are a licensed electrical estimator with 20 years of experience reading commercial and residential electrical blueprints under NEC 2023. Analyze this blueprint page and identify ALL electrical elements.
 
@@ -306,13 +399,22 @@ export async function POST(request: Request) {
     );
   }
 
-  const decodedBytes = Buffer.from(imageBase64, "base64").length;
+  const imageBuffer = Buffer.from(imageBase64, "base64");
+  const decodedBytes = imageBuffer.length;
   if (decodedBytes > MAX_INCOMING_IMAGE_BYTES) {
     return NextResponse.json(
       {
         error:
           "Page image too large — please try reducing scan resolution in settings",
       },
+      { status: 400 },
+    );
+  }
+
+  const rasterProbe = await imageBufferAppearsBlank(imageBuffer);
+  if (rasterProbe.blank) {
+    return NextResponse.json(
+      { error: "Page appears to be blank", blankPage: true },
       { status: 400 },
     );
   }
@@ -450,59 +552,90 @@ No project-specific symbol legend is on file for this project — use standard N
     }
   }
 
-  const rows: Array<{
-    project_id: string;
-    page_number: number;
-    verification_status: string;
-    category: string;
-    description: string;
-    specification: string;
-    quantity: number;
-    unit: string;
-    confidence: number;
-    which_room: string;
-    raw_note: string | null;
-    gpt_count: null;
-    final_count: null;
-    verified_by: null;
-  }> = [];
+  let rows = materializeElectricalItemRows(projectId, pageNumber, payload);
+  let roomRows = materializeRoomRows(projectId, pageNumber, payload);
 
-  for (const entry of payload.electrical_items) {
-    if (!entry || typeof entry !== "object") continue;
-    const normalized = normalizeAnalysisItem(entry as IncomingItem);
-    if (normalized) {
-      rows.push({
-        project_id: projectId,
-        page_number: pageNumber,
-        ...normalized,
-        verification_status: "pending",
-        gpt_count: null,
-        final_count: null,
-        verified_by: null,
-      });
+  console.log(
+    "[analyze-page] Page",
+    pageNumber + ":",
+    "items found:",
+    rows.length,
+    "rooms:",
+    roomRows.length,
+    "image size:",
+    decodedBytes,
+    "attempt:",
+    claudeTurnsUsed,
+  );
+
+  if (rows.length === 0 && !rasterProbe.blank) {
+    try {
+      const re = await reencodeForAnalyzeRetry(imageBuffer, claudeMediaType);
+      const retryB64 = re.base64;
+      const retryMedia = re.mediaType;
+      const criticalUser = baseUserText + CRITICAL_EMPTY_ITEMS_ADDENDUM;
+
+      let retryText: string;
+      try {
+        retryText = await runClaudeTurn(criticalUser, retryB64, retryMedia);
+        claudeTurnsUsed += 1;
+      } catch (e) {
+        const message =
+          e instanceof Error ? e.message : "Claude API request failed.";
+        const status =
+          message === CLAUDE_OVERLOADED_USER_MESSAGE ? 503 : 502;
+        return NextResponse.json({ error: message }, { status });
+      }
+
+      let retryPayload: ParsedAnalyzePayload | null = claudeTextLooksLikeJson(
+        retryText,
+      )
+        ? tryExtractAnalyzePayload(retryText)
+        : null;
+
+      if (!retryPayload) {
+        let assistantRetry2: string;
+        try {
+          assistantRetry2 = await runClaudeTurn(
+            criticalUser + STRICT_JSON_USER_ADDENDUM,
+            retryB64,
+            retryMedia,
+          );
+          claudeTurnsUsed += 1;
+        } catch (e) {
+          const message =
+            e instanceof Error ? e.message : "Claude API request failed.";
+          const status =
+            message === CLAUDE_OVERLOADED_USER_MESSAGE ? 503 : 502;
+          return NextResponse.json({ error: message }, { status });
+        }
+        if (claudeTextLooksLikeJson(assistantRetry2)) {
+          retryPayload = tryExtractAnalyzePayload(assistantRetry2);
+        }
+      }
+
+      if (retryPayload) {
+        payload = retryPayload;
+        rows = materializeElectricalItemRows(projectId, pageNumber, retryPayload);
+        roomRows = materializeRoomRows(projectId, pageNumber, retryPayload);
+      }
+
+      const retryImageBytes = Buffer.from(retryB64, "base64").length;
+      console.log(
+        "[analyze-page] Page",
+        pageNumber + " (retry):",
+        "items found:",
+        rows.length,
+        "rooms:",
+        roomRows.length,
+        "image size:",
+        retryImageBytes,
+        "attempt:",
+        claudeTurnsUsed,
+      );
+    } catch (e) {
+      console.error("[analyze-page] empty-items retry failed:", e);
     }
-  }
-
-  const roomRows: Array<{
-    project_id: string;
-    page_number: number;
-    room_name: string;
-    room_type: string;
-    width_ft: number | null;
-    length_ft: number | null;
-    sq_ft: number | null;
-    confidence: number;
-  }> = [];
-
-  for (const entry of payload.rooms) {
-    if (!entry || typeof entry !== "object") continue;
-    const nr = normalizeAnalysisRoom(entry as IncomingRoom);
-    if (nr)
-      roomRows.push({
-        project_id: projectId,
-        page_number: pageNumber,
-        ...nr,
-      });
   }
 
   if (rows.length === 0 && roomRows.length === 0) {

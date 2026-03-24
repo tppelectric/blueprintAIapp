@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AnalyzerProjectAssistant } from "@/components/analyzer-project-assistant";
 import { ToolBlueprintFloorPlanPanel } from "@/components/tool-blueprint-floor-plan-panel";
 import { ToolPageHeader } from "@/components/tool-page-header";
 import { LinkToJobDialog } from "@/components/link-to-job-dialog";
@@ -45,6 +46,10 @@ import {
   type ProjectBreakdownState,
 } from "@/lib/project-breakdown";
 import { generateWifiDocumentNumber } from "@/lib/wifi-field-documents";
+import {
+  analysisToElectricalRooms,
+  electricalSetupFromAnalysis,
+} from "@/lib/analyzer-description-apply";
 import { ElectricalRoomCard } from "./electrical-analyzer-room-card";
 
 function newId() {
@@ -425,6 +430,14 @@ export function ElectricalAnalyzerClient() {
 
       <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="space-y-10 rounded-2xl border border-white/10 bg-white/[0.03] p-6 sm:p-8">
+          <AnalyzerProjectAssistant
+            hints={["electrical"]}
+            roomSectionId="electrical-analyzer-room-list"
+            onApply={(a) => {
+              setRooms(analysisToElectricalRooms(a, newId));
+              setSetup((s) => ({ ...s, ...electricalSetupFromAnalysis(a) }));
+            }}
+          />
           <section className="space-y-4">
             <SectionTitle>Section 1 — Project setup</SectionTitle>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -636,7 +649,10 @@ export function ElectricalAnalyzerClient() {
             onApplyScan={onApplyScan}
           />
 
-          <section className="space-y-4">
+          <section
+            id="electrical-analyzer-room-list"
+            className="space-y-4 scroll-mt-4"
+          >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <SectionTitle>Section 2 — Room by room</SectionTitle>
               <button

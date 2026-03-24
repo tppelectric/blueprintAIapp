@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnalyzerProjectAssistant } from "@/components/analyzer-project-assistant";
 import { ToolBlueprintFloorPlanPanel } from "@/components/tool-blueprint-floor-plan-panel";
 import { ToolPageHeader } from "@/components/tool-page-header";
 import { VoiceInputButton } from "@/components/voice-input-button";
@@ -56,6 +57,16 @@ import {
   generateWifiDocumentNumber,
 } from "@/lib/wifi-field-documents";
 import type { ProposalTierId } from "@/lib/wifi-proposal-tiers";
+import {
+  guessWifiBudgetFromAnalysis,
+  guessWifiBuildingTypeFromAnalysis,
+  guessWifiVendorFromAnalysis,
+  storiesFromAnalysisClamped,
+} from "@/lib/analyzer-description-apply";
+import {
+  analysisToWifiRooms,
+  totalSqFtFromAnalysis,
+} from "@/lib/project-describer-prefill";
 
 const U6_PRO_TIER_OVERRIDE = {
   label: "UniFi U6 Pro ($179 ea.)",
@@ -936,6 +947,20 @@ export function WifiAnalyzerClient() {
 
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="space-y-10 rounded-2xl border border-white/10 bg-white/[0.03] p-6 sm:p-8">
+          <AnalyzerProjectAssistant
+            hints={["wifi"]}
+            roomSectionId="wifi-analyzer-room-list"
+            onApply={(a) => {
+              setRooms(analysisToWifiRooms(a, newId));
+              setTotalBuildingSqFtInput(
+                String(totalSqFtFromAnalysis(a)),
+              );
+              setStories(storiesFromAnalysisClamped(a));
+              setBuildingType(guessWifiBuildingTypeFromAnalysis(a));
+              setVendor(guessWifiVendorFromAnalysis(a));
+              setBudget(guessWifiBudgetFromAnalysis(a));
+            }}
+          />
           <section className="space-y-4">
             <SectionTitle>Project setup</SectionTitle>
             <label className="block text-sm">
@@ -1346,7 +1371,10 @@ export function WifiAnalyzerClient() {
             ) : null}
           </section>
 
-          <section className="space-y-4">
+          <section
+            id="wifi-analyzer-room-list"
+            className="space-y-4 scroll-mt-4"
+          >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <SectionTitle>Rooms</SectionTitle>
               <button

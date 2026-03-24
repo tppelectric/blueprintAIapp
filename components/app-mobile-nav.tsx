@@ -73,7 +73,7 @@ export function AppMobileNavButton({
 
       <div
         className={[
-          "fixed inset-0 z-[100000] md:hidden transition-[visibility] duration-300",
+          "fixed inset-0 z-[999998] md:hidden transition-[visibility] duration-300",
           open ? "visible" : "invisible pointer-events-none",
         ].join(" ")}
         role="dialog"
@@ -84,7 +84,7 @@ export function AppMobileNavButton({
         <button
           type="button"
           className={[
-            "absolute inset-0 z-[100000] bg-black/60 transition-opacity duration-300 ease-out",
+            "absolute inset-0 z-[999998] bg-black/60 transition-opacity duration-300 ease-out",
             open ? "opacity-100" : "opacity-0",
           ].join(" ")}
           aria-label="Close menu"
@@ -93,7 +93,7 @@ export function AppMobileNavButton({
         />
         <div
           className={[
-            "absolute right-0 top-0 z-[100001] flex h-full w-[min(100vw-2.5rem,20rem)] flex-col border-l border-white/10 bg-[#0a1628] shadow-2xl transition-transform duration-300 ease-out",
+            "absolute right-0 top-0 z-[999999] flex h-full w-[min(100vw-2.5rem,20rem)] flex-col border-l border-white/10 bg-[#0a1628] shadow-2xl transition-transform duration-300 ease-out",
             open ? "translate-x-0" : "translate-x-full",
           ].join(" ")}
         >

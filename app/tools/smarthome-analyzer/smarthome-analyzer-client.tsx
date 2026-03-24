@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AnalyzerProjectAssistant } from "@/components/analyzer-project-assistant";
 import { ToolBlueprintFloorPlanPanel } from "@/components/tool-blueprint-floor-plan-panel";
 import { ToolPageHeader } from "@/components/tool-page-header";
 import { VoiceInputButton } from "@/components/voice-input-button";
@@ -39,6 +40,16 @@ import {
   downloadSmartHomeWorkOrderPdf,
 } from "@/lib/smarthome-analyzer-pdf";
 import { generateWifiDocumentNumber } from "@/lib/wifi-field-documents";
+import {
+  guessShBudgetFromAnalysis,
+  guessShBuildingTypeFromAnalysis,
+  guessShControlSystemFromAnalysis,
+} from "@/lib/analyzer-description-apply";
+import {
+  analysisToSmartHomeRooms,
+  floorsFromAnalysis,
+  totalSqFtFromAnalysis,
+} from "@/lib/project-describer-prefill";
 
 function newId() {
   return typeof crypto !== "undefined" && crypto.randomUUID
@@ -366,6 +377,20 @@ export function SmartHomeAnalyzerClient() {
 
       <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="space-y-10 rounded-2xl border border-white/10 bg-white/[0.03] p-6 sm:p-8">
+          <AnalyzerProjectAssistant
+            hints={["smarthome"]}
+            roomSectionId="smarthome-analyzer-room-list"
+            onApply={(a) => {
+              setRooms(analysisToSmartHomeRooms(a, newId));
+              setTotalSqFt(totalSqFtFromAnalysis(a));
+              setFloors(
+                Math.min(6, Math.max(1, floorsFromAnalysis(a))),
+              );
+              setBuildingType(guessShBuildingTypeFromAnalysis(a));
+              setBudget(guessShBudgetFromAnalysis(a));
+              setControlSystem(guessShControlSystemFromAnalysis(a));
+            }}
+          />
           <section className="space-y-4">
             <SectionTitle>Project setup</SectionTitle>
             <label className="block text-sm">
@@ -491,7 +516,10 @@ export function SmartHomeAnalyzerClient() {
             }}
           />
 
-          <section className="space-y-4">
+          <section
+            id="smarthome-analyzer-room-list"
+            className="space-y-4 scroll-mt-4"
+          >
             <SectionTitle>Room by room devices</SectionTitle>
             <div className="space-y-6">
               {rooms.map((r) => (

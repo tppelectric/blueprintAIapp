@@ -6,6 +6,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ToolPageHeader } from "@/components/tool-page-header";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { WifiHeatMapCard } from "@/components/wifi-heatmap-card";
+import { WifiProjectCostCard } from "@/components/wifi-project-cost-card";
+import { WifiVendorComparisonModal } from "@/components/wifi-vendor-comparison-modal";
 import {
   loadPdfDocumentFromArrayBuffer,
   readPdfFileAsArrayBuffer,
@@ -13,6 +15,7 @@ import {
 } from "@/lib/wifi-blueprint-preview";
 import {
   computeWifiPlan,
+  isMeshVendor,
   scoreRoom,
   sumCompleteRoomsTotalSqFt,
   type BudgetTier,
@@ -33,6 +36,12 @@ import {
   type WifiRoomInput,
   type YesNoChoice,
 } from "@/lib/wifi-analyzer-engine";
+import { buildWifiBomCsv, downloadWifiBomPdf } from "@/lib/wifi-bom-pdf";
+import { buildProjectCostSummary } from "@/lib/wifi-project-cost";
+import {
+  MESH_VS_ENTERPRISE_NOTE,
+  WIFI_VENDOR_SELECT_OPTIONS,
+} from "@/lib/wifi-vendor-catalog";
 import {
   downloadWifiAnalysisPdf,
   downloadWifiClientProposalPdf,
@@ -326,6 +335,8 @@ export function WifiAnalyzerClient() {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [calcGeneration, setCalcGeneration] = useState(0);
+  const [laborRatePerHour, setLaborRatePerHour] = useState(85);
+  const [compareOpen, setCompareOpen] = useState(false);
 
   const resultsAnchorRef = useRef<HTMLDivElement>(null);
 
@@ -571,6 +582,26 @@ export function WifiAnalyzerClient() {
       }
     }, 0);
   }, [inputs]);
+
+  const selectVendorAndRecalc = useCallback(
+    (v: VendorChoice) => {
+      setCompareOpen(false);
+      setVendor(v);
+      setCalcError(null);
+      setSaveMsg(null);
+      try {
+        const next = computeWifiPlan({ ...inputs, vendor: v });
+        setResults(next);
+        setCalcGeneration((g) => g + 1);
+      } catch (e) {
+        console.error(e);
+        setCalcError(
+          e instanceof Error ? e.message : "Calculation failed. Check inputs.",
+        );
+      }
+    },
+    [inputs],
+  );
 
   const exportPdf = () => {
     if (!results) return;
@@ -1300,16 +1331,7 @@ export function WifiAnalyzerClient() {
           <section className="space-y-3">
             <SectionTitle>Vendor preference</SectionTitle>
             <div className="grid gap-2">
-              {(
-                [
-                  ["ubiquiti", "Ubiquiti UniFi (recommended for most)"],
-                  ["ruckus", "Ruckus"],
-                  ["cisco_meraki", "Cisco Meraki"],
-                  ["tp_link", "TP-Link Omada"],
-                  ["access_networks", "Access Networks"],
-                  ["none", "No preference (recommend best value)"],
-                ] as const
-              ).map(([v, lab]) => (
+              {WIFI_VENDOR_SELECT_OPTIONS.map(({ value: v, label: lab }) => (
                 <label
                   key={v}
                   className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
@@ -1322,13 +1344,18 @@ export function WifiAnalyzerClient() {
                     type="radio"
                     name="vendor"
                     checked={vendor === v}
-                    onChange={() => setVendor(v)}
+                    onChange={() => setVendor(v as VendorChoice)}
                     className="accent-[#E8C84A]"
                   />
                   {lab}
                 </label>
               ))}
             </div>
+            {isMeshVendor(vendor) ? (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-950/25 p-4 text-xs leading-relaxed whitespace-pre-wrap text-amber-100/90">
+                {MESH_VS_ENTERPRISE_NOTE}
+              </div>
+            ) : null}
           </section>
 
           <section className="space-y-3">
@@ -1424,6 +1451,13 @@ export function WifiAnalyzerClient() {
               >
                 Client proposal
               </button>
+              <button
+                type="button"
+                onClick={() => setCompareOpen(true)}
+                className="rounded-lg border border-sky-400/45 bg-sky-500/15 px-4 py-2.5 text-sm font-semibold text-sky-100 hover:bg-sky-500/25"
+              >
+                Compare vendors
+              </button>
             </div>
             {saveMsg ? (
               <p className="text-sm text-white/80">{saveMsg}</p>
@@ -1434,6 +1468,37 @@ export function WifiAnalyzerClient() {
               results={results}
               blueprintDataUrl={blueprintDataUrl}
               calcGeneration={calcGeneration}
+            />
+
+            {isMeshVendor(vendor) ? (
+              <div className="rounded-xl border border-amber-500/35 bg-amber-950/20 p-4 text-xs leading-relaxed whitespace-pre-wrap text-amber-100/88">
+                {MESH_VS_ENTERPRISE_NOTE}
+              </div>
+            ) : null}
+
+            <WifiProjectCostCard
+              results={results}
+              laborRatePerHour={laborRatePerHour}
+              onLaborRatePerHourChange={setLaborRatePerHour}
+              onExportBomPdf={() =>
+                downloadWifiBomPdf(inputs, results, laborRatePerHour)
+              }
+              onExportBomCsv={() => {
+                const summary = buildProjectCostSummary(
+                  results,
+                  laborRatePerHour,
+                );
+                const csv = buildWifiBomCsv(inputs, results, summary);
+                const blob = new Blob([csv], {
+                  type: "text/csv;charset=utf-8",
+                });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `wifi-bom-${(inputs.projectName || "export").replace(/\s+/g, "-")}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
             />
 
             <section className="rounded-2xl border border-emerald-500/30 bg-emerald-950/25 p-6">
@@ -1787,6 +1852,14 @@ export function WifiAnalyzerClient() {
             </div>
           </div>
         ) : null}
+
+        <WifiVendorComparisonModal
+          open={compareOpen}
+          onClose={() => setCompareOpen(false)}
+          inputs={inputs}
+          currentVendor={vendor}
+          onSelectVendorAndRecalc={selectVendorAndRecalc}
+        />
       </main>
     </div>
   );

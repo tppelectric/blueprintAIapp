@@ -33,6 +33,16 @@ export function vendorDisplayName(v: VendorChoice): string {
       return "TP-Link Omada";
     case "access_networks":
       return "Access Networks";
+    case "eero":
+      return "eero (Amazon)";
+    case "google_nest":
+      return "Google Nest WiFi Pro";
+    case "netgear_orbi":
+      return "Netgear Orbi";
+    case "luxul":
+      return "Luxul";
+    case "araknis":
+      return "Araknis Networks";
     default:
       return "Professional-grade";
   }
@@ -190,6 +200,16 @@ function vendorControllerNote(v: VendorChoice): string {
       return "Ruckus management (SmartZone / RUCKUS One per deployment)";
     case "access_networks":
       return "Access Networks / integrated controller per line card";
+    case "eero":
+      return "eero mobile app (Amazon account)";
+    case "google_nest":
+      return "Google Home app";
+    case "netgear_orbi":
+      return "Netgear Orbi app / web UI";
+    case "luxul":
+      return "Luxul management (dealer tools)";
+    case "araknis":
+      return "OvrC / Snap One (integrator)";
     default:
       return "Vendor management portal";
   }

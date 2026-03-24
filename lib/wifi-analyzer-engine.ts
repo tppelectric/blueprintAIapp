@@ -1,5 +1,14 @@
 /** Rule-based Wi‑Fi AP planning — whole-home layout with room-by-room inputs. */
 
+import {
+  buildHardwareBomLines,
+  planVendorMaterialStack,
+  sumBomMaterialSubtotal,
+  type HardwareBomLine,
+} from "@/lib/wifi-vendor-hardware";
+
+export type { HardwareBomLine };
+
 export type RoomWallMaterial =
   | "drywall"
   | "plaster"
@@ -43,7 +52,31 @@ export type VendorChoice =
   | "cisco_meraki"
   | "tp_link"
   | "access_networks"
+  | "eero"
+  | "google_nest"
+  | "netgear_orbi"
+  | "luxul"
+  | "araknis"
   | "none";
+
+export function isMeshVendor(v: VendorChoice): boolean {
+  return v === "eero" || v === "google_nest" || v === "netgear_orbi";
+}
+
+/** Vendors shown in the comparison table (includes “no preference”). */
+export const WIFI_VENDOR_COMPARE_ORDER: VendorChoice[] = [
+  "ubiquiti",
+  "eero",
+  "google_nest",
+  "netgear_orbi",
+  "tp_link",
+  "ruckus",
+  "cisco_meraki",
+  "access_networks",
+  "araknis",
+  "luxul",
+  "none",
+];
 
 export type BudgetTier =
   | "under500"
@@ -222,12 +255,6 @@ export type EquipmentRec = {
   /** e.g. "3× UniFi U6 Pro ($179 ea.)" */
   wholeHomeApPlan: string;
 };
-
-const U6_LITE = 99;
-const U6_PRO = 179;
-const U6_ENT = 299;
-const U6_MESH = 179;
-const USW_LITE_8 = 109;
 
 function ceilingNum(h: CeilingHeight): number {
   switch (h) {
@@ -411,129 +438,20 @@ function applyCoverageGoalToIndoor(
   return Math.max(1, n);
 }
 
-function pickIndoorApSku(totalIndoorSqFt: number): {
-  label: string;
-  unit: number;
-} {
-  if (totalIndoorSqFt < 2000)
-    return { label: `UniFi U6 Lite ($${U6_LITE} ea.)`, unit: U6_LITE };
-  if (totalIndoorSqFt < 5000)
-    return { label: `UniFi U6 Pro ($${U6_PRO} ea.)`, unit: U6_PRO };
-  return { label: `UniFi U6 Enterprise ($${U6_ENT} ea.)`, unit: U6_ENT };
-}
-
-function hardwareUnitEstimates(
-  vendor: VendorChoice,
-  totalIndoorSqFt: number,
-  outdoorCount: number,
-): { apUnit: number; outdoorUnit: number; switchUnit: number } {
-  if (vendor === "ubiquiti" || vendor === "none") {
-    const { unit } = pickIndoorApSku(totalIndoorSqFt);
-    return {
-      apUnit: unit,
-      outdoorUnit: outdoorCount > 0 ? U6_MESH : 0,
-      switchUnit: USW_LITE_8,
-    };
-  }
-  if (vendor === "ruckus") {
-    return {
-      apUnit: totalIndoorSqFt < 3000 ? 350 : 550,
-      outdoorUnit: outdoorCount > 0 ? 450 : 0,
-      switchUnit: 400,
-    };
-  }
-  if (vendor === "cisco_meraki") {
-    return { apUnit: 450, outdoorUnit: outdoorCount > 0 ? 600 : 0, switchUnit: 800 };
-  }
-  if (vendor === "tp_link") {
-    return { apUnit: 120, outdoorUnit: outdoorCount > 0 ? 90 : 0, switchUnit: 150 };
-  }
-  return { apUnit: 400, outdoorUnit: outdoorCount > 0 ? 500 : 0, switchUnit: 450 };
-}
-
-function wholeHomeApPlanLine(
-  vendor: VendorChoice,
-  indoorAps: number,
-  outdoorAps: number,
-  totalIndoorSqFt: number,
-): { line: string; equipment: EquipmentRec } {
-  const outdoorLabel =
-    vendor === "ubiquiti" || vendor === "none"
-      ? `UniFi U6 Mesh ($${U6_MESH} ea.)`
-      : vendor === "ruckus"
-        ? "Ruckus T350 outdoor class"
-        : vendor === "cisco_meraki"
-          ? "Meraki outdoor AP class"
-          : vendor === "tp_link"
-            ? "Omada EAP225-Outdoor class"
-            : "Outdoor-rated AP (Access Networks line)";
-
-  if (vendor === "ubiquiti" || vendor === "none") {
-    const indoor = pickIndoorApSku(totalIndoorSqFt);
-    const parts: string[] = [];
-    if (indoorAps > 0) parts.push(`${indoorAps}× ${indoor.label}`);
-    if (outdoorAps > 0) parts.push(`${outdoorAps}× ${outdoorLabel}`);
-    const line = parts.join(" · ") || "—";
-    const equipment: EquipmentRec = {
-      apModel: indoor.label.replace(" ea.", ""),
-      outdoorApModel: outdoorAps > 0 ? outdoorLabel : null,
-      switchNote: `UniFi USW Lite 8 PoE ($${USW_LITE_8}) — scale up with AP count`,
-      switchPorts: 0,
-      costRangeLabel: "Ubiquiti UniFi stack",
-      wholeHomeApPlan: line,
-    };
-    return { line, equipment };
-  }
-
-  const genericIndoor =
-    vendor === "ruckus"
-      ? "Ruckus R350 / R550 class"
-      : vendor === "cisco_meraki"
-        ? "Meraki MR36 / MR46 class"
-        : vendor === "tp_link"
-          ? "Omada EAP650 / EAP670"
-          : "Access Networks indoor AP";
-  const parts: string[] = [];
-  if (indoorAps > 0) parts.push(`${indoorAps}× ${genericIndoor}`);
-  if (outdoorAps > 0) parts.push(`${outdoorAps}× ${outdoorLabel}`);
-  const line = parts.join(" · ") || "—";
-  return {
-    line,
-    equipment: {
-      apModel: `${indoorAps}× ${genericIndoor}`,
-      outdoorApModel: outdoorAps > 0 ? outdoorLabel : null,
-      switchNote:
-        vendor === "ruckus"
-          ? "Ruckus ICX PoE+ switch"
-          : vendor === "cisco_meraki"
-            ? "Meraki MS PoE (licensed)"
-            : vendor === "tp_link"
-              ? "Omada PoE+ switch"
-              : "Matched PoE switch (line card)",
-      switchPorts: 0,
-      costRangeLabel: `${vendor} stack`,
-      wholeHomeApPlan: line,
-    },
-  };
-}
-
 export function gatewayRecommendation(
   vendor: VendorChoice,
   indoorSqFt: number,
   totalDevices: number,
   priority: PlanningPriority,
 ): string {
-  if (vendor !== "ubiquiti" && vendor !== "none") {
-    return "Use your selected vendor’s recommended security gateway or firewall (e.g. Meraki MX, Omada gateway, Ruckus edge appliance).";
-  }
-  const useMax =
-    indoorSqFt >= 3500 ||
-    totalDevices >= 40 ||
-    priority === "future_proof";
-  if (useMax) {
-    return "UniFi Cloud Gateway Max — for large homes, 40+ devices, future-proof priority, or 3,500+ sq ft indoor.";
-  }
-  return "UniFi Cloud Gateway Ultra — for standard residential and small-business installs.";
+  return planVendorMaterialStack(
+    vendor,
+    1,
+    0,
+    Math.max(1, indoorSqFt),
+    totalDevices,
+    priority,
+  ).gatewayRecommendation;
 }
 
 function budgetCostRange(b: BudgetTier): string {
@@ -582,6 +500,10 @@ export type WifiAnalyzerResults = {
   equipment: EquipmentRec;
   estimatedHardwareCostRange: string;
   hardwareCostEstimateLabel: string;
+  /** Itemized materials for BOM / cost card (MSRP-style). */
+  hardwareBomLines: HardwareBomLine[];
+  /** Sum of hardwareBomLines line totals (mid estimate). */
+  materialSubtotalMid: number;
   assumptionsLine: string;
   summaryText: string;
 };
@@ -721,31 +643,21 @@ export function computeWifiPlan(inputs: WifiAnalyzerInputs): WifiAnalyzerResults
 
   const recommendedAps = indoorAps + outdoorAps;
 
-  const { equipment, line: wholePlanLine } = wholeHomeApPlanLine(
+  const stack = planVendorMaterialStack(
     inputs.vendor,
     indoorAps,
     outdoorAps,
     Math.max(1, totalIndoorSqFt),
+    totalDevices,
+    inputs.planningPriority,
   );
+  const equipment: EquipmentRec = { ...stack.equipment };
+  const wholePlanLine = stack.line;
 
   const poeSwitchPorts = Math.min(48, recommendedAps + 4);
   equipment.switchPorts = poeSwitchPorts;
 
-  const units = hardwareUnitEstimates(
-    inputs.vendor,
-    Math.max(1, totalIndoorSqFt),
-    outdoorAps,
-  );
-  const apSpend = indoorAps * units.apUnit + outdoorAps * units.outdoorUnit;
   const patchCableCount = Math.min(24, recommendedAps + 2);
-  const switchSpend = Math.round(
-    units.switchUnit * Math.min(2.2, 1 + recommendedAps / 16),
-  );
-  const patchSpend = patchCableCount * 8;
-  const rawTotal = apSpend + switchSpend + patchSpend;
-  const low = Math.max(0, Math.round(rawTotal * 0.85));
-  const high = Math.round(rawTotal * 1.2);
-  const hardwareCostEstimateLabel = `$${low.toLocaleString()} – $${high.toLocaleString()} (est., MSRP-style)`;
 
   const floorCount = new Set(indoorRooms.map((r) => r.floor)).size;
   const perFloorAvg =
@@ -777,13 +689,27 @@ export function computeWifiPlan(inputs: WifiAnalyzerInputs): WifiAnalyzerResults
     switchLocationNote =
       "Warehouse: mount switch in protected IDF; homerun to MDF.";
   }
+  if (stack.mesh) {
+    switchLocationNote =
+      "Mesh: place primary/router node at modem location; add satellites per coverage plan (Ethernet backhaul optional).";
+  }
 
-  const gatewayRec = gatewayRecommendation(
+  const hardwareBomLines = buildHardwareBomLines(
     inputs.vendor,
-    totalIndoorSqFt,
-    totalDevices,
-    inputs.planningPriority,
+    stack,
+    indoorAps,
+    outdoorAps,
+    cat6FootageLf,
+    lvBrackets,
+    rj45Jacks,
+    patchCableCount,
   );
+  const materialSubtotalMid = sumBomMaterialSubtotal(hardwareBomLines);
+  const hwLow = Math.max(0, Math.round(materialSubtotalMid * 0.85));
+  const hwHigh = Math.round(materialSubtotalMid * 1.2);
+  const hardwareCostEstimateLabel = `$${hwLow.toLocaleString()} – $${hwHigh.toLocaleString()} (est., MSRP-style)`;
+
+  const gatewayRec = stack.gatewayRecommendation;
 
   const incompleteWarnings = roomRows
     .filter((row) => !row.complete)
@@ -835,6 +761,8 @@ export function computeWifiPlan(inputs: WifiAnalyzerInputs): WifiAnalyzerResults
     equipment: { ...equipment, wholeHomeApPlan: wholePlanLine },
     estimatedHardwareCostRange: budgetCostRange(inputs.budget),
     hardwareCostEstimateLabel,
+    hardwareBomLines,
+    materialSubtotalMid,
     assumptionsLine,
     summaryText: "",
   };

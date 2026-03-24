@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 type AppNavKey = "dashboard" | "jobs" | "customers" | "upload";
 
 const TOOL_LINKS: { href: string; label: string }[] = [
+  { href: "/tools/project-describer", label: "AI Project Describer" },
   { href: "/tools/wifi-analyzer", label: "Wi‑Fi Analyzer" },
   { href: "/tools/av-analyzer", label: "AV Analyzer" },
   { href: "/tools/smarthome-analyzer", label: "Smart Home Analyzer" },
@@ -18,7 +19,7 @@ const TOOL_LINKS: { href: string; label: string }[] = [
 
 function linkClass(active: boolean) {
   return [
-    "block rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+    "block rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-200",
     active
       ? "bg-[#E8C84A]/15 text-[#E8C84A]"
       : "text-white/85 hover:bg-white/10",
@@ -69,20 +70,32 @@ export function AppMobileNavButton({
         ☰
       </button>
 
-      {open ? (
+      <div
+        className={[
+          "fixed inset-0 z-[200] md:hidden transition-[visibility] duration-300",
+          open ? "visible" : "invisible pointer-events-none",
+        ].join(" ")}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Site navigation"
+        aria-hidden={!open}
+      >
+        <button
+          type="button"
+          className={[
+            "absolute inset-0 bg-black/60 transition-opacity duration-300 ease-out",
+            open ? "opacity-100" : "opacity-0",
+          ].join(" ")}
+          aria-label="Close menu"
+          onClick={onBackdrop}
+          tabIndex={open ? 0 : -1}
+        />
         <div
-          className="fixed inset-0 z-[200] md:hidden"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Site navigation"
+          className={[
+            "absolute right-0 top-0 flex h-full w-[min(100vw-2.5rem,20rem)] flex-col border-l border-white/10 bg-[#0a1628] shadow-2xl transition-transform duration-300 ease-out",
+            open ? "translate-x-0" : "translate-x-full",
+          ].join(" ")}
         >
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/60"
-            aria-label="Close menu"
-            onClick={onBackdrop}
-          />
-          <div className="absolute right-0 top-0 flex h-full w-[min(100vw-2.5rem,20rem)] flex-col border-l border-white/10 bg-[#0a1628] shadow-2xl">
             <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
               <span className="text-sm font-semibold text-white">Menu</span>
               <button
@@ -175,9 +188,8 @@ export function AppMobileNavButton({
                 </>
               ) : null}
             </nav>
-          </div>
         </div>
-      ) : null}
+      </div>
     </>
   );
 }

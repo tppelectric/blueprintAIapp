@@ -524,6 +524,12 @@ export function DashboardClient() {
               Smart Home
             </Link>
             <Link
+              href="/tools/project-describer"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-fuchsia-500/45 bg-fuchsia-950/30 px-4 py-2.5 text-sm font-semibold text-fuchsia-100 transition-colors hover:border-[#E8C84A]/60 hover:bg-fuchsia-950/45"
+            >
+              AI Describer
+            </Link>
+            <Link
               href="/upload"
               className="inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-white px-5 py-2.5 text-sm font-semibold text-[#0a1628] shadow-sm transition-colors hover:border-[#E8C84A] hover:bg-[#f0d56e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/80"
             >

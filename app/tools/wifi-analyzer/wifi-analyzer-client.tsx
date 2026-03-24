@@ -356,6 +356,57 @@ export function WifiAnalyzerClient() {
     sessionStorage.removeItem("blueprint-wifi-prefill-from-smarthome");
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = sessionStorage.getItem("blueprint-project-describer-wifi");
+    if (!raw) return;
+    try {
+      const j = JSON.parse(raw) as {
+        rooms?: WifiRoomInput[];
+        projectName?: string;
+        totalSqFt?: number;
+        floors?: number;
+      };
+      if (j.rooms?.length) setRooms(j.rooms);
+      if (j.projectName) setProjectName(j.projectName);
+      if (typeof j.totalSqFt === "number" && j.totalSqFt > 0) {
+        setTotalBuildingSqFtInput(String(Math.round(j.totalSqFt)));
+      }
+      if (typeof j.floors === "number" && j.floors >= 1) {
+        const f = Math.min(4, Math.max(1, j.floors)) as StoriesCount;
+        setStories(f);
+      }
+    } catch {
+      /* ignore */
+    }
+    sessionStorage.removeItem("blueprint-project-describer-wifi");
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = sessionStorage.getItem("blueprint-room-scan-wifi");
+    if (!raw) return;
+    try {
+      const j = JSON.parse(raw) as {
+        rooms?: WifiRoomInput[];
+        projectName?: string;
+        totalSqFt?: number;
+        floors?: number;
+      };
+      if (j.rooms?.length) setRooms(j.rooms);
+      if (j.projectName) setProjectName(j.projectName);
+      if (typeof j.totalSqFt === "number" && j.totalSqFt > 0) {
+        setTotalBuildingSqFtInput(String(Math.round(j.totalSqFt)));
+      }
+      if (typeof j.floors === "number" && j.floors >= 1) {
+        setStories(Math.min(4, Math.max(1, j.floors)) as StoriesCount);
+      }
+    } catch {
+      /* ignore */
+    }
+    sessionStorage.removeItem("blueprint-room-scan-wifi");
+  }, []);
+
   const [blueprintProjects, setBlueprintProjects] = useState<
     BlueprintProjectOption[]
   >([]);

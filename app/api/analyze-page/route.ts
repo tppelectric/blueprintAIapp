@@ -17,6 +17,7 @@ import {
   withClaudeOverloadRetries,
 } from "@/lib/ai-api-retries";
 import { checkAiRouteRateLimit } from "@/lib/rate-limit";
+import { recordAnalyzePageApiUsage } from "@/lib/record-analyze-page-usage";
 
 export const maxDuration = 180;
 
@@ -245,6 +246,8 @@ export async function POST(request: Request) {
     imageBase64?: string;
     /** Client should send image/png or image/jpeg to match payload. */
     imageMediaType?: string;
+    /** Scan mode for api_usage cost row (quick | standard | deep). */
+    scanType?: string;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -374,12 +377,14 @@ No project-specific symbol legend is on file for this project — use standard N
   }
 
   let payload: { electrical_items: unknown[]; rooms: unknown[] } | null = null;
+  let claudeTurnsUsed = 1;
 
   if (claudeTextLooksLikeJson(assistantText1)) {
     payload = tryExtractAnalyzePayload(assistantText1);
   }
 
   if (!payload) {
+    claudeTurnsUsed = 2;
     console.error(
       `[analyze-page] Claude response not usable as JSON (project=${projectId} page=${pageNumber}). Full response:\n${assistantText1}`,
     );
@@ -405,6 +410,12 @@ No project-specific symbol legend is on file for this project — use standard N
       console.error(
         `[analyze-page] Second Claude attempt still not usable JSON (project=${projectId} page=${pageNumber}). Full response:\n${assistantText2}`,
       );
+      await recordAnalyzePageApiUsage({
+        projectId,
+        pageNumber,
+        scanType: body.scanType,
+        claudeTurns: claudeTurnsUsed,
+      });
       return NextResponse.json({
         items: [],
         rooms: [],
@@ -470,6 +481,12 @@ No project-specific symbol legend is on file for this project — use standard N
   }
 
   if (rows.length === 0 && roomRows.length === 0) {
+    await recordAnalyzePageApiUsage({
+      projectId,
+      pageNumber,
+      scanType: body.scanType,
+      claudeTurns: claudeTurnsUsed,
+    });
     return NextResponse.json({
       items: [],
       rooms: [],
@@ -587,6 +604,13 @@ No project-specific symbol legend is on file for this project — use standard N
   } catch (e) {
     console.error("[analyze-page] saved_scans insert exception:", e);
   }
+
+  await recordAnalyzePageApiUsage({
+    projectId,
+    pageNumber,
+    scanType: body.scanType,
+    claudeTurns: claudeTurnsUsed,
+  });
 
   return NextResponse.json({
     items: insertedItems,

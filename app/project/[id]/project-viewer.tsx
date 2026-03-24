@@ -57,6 +57,8 @@ import { SymbolLegendPanel } from "./symbol-legend-panel";
 import { TakeoffExportDialog } from "./takeoff-export-dialog";
 import { ScanModeDialog } from "./scan-mode-dialog";
 import { LinkToJobDialog } from "@/components/link-to-job-dialog";
+import { ProjectRoomScanDialog } from "@/components/project-room-scan-dialog";
+import type { FloorPlanScanApiResponse } from "@/lib/tool-floor-plan-scan";
 import {
   ScanProgressOverlay,
   type ScanProgressPageRow,
@@ -664,6 +666,10 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const symbolMatchStateRef = useRef<SymbolMatchState | null>(null);
 
   const [scanHistoryOpen, setScanHistoryOpen] = useState(false);
+  const [roomScanOpen, setRoomScanOpen] = useState(false);
+  const [roomScanBusy, setRoomScanBusy] = useState(false);
+  const [roomScanData, setRoomScanData] =
+    useState<FloorPlanScanApiResponse | null>(null);
   const [scanReloadToken, setScanReloadToken] = useState(0);
   const [resetDialog, setResetDialog] = useState<{
     itemCount: number;
@@ -1690,35 +1696,18 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     [runGptVerification],
   );
 
-  const recordScanUsage = useCallback(
-    async (pageNum: number, mode: ScanModeId) => {
-      const meta = scanModeById(mode);
-      try {
-        await fetch("/api/api-usage", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId,
-            pageNumber: pageNum,
-            scanType: mode,
-            claudeCost: meta.claudeCostPerPage,
-            openaiCost: meta.openaiCostPerPage,
-            totalCost: totalCostPerPage(meta),
-            pagesAnalyzed: 1,
-          }),
-        });
-        const r = await fetch(
-          `/api/api-usage?projectId=${encodeURIComponent(projectId)}`,
-        );
-        const j = (await r.json()) as { totalCost?: number };
-        if (typeof j.totalCost === "number")
-          setProjectUsageTotal(j.totalCost);
-      } catch {
-        /* non-blocking */
-      }
-    },
-    [projectId],
-  );
+  /** api_usage is recorded server-side in /api/analyze-page; refresh project totals for the UI. */
+  const refreshProjectUsageTotal = useCallback(async () => {
+    try {
+      const r = await fetch(
+        `/api/api-usage?projectId=${encodeURIComponent(projectId)}`,
+      );
+      const j = (await r.json()) as { totalCost?: number };
+      if (typeof j.totalCost === "number") setProjectUsageTotal(j.totalCost);
+    } catch {
+      /* non-blocking */
+    }
+  }, [projectId]);
 
   const scanProgressOpenRef = useRef(false);
   useEffect(() => {
@@ -1813,6 +1802,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
             pageNumber: pageToAnalyze,
             imageBase64: pageImage.base64,
             imageMediaType: pageImage.mediaType,
+            scanType: mode,
           }),
           signal,
         });
@@ -1863,7 +1853,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       }
 
       onProgress?.(98, "Saving results…", null);
-      await recordScanUsage(pageToAnalyze, mode);
+      await refreshProjectUsageTotal();
       onProgress?.(100, "Complete", null);
 
       const incomingCount = ((json.items ?? []) as ElectricalItemRow[]).length;
@@ -1877,7 +1867,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         outcome: incomingCount > 0 ? "ok" : "empty",
       };
     },
-    [projectId, applyAnalyzePageJson, recordScanUsage],
+    [projectId, applyAnalyzePageJson, refreshProjectUsageTotal],
   );
 
   const lastBatchPageCompletedRef = useRef(0);
@@ -2224,6 +2214,67 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const analyzeThisPage = useCallback(() => {
     openScanModeForPage();
   }, [openScanModeForPage]);
+
+  const runRoomScanCurrentPage = useCallback(async () => {
+    if (
+      analyzeBusy ||
+      legendBusy ||
+      roomScanBusy ||
+      symbolCaptureState ||
+      symbolMatchState
+    )
+      return;
+    const docs = pdfDocsRef.current;
+    if (!docs?.length) {
+      window.alert("No PDF loaded.");
+      return;
+    }
+    const mapped = globalPageToLocal(currentPage, docs);
+    if (!mapped) {
+      window.alert("Could not map page.");
+      return;
+    }
+    setRoomScanBusy(true);
+    try {
+      const pageImage = await renderPdfPageToPngBase64(
+        mapped.doc,
+        mapped.localPage,
+      );
+      const res = await fetch("/api/tools/scan-floor-plan-rooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageBase64: pageImage.base64,
+          imageMediaType: pageImage.mediaType,
+          tool: "wifi",
+        }),
+      });
+      const json = (await res.json()) as FloorPlanScanApiResponse & {
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Room scan failed");
+      setRoomScanData({
+        rooms: json.rooms ?? [],
+        equipment_placement_suggestions:
+          json.equipment_placement_suggestions ?? [],
+        scan_notes: json.scan_notes ?? "",
+      });
+      setRoomScanOpen(true);
+    } catch (e) {
+      window.alert(
+        e instanceof Error ? e.message : "Room scan failed.",
+      );
+    } finally {
+      setRoomScanBusy(false);
+    }
+  }, [
+    analyzeBusy,
+    legendBusy,
+    roomScanBusy,
+    currentPage,
+    symbolCaptureState,
+    symbolMatchState,
+  ]);
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1024px)");
@@ -3876,6 +3927,21 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                 >
                   Analyze All Pages
                 </button>
+                <button
+                  type="button"
+                  onClick={() => void runRoomScanCurrentPage()}
+                  disabled={
+                    analyzeBusy ||
+                    legendBusy ||
+                    symbolToolboxBusy ||
+                    roomScanBusy ||
+                    blockPageNav
+                  }
+                  title="AI scan of current page for room names, dimensions, and square footage"
+                  className="rounded-lg border border-teal-500/45 bg-teal-950/35 px-3 py-2 text-sm font-semibold text-teal-100 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-teal-950/50"
+                >
+                  {roomScanBusy ? "Scanning rooms…" : "Scan Rooms and Sq Footage"}
+                </button>
                 {resumeSnapshot &&
                 resumeSnapshot.projectId === projectId &&
                 !analyzeBusy ? (
@@ -4951,6 +5017,15 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         projectName={name}
         reloadToken={scanReloadToken}
         onViewScan={applyViewScan}
+      />
+
+      <ProjectRoomScanDialog
+        open={roomScanOpen}
+        onClose={() => setRoomScanOpen(false)}
+        data={roomScanData}
+        scanPage={currentPage}
+        projectId={projectId}
+        projectLabel={name}
       />
 
       {symbolMatchState ? (

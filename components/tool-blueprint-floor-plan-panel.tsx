@@ -10,7 +10,7 @@ import {
 import { capturePdfPageBase64FromArrayBuffer } from "@/lib/tool-floor-plan-pdf-capture";
 import type { FloorPlanScanApiResponse } from "@/lib/tool-floor-plan-scan";
 
-export type ToolBlueprintScanTool = "wifi" | "av" | "smarthome";
+export type ToolBlueprintScanTool = "wifi" | "av" | "smarthome" | "electrical";
 
 export type ToolBlueprintFloorPlanPanelProps = {
   tool: ToolBlueprintScanTool;

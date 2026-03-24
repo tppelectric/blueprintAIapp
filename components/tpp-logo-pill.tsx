@@ -18,7 +18,7 @@ export function TppLogoPill({
 }) {
   return (
     <span
-      className={`flex shrink-0 items-center justify-center bg-transparent ${SIZES[size]} ${className}`}
+      className={`flex shrink-0 items-center justify-center rounded-lg bg-white p-1.5 ${SIZES[size]} ${className}`}
     >
       <span className="flex w-full min-w-0 items-center justify-center">
         {/* eslint-disable-next-line @next/next/no-img-element -- public asset */}
@@ -26,7 +26,6 @@ export function TppLogoPill({
           src={TPP_LOGO_PATH}
           alt="TPP Electric"
           className="h-auto w-full object-contain"
-          style={{ mixBlendMode: "multiply" }}
         />
       </span>
     </span>

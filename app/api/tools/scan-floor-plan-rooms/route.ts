@@ -59,6 +59,11 @@ In equipment_placement_suggestions, give 4–10 concise tips for speaker, displa
 
 TOOL CONTEXT — Smart home / control:
 In equipment_placement_suggestions, give 4–10 concise tips for keypads, touchscreens, hub location, sensors, and cameras relative to traffic patterns and entries.`,
+
+  electrical: `
+
+TOOL CONTEXT — Electrical planning:
+In equipment_placement_suggestions, give 4–10 concise tips for panel location, homerun paths, kitchen small-appliance circuits, bath GFCI, outdoor loads, and EV/spa rough-in considerations. Do not repeat the full room list.`,
 };
 
 function extractAssistantText(msg: Anthropic.Messages.Message): string {
@@ -115,7 +120,9 @@ export async function POST(request: Request) {
   }
 
   const toolRaw = String(body.tool ?? "wifi").toLowerCase().trim();
-  const tool = ["wifi", "av", "smarthome"].includes(toolRaw) ? toolRaw : "wifi";
+  const tool = ["wifi", "av", "smarthome", "electrical"].includes(toolRaw)
+    ? toolRaw
+    : "wifi";
 
   const mediaTypeRaw = body.imageMediaType?.trim().toLowerCase();
   const claudeMediaType =

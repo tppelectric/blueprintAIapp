@@ -118,6 +118,38 @@ export function SmartHomeAnalyzerClient() {
   const [budget, setBudget] = useState<ShBudget>("30k_75k");
   const [lifestyle, setLifestyle] = useState<ShLifestyle>("full_auto");
   const [rooms, setRooms] = useState<ShRoomInput[]>(exampleRooms);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    for (const key of [
+      "blueprint-room-scan-smarthome",
+      "blueprint-project-describer-smarthome",
+    ]) {
+      const raw = sessionStorage.getItem(key);
+      if (!raw) continue;
+      try {
+        const j = JSON.parse(raw) as {
+          rooms?: ShRoomInput[];
+          projectName?: string;
+          totalSqFt?: number;
+          floors?: number;
+        };
+        if (j.rooms?.length) setRooms(j.rooms);
+        if (j.projectName) setProjectName(j.projectName);
+        if (typeof j.totalSqFt === "number" && j.totalSqFt > 0) {
+          setTotalSqFt(Math.round(j.totalSqFt));
+        }
+        if (typeof j.floors === "number" && j.floors >= 1) {
+          setFloors(Math.min(6, Math.max(1, j.floors)));
+        }
+      } catch {
+        /* ignore */
+      }
+      sessionStorage.removeItem(key);
+      break;
+    }
+  }, []);
+
   const [controlSystem, setControlSystem] =
     useState<ShControlSystem>("no_pref");
   const [lighting, setLighting] = useState<ShLighting>("no_pref");

@@ -120,6 +120,38 @@ export function AvAnalyzerClient() {
   const [primaryFocus, setPrimaryFocus] =
     useState<AvPrimaryFocus>("both_av");
   const [rooms, setRooms] = useState<AvRoomInput[]>(exampleRooms);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    for (const key of [
+      "blueprint-room-scan-av",
+      "blueprint-project-describer-av",
+    ]) {
+      const raw = sessionStorage.getItem(key);
+      if (!raw) continue;
+      try {
+        const j = JSON.parse(raw) as {
+          rooms?: AvRoomInput[];
+          projectName?: string;
+          totalSqFt?: number;
+          floors?: number;
+        };
+        if (j.rooms?.length) setRooms(j.rooms);
+        if (j.projectName) setProjectName(j.projectName);
+        if (typeof j.totalSqFt === "number" && j.totalSqFt > 0) {
+          setTotalSqFt(Math.round(j.totalSqFt));
+        }
+        if (typeof j.floors === "number" && j.floors >= 1) {
+          setFloors(Math.min(6, Math.max(1, j.floors)));
+        }
+      } catch {
+        /* ignore */
+      }
+      sessionStorage.removeItem(key);
+      break;
+    }
+  }, []);
+
   const [audioBrand, setAudioBrand] = useState<AvAudioBrand>("no_pref");
   const [videoBrand, setVideoBrand] = useState<AvVideoBrand>("no_pref");
   const [distribution, setDistribution] =

@@ -21,6 +21,7 @@ export type JobAttachmentType =
   | "wifi_calculation"
   | "av_calculation"
   | "smarthome_calculation"
+  | "electrical_calculation"
   | "load_calculation"
   | "nec_checklist"
   | "project_breakdown"

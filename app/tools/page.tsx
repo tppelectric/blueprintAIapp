@@ -51,6 +51,12 @@ const tools = [
     tone: "border-amber-500/45 text-amber-100",
   },
   {
+    href: "/tools/project-describer",
+    title: "AI Project Describer",
+    desc: "Voice or text → scope, BOM, proposals, analyzer pre-fill",
+    tone: "border-fuchsia-500/45 text-fuchsia-100",
+  },
+  {
     href: "/dashboard/symbols",
     title: "Symbol library",
     desc: "Reusable electrical symbols",

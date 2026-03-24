@@ -96,6 +96,24 @@ function SmartHomeIcon({ className }: { className?: string }) {
   );
 }
 
+function DescriberIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
 export default function Home() {
   return (
     <div className="flex min-h-screen flex-col">
@@ -208,9 +226,29 @@ export default function Home() {
               Open tool →
             </span>
           </Link>
+
+          <Link
+            href="/tools/project-describer"
+            className="group card-pad-mobile flex flex-col rounded-2xl border border-white/12 bg-white/[0.04] p-5 text-left shadow-sm transition-colors hover:border-[#E8C84A] hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50 sm:p-6"
+          >
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-fuchsia-500/15 text-fuchsia-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-fuchsia-500/25 group-hover:ring-[#E8C84A]/50">
+              <DescriberIcon className="h-6 w-6" />
+            </div>
+            <h2 className="mt-4 text-lg font-semibold text-white">
+              AI Project Describer
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-white/60">
+              Describe a job in text or voice — scope, proposals, BOM, and
+              pre-filled Wi‑Fi / AV / smart home plans
+            </p>
+            <span className="mt-4 text-sm font-medium text-[#E8C84A] group-hover:text-[#f0d56e]">
+              Open tool →
+            </span>
+          </Link>
         </div>
 
         <div className="mt-12 w-full max-w-4xl px-1 sm:mt-16">
+          <h2 className="sr-only">API usage and scan costs</h2>
           <HomepageApiUsageWidget />
         </div>
 

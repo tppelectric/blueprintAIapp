@@ -1,5 +1,6 @@
 import { defaultEquipOptionId } from "@/lib/pb-equipment-options";
 import type { AvResults } from "@/lib/av-analyzer-engine";
+import type { ElectricalResults } from "@/lib/electrical-analyzer-engine";
 import type { ShResults } from "@/lib/smarthome-analyzer-engine";
 import type { PBEquipSlot, ProjectCostSummary } from "@/lib/wifi-project-cost";
 import type { VendorChoice } from "@/lib/wifi-analyzer-engine";
@@ -135,6 +136,44 @@ export const SMARTHOME_LABOR_PRESETS: LaborPreset[] = [
   { id: "josh", label: "Josh.ai setup", defaultHours: 6 },
   { id: "net", label: "Network configuration", defaultHours: 2 },
   { id: "walk", label: "Testing and walkthrough", defaultHours: 2 },
+  { id: "custom", label: "Custom task", defaultHours: 1 },
+];
+
+/** Electrical Project Analyzer — materials dropdown presets */
+export const ELECTRICAL_MATERIAL_PRESETS: MaterialPreset[] = [
+  { id: "nm142", label: "14/2 NM-B wire", unit: "LF", defaultUnitCost: 0.72 },
+  { id: "nm122", label: "12/2 NM-B wire", unit: "LF", defaultUnitCost: 0.95 },
+  { id: "nm102", label: "10/2 NM-B wire", unit: "LF", defaultUnitCost: 1.45 },
+  { id: "nm632", label: "6/3 NM-B wire", unit: "LF", defaultUnitCost: 4.2 },
+  { id: "mc142", label: "14/2 MC Cable", unit: "LF", defaultUnitCost: 1.1 },
+  { id: "mc122", label: "12/2 MC Cable", unit: "LF", defaultUnitCost: 1.35 },
+  { id: "dup15", label: "15A duplex receptacle", unit: "EA", defaultUnitCost: 2.5 },
+  { id: "dup20", label: "20A duplex receptacle", unit: "EA", defaultUnitCost: 4.5 },
+  { id: "gfci15", label: "GFCI receptacle 15A", unit: "EA", defaultUnitCost: 18 },
+  { id: "gfci20", label: "GFCI receptacle 20A", unit: "EA", defaultUnitCost: 22 },
+  { id: "sw1", label: "Single pole switch", unit: "EA", defaultUnitCost: 3.5 },
+  { id: "sw3", label: "3-way switch", unit: "EA", defaultUnitCost: 6 },
+  { id: "dim", label: "Dimmer switch", unit: "EA", defaultUnitCost: 28 },
+  { id: "decora", label: "Decora receptacle", unit: "EA", defaultUnitCost: 4 },
+  { id: "canLed", label: "Recessed light LED", unit: "EA", defaultUnitCost: 42 },
+  { id: "surfFx", label: "Surface mount fixture", unit: "EA", defaultUnitCost: 65 },
+  { id: "br15", label: "Single pole breaker 15A", unit: "EA", defaultUnitCost: 8 },
+  { id: "br20", label: "Single pole breaker 20A", unit: "EA", defaultUnitCost: 9 },
+  { id: "br30", label: "Double pole breaker 30A", unit: "EA", defaultUnitCost: 22 },
+  { id: "br50", label: "Double pole breaker 50A", unit: "EA", defaultUnitCost: 28 },
+  { id: "pan200", label: "200A panel 40 space", unit: "EA", defaultUnitCost: 280 },
+  { id: "custom", label: "Custom item", unit: "EA", defaultUnitCost: 0 },
+];
+
+export const ELECTRICAL_LABOR_PRESETS: LaborPreset[] = [
+  { id: "rough-cct", label: "Rough-in per circuit", defaultHours: 1.5 },
+  { id: "trim-out", label: "Device trim per outlet", defaultHours: 0.25 },
+  { id: "trim-sw", label: "Device trim per switch", defaultHours: 0.25 },
+  { id: "fx", label: "Fixture installation", defaultHours: 0.5 },
+  { id: "panel", label: "Panel installation", defaultHours: 8 },
+  { id: "svc", label: "Service entrance", defaultHours: 4 },
+  { id: "insp", label: "Inspection prep", defaultHours: 2 },
+  { id: "walk", label: "Final walkthrough", defaultHours: 1 },
   { id: "custom", label: "Custom task", defaultHours: 1 },
 ];
 
@@ -595,6 +634,79 @@ export function seedProjectBreakdownFromSmartHome(
   addL("Control4 / platform programming", r.controller.programmingHours);
   addL("Network configuration", 2);
   addL("Testing and walkthrough", 2);
+
+  return { ...base, materials, labor };
+}
+
+export function seedProjectBreakdownFromElectrical(
+  r: ElectricalResults,
+): ProjectBreakdownState {
+  const base = defaultProjectBreakdownState();
+  const m = r.materials;
+  const materials: PBMaterialLine[] = [];
+  const addM = (
+    description: string,
+    qty: number,
+    unit: string,
+    unitCost: number,
+  ) => {
+    if (qty <= 0) return;
+    materials.push({
+      id: newPbId(),
+      description,
+      qty,
+      unit,
+      unitCost,
+      markupPct: null,
+      bomSlot: null,
+      equipOptionId: null,
+    });
+  };
+
+  addM("14/2 NM-B", m.wire14_2NmLf, "LF", 0.72);
+  addM("12/2 NM-B", m.wire12_2NmLf, "LF", 0.95);
+  addM("10/2 NM-B", m.wire10_2NmLf, "LF", 1.45);
+  addM("6/3 NM-B", m.wire6_3NmLf, "LF", 4.2);
+  addM("14/3 NM-B (3-way homeruns)", m.wire14_3NmLf, "LF", 0.88);
+  addM("15A duplex receptacle", m.duplex15, "EA", 2.5);
+  addM("20A duplex receptacle", m.duplex20, "EA", 4.5);
+  addM("GFCI receptacle (blended)", m.gfci, "EA", 20);
+  addM("Single pole switch (blended)", m.switchSp, "EA", 3.5);
+  addM("3-way switch", m.switch3w, "EA", 6);
+  addM("Dimmer switch", m.dimmer, "EA", 28);
+  addM("Recessed LED fixture", m.recessed, "EA", 42);
+  addM("Surface mount fixture", m.surfaceFixtures, "EA", 65);
+  addM("15A single-pole breaker", m.breaker15Sp, "EA", 8);
+  addM("20A single-pole breaker", m.breaker20Sp, "EA", 9);
+  addM("30A double-pole breaker", m.breaker30Dp, "EA", 22);
+  addM("50A double-pole breaker", m.breaker50Dp, "EA", 28);
+  addM(
+    `${m.panelAmps}A main panel (${m.panelSpaces}-space, allowance)`,
+    1,
+    "EA",
+    m.panelAmps >= 200 ? 280 : 180,
+  );
+
+  const labor: PBLaborLine[] = [];
+  const addL = (task: string, hours: number) => {
+    if (hours <= 0) return;
+    labor.push({
+      id: newPbId(),
+      task,
+      hours,
+      techs: null,
+      ratePerHour: null,
+    });
+  };
+  const L = r.laborHoursHint;
+  addL("Rough-in per circuit", L.roughInPerCircuit);
+  addL("Device trim per outlet", L.trimOutlets);
+  addL("Device trim per switch", L.trimSwitches);
+  addL("Fixture installation", L.fixtures);
+  addL("Panel installation", L.panelInstall);
+  addL("Service entrance", L.serviceEntrance);
+  addL("Inspection prep", L.inspectionPrep);
+  addL("Final walkthrough", L.walkthrough);
 
   return { ...base, materials, labor };
 }

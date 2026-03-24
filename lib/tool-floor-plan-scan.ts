@@ -4,6 +4,13 @@
 
 import type { AvRoomInput, AvRoomType } from "@/lib/av-analyzer-engine";
 import type { ShRoomInput, ShRoomType } from "@/lib/smarthome-analyzer-engine";
+import {
+  createElectricalRoom,
+  defaultEleDedicated,
+  defaultEleLowVoltage,
+  type EleRoomType,
+  type ElectricalRoomInput,
+} from "@/lib/electrical-analyzer-engine";
 import type {
   CeilingHeight,
   RoomTypeOption,
@@ -345,5 +352,110 @@ export function floorPlanScanToSmartHomeRooms(
       occupancySensor: false,
     };
     return { ...base, ...shDefaultsForType(rt) };
+  });
+}
+
+function mapElectricalRoomType(rt: string, name: string): EleRoomType {
+  const t = rt.toLowerCase();
+  const n = name.toLowerCase();
+  if (/panel|electrical room/i.test(n)) return "panel_room";
+  if (/mech|boiler|furnace/i.test(n)) return "mechanical";
+  const map: Record<string, EleRoomType> = {
+    living_room: "living_room",
+    bedroom: "bedroom",
+    kitchen: "kitchen",
+    bathroom: "bathroom",
+    dining_room: "dining_room",
+    office: "office",
+    garage: "garage",
+    basement: "basement",
+    utility: "utility_room",
+    laundry: "laundry",
+    hallway: "hallway",
+    outdoor: "outdoor",
+    patio: "outdoor",
+    other: "other",
+  };
+  return map[t] ?? "other";
+}
+
+function electricalHeuristicDevices(
+  roomType: EleRoomType,
+): Partial<ElectricalRoomInput> {
+  const d = defaultEleDedicated();
+  const lv = defaultEleLowVoltage();
+  switch (roomType) {
+    case "kitchen":
+      return {
+        rec15: 6,
+        rec20: 2,
+        recGfci: 4,
+        recessed: 6,
+        dimmers: 2,
+        underCabinet: true,
+        dedicated: {
+          ...d,
+          refrigerator: true,
+          dishwasher: true,
+          microwave: true,
+          disposal: true,
+          rangeOven: true,
+        },
+        lowVoltage: { ...lv, ethernetDrops: 1 },
+      };
+    case "bathroom":
+      return {
+        rec15: 2,
+        recGfci: 2,
+        recessed: 3,
+        dimmers: 1,
+        afciRequired: "no",
+      };
+    case "bedroom":
+      return {
+        rec15: 8,
+        recessed: 4,
+        dimmers: 1,
+        threeWay: 1,
+        afciRequired: "yes",
+        lowVoltage: { ...lv, ethernetDrops: 2 },
+      };
+    case "living_room":
+      return {
+        rec15: 10,
+        recessed: 8,
+        dimmers: 2,
+        threeWay: 2,
+        lowVoltage: { ...lv, speakerWire: true, ethernetDrops: 2 },
+      };
+    case "garage":
+      return {
+        rec15: 4,
+        recGfci: 2,
+        dedicated: { ...d, evLevel2: false },
+      };
+    default:
+      return { rec15: 4, recessed: 2 };
+  }
+}
+
+export function floorPlanScanToElectricalRooms(
+  scanned: FloorPlanScanRoom[],
+  newId: () => string,
+): ElectricalRoomInput[] {
+  return scanned.map((r) => {
+    const { lengthFt, widthFt } = deriveLengthWidth(r);
+    const roomType = mapElectricalRoomType(r.room_type, r.room_name);
+    const floor =
+      r.floor == null || r.floor < 1 ? 1 : Math.min(6, Math.round(r.floor));
+    const hint = electricalHeuristicDevices(roomType);
+    return createElectricalRoom(newId(), {
+      name: r.room_name,
+      floor,
+      lengthFt,
+      widthFt,
+      roomType,
+      ...hint,
+    });
   });
 }

@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { resolvePostLoginRedirect } from "@/lib/post-login-redirect";
 
 function hasSupabaseAuthCookie(request: NextRequest): boolean {
   return request.cookies.getAll().some((c) => {
@@ -78,7 +79,9 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (user && path === "/login") {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    const next = request.nextUrl.searchParams.get("next");
+    const dest = resolvePostLoginRedirect(next);
+    return NextResponse.redirect(new URL(dest, request.url));
   }
 
   if (user && path === "/setup") {

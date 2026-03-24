@@ -191,7 +191,7 @@ export function MotorHvacCalculatorClient() {
         </Link>
       </ToolPageHeader>
 
-      <main className="mx-auto max-w-4xl space-y-6 px-6 py-8">
+      <main className="mx-auto max-w-4xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
         <p className="tool-muted text-sm">
           Use nameplate data where shown. DC / wound-rotor: enter nameplate FLA
           (NEC 430.6). Verify all OCPD with NEC and manufacturer data.

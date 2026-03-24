@@ -147,6 +147,16 @@ export function JobsClient() {
   }, [load]);
 
   useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const apply = () => {
+      if (mq.matches) setView("list");
+    };
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+
+  useEffect(() => {
     void loadCustomers();
   }, [loadCustomers]);
 
@@ -307,13 +317,15 @@ export function JobsClient() {
   };
 
   const JobCard = ({ j }: { j: JobListRow }) => (
-    <div className="rounded-xl border border-white/10 bg-white/[0.04] text-sm transition-colors hover:border-[#E8C84A]/45">
-      <Link href={`/jobs/${j.id}`} className="block p-3">
+    <div className="w-full rounded-xl border border-white/10 bg-white/[0.04] text-sm transition-colors hover:border-[#E8C84A]/45">
+      <Link href={`/jobs/${j.id}`} className="block p-3 sm:p-3">
         <p className="font-semibold text-white">
           {j.job_number} · {j.job_name}
         </p>
-        <p className="mt-1 text-xs text-white/55">{customerLabel(j)}</p>
-        <div className="mt-2 flex flex-wrap gap-1">
+        <p className="mt-0.5 text-xs text-white/55 sm:mt-1">
+          {customerLabel(j)}
+        </p>
+        <div className="mt-1.5 flex flex-wrap gap-1 sm:mt-2">
           <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] text-sky-200">
             {j.job_type}
           </span>
@@ -322,13 +334,12 @@ export function JobsClient() {
           </span>
         </div>
         {[j.address, j.city, j.state].filter(Boolean).length ? (
-          <p className="mt-2 text-xs text-white/45">
+          <p className="mt-1.5 hidden text-xs text-white/45 sm:mt-2 sm:block">
             {[j.address, j.city, j.state, j.zip].filter(Boolean).join(", ")}
           </p>
         ) : null}
-        <p className="mt-2 text-xs text-white/40">
-          {counts[j.id] ?? 0} attachment{(counts[j.id] ?? 0) === 1 ? "" : "s"} ·
-          Updated {formatDate(j.updated_at)}
+        <p className="mt-1.5 text-[11px] text-white/40 sm:mt-2 sm:text-xs">
+          {counts[j.id] ?? 0} att. · {formatDate(j.updated_at)}
         </p>
       </Link>
       <div className="flex flex-wrap gap-2 border-t border-white/10 px-3 py-2">
@@ -373,30 +384,33 @@ export function JobsClient() {
       <WideAppHeader active="jobs" showTppSubtitle />
       {toastMsg ? (
         <div
-          className="fixed bottom-6 right-6 z-[250] max-w-sm rounded-xl border border-emerald-500/40 bg-emerald-950/95 px-4 py-3 text-sm font-medium text-emerald-100 shadow-lg"
+          className="fixed bottom-20 left-4 right-4 z-[250] mx-auto max-w-sm rounded-xl border border-emerald-500/40 bg-emerald-950/95 px-4 py-3 text-sm font-medium text-emerald-100 shadow-lg sm:bottom-6 sm:left-auto sm:right-6"
           role="status"
         >
           {toastMsg}
         </div>
       ) : null}
-      <main className="mx-auto w-full max-w-7xl flex-1 px-6 py-10">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <h1 className="text-3xl font-semibold text-white">Jobs</h1>
-          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 sm:py-10">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+          <h1 className="text-2xl font-semibold text-white sm:text-3xl">
+            Jobs
+          </h1>
+          <div className="flex flex-col gap-2 sm:ml-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
             <button
               type="button"
               onClick={openCreate}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#E8C84A] px-6 py-3 text-base font-bold text-[#0a1628] shadow-md hover:bg-[#f0d56e]"
+              className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-[#E8C84A] px-6 py-3 text-base font-bold text-[#0a1628] shadow-md hover:bg-[#f0d56e] sm:w-auto"
             >
               <span className="text-xl leading-none" aria-hidden>
                 +
               </span>
               Add Job
             </button>
+            <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
             <button
               type="button"
               onClick={() => setView("kanban")}
-              className={`rounded-lg px-4 py-2.5 text-sm font-medium ${
+              className={`min-h-[44px] rounded-lg px-4 py-2.5 text-sm font-medium ${
                 view === "kanban"
                   ? "bg-[#E8C84A] text-[#0a1628]"
                   : "border border-white/20 text-white/80"
@@ -407,7 +421,7 @@ export function JobsClient() {
             <button
               type="button"
               onClick={() => setView("list")}
-              className={`rounded-lg px-4 py-2.5 text-sm font-medium ${
+              className={`min-h-[44px] rounded-lg px-4 py-2.5 text-sm font-medium ${
                 view === "list"
                   ? "bg-[#E8C84A] text-[#0a1628]"
                   : "border border-white/20 text-white/80"
@@ -415,9 +429,10 @@ export function JobsClient() {
             >
               List
             </button>
+            </div>
             <Link
               href="/customers"
-              className="rounded-lg border border-white/20 px-4 py-2.5 text-sm text-white/85 hover:bg-white/5"
+              className="flex min-h-[44px] w-full items-center justify-center rounded-lg border border-white/20 px-4 py-2.5 text-sm text-white/85 hover:bg-white/5 sm:w-auto"
             >
               Customers
             </Link>
@@ -425,7 +440,7 @@ export function JobsClient() {
               type="button"
               disabled={jobs.length === 0}
               onClick={exportJobTreadCsv}
-              className="rounded-lg border border-[#E8C84A]/50 px-4 py-2.5 text-sm font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10 disabled:cursor-not-allowed disabled:opacity-40"
+              className="min-h-[44px] w-full rounded-lg border border-[#E8C84A]/50 px-4 py-2.5 text-sm font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
             >
               Export for JobTread
             </button>
@@ -449,11 +464,11 @@ export function JobsClient() {
             ))}
           </ul>
         ) : (
-          <div className="mt-8 flex gap-3 overflow-x-auto pb-4">
+          <div className="mt-8 flex gap-3 overflow-x-auto pb-4 [-webkit-overflow-scrolling:touch]">
             {KANBAN_STATUSES.map((st) => (
               <div
                 key={st}
-                className="w-72 shrink-0 rounded-xl border border-white/10 bg-[#071422]/60 p-3"
+                className="w-[min(100vw-2rem,18rem)] shrink-0 rounded-xl border border-white/10 bg-[#071422]/60 p-3 sm:w-72"
               >
                 <h2 className="mb-3 text-xs font-bold uppercase tracking-wide text-[#E8C84A]/90">
                   {st}

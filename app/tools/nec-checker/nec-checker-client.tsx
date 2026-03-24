@@ -234,7 +234,7 @@ export function NecCheckerClient() {
         </Link>
       </ToolPageHeader>
 
-      <main className="mx-auto max-w-3xl px-6 py-8">
+      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
         <NecCheckerSection
           title="AI Code Assistant"
           description="Ask any NEC question and get instant answers with code references"

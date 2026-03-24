@@ -3,7 +3,7 @@
 import { TPP_LOGO_PATH } from "@/lib/tpp-branding";
 
 const SIZES = {
-  hero: "w-44",
+  hero: "w-28 sm:w-36 md:w-44",
   header: "w-36",
   tool: "w-28",
   compact: "w-24",

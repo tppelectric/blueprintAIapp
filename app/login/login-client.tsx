@@ -6,11 +6,12 @@ import { useCallback, useState } from "react";
 import { TppLogoPill } from "@/components/tpp-logo-pill";
 import { TPP_COMPANY_FULL } from "@/lib/tpp-branding";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { resolvePostLoginRedirect } from "@/lib/post-login-redirect";
 
 export function LoginClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const nextPath = searchParams.get("next") ?? "/dashboard";
+  const postLoginPath = resolvePostLoginRedirect(searchParams.get("next"));
   const errQ = searchParams.get("error");
   const noticeQ = searchParams.get("notice");
 
@@ -32,7 +33,7 @@ export function LoginClient() {
       setError(null);
       setStatusHint(null);
       const trimmedEmail = email.trim();
-      const safe = nextPath.startsWith("/") ? nextPath : "/dashboard";
+      const safe = postLoginPath;
 
       const sleep = (ms: number) =>
         new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -113,7 +114,7 @@ export function LoginClient() {
         }
       }
     },
-    [email, password, nextPath, router],
+    [email, password, postLoginPath, router],
   );
 
   const sendReset = useCallback(async () => {

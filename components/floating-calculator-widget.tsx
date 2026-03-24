@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/lib/theme-context";
 
 type Tab = "calc" | "ohm" | "power" | "units";
@@ -39,14 +39,14 @@ function StandardCalculatorPanel({ theme }: { theme: "dark" | "light" }) {
 
   const numClass =
     theme === "light"
-      ? "rounded-lg border border-slate-200 bg-white py-3 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-50"
-      : "rounded-lg border border-white/20 bg-white py-3 text-sm font-semibold text-[#0a1628] shadow-sm hover:bg-white/90";
+      ? "rounded-lg border border-slate-200 bg-white py-3.5 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-50 min-h-[44px] sm:py-3"
+      : "rounded-lg border border-white/20 bg-white py-3.5 text-sm font-semibold text-[#0a1628] shadow-sm hover:bg-white/90 min-h-[44px] sm:py-3";
   const opClass =
-    "rounded-lg border border-[#E8C84A]/70 bg-[#E8C84A] py-3 text-sm font-bold text-[#0a1628] shadow-sm hover:bg-[#f0d56e]";
+    "rounded-lg border border-[#E8C84A]/70 bg-[#E8C84A] py-3.5 text-sm font-bold text-[#0a1628] shadow-sm hover:bg-[#f0d56e] min-h-[44px] sm:py-3";
   const utilClass =
     theme === "light"
-      ? "rounded-lg border border-slate-300 bg-slate-100 py-2.5 text-xs font-semibold text-slate-800 hover:bg-slate-200"
-      : "rounded-lg border border-white/25 bg-[#0a1628] py-2.5 text-xs font-semibold text-white/90 hover:bg-white/10";
+      ? "rounded-lg border border-slate-300 bg-slate-100 py-3 text-xs font-semibold text-slate-800 hover:bg-slate-200 min-h-[40px] sm:py-2.5"
+      : "rounded-lg border border-white/25 bg-[#0a1628] py-3 text-xs font-semibold text-white/90 hover:bg-white/10 min-h-[40px] sm:py-2.5";
 
   const inputDigit = (d: string) => {
     if (waitingForOperand) {
@@ -795,11 +795,24 @@ export function FloatingCalculatorWidget() {
   const [open, setOpen] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [tab, setTab] = useState<Tab>("calc");
+  const [mobileLayout, setMobileLayout] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const apply = () => setMobileLayout(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
 
   const panelBg =
     theme === "light"
       ? "border-slate-300 bg-white text-slate-900 shadow-xl"
       : "border-[#E8C84A]/35 bg-[#071422] text-white shadow-2xl shadow-black/50";
+
+  const fabBottom = mobileLayout
+    ? "bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))]"
+    : "bottom-5";
 
   return (
     <>
@@ -809,7 +822,7 @@ export function FloatingCalculatorWidget() {
           setOpen(true);
           setMinimized(false);
         }}
-        className="fixed bottom-5 right-5 z-[100] flex items-center gap-2 rounded-full border-2 border-[#E8C84A]/60 bg-[#0d2847] px-4 py-3 text-sm font-bold text-[#E8C84A] shadow-lg hover:bg-[#123a5c]"
+        className={`fixed right-4 z-[100] flex min-h-[48px] items-center gap-2 rounded-full border-2 border-[#E8C84A]/60 bg-[#0d2847] px-4 py-3 text-sm font-bold text-[#E8C84A] shadow-lg hover:bg-[#123a5c] sm:right-5 ${fabBottom}`}
         aria-label="Open calculator"
       >
         ⚡ Calc
@@ -817,7 +830,11 @@ export function FloatingCalculatorWidget() {
 
       {open && !minimized ? (
         <div
-          className={`fixed bottom-5 right-5 z-[101] flex w-[min(100vw-1.5rem,26rem)] flex-col rounded-xl border ${panelBg}`}
+          className={
+            mobileLayout
+              ? `fixed inset-x-0 bottom-0 z-[101] flex max-h-[min(88dvh,36rem)] flex-col rounded-t-2xl border-x border-t ${panelBg}`
+              : `fixed bottom-5 right-5 z-[101] flex w-[min(100vw-1.5rem,26rem)] flex-col rounded-xl border ${panelBg}`
+          }
         >
           <div className="flex items-center justify-between border-b border-[#E8C84A]/25 px-3 py-2.5">
             <span className="text-xs font-bold uppercase tracking-wide text-[#E8C84A]">
@@ -876,7 +893,7 @@ export function FloatingCalculatorWidget() {
         <button
           type="button"
           onClick={() => setMinimized(false)}
-          className="fixed bottom-5 right-28 z-[101] rounded-full border border-[#E8C84A]/50 bg-[#0a1628] px-3 py-2 text-xs text-[#E8C84A]"
+          className={`fixed z-[101] rounded-full border border-[#E8C84A]/50 bg-[#0a1628] px-3 py-2 text-xs text-[#E8C84A] ${mobileLayout ? `right-4 ${fabBottom}` : "bottom-5 right-28"}`}
         >
           Calc ▲
         </button>

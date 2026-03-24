@@ -130,7 +130,7 @@ export function ProjectBreakdownPageClient() {
         </div>
       </ToolPageHeader>
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10 sm:px-8">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-10 md:px-8">
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <label className="block flex-1 text-sm text-white/70">
             Breakdown name
@@ -140,24 +140,24 @@ export function ProjectBreakdownPageClient() {
               onChange={(e) => setTitle(e.target.value)}
             />
           </label>
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
             <button
               type="button"
               disabled={saving}
               onClick={() => void saveToSupabase()}
-              className="rounded-lg bg-[#E8C84A] px-4 py-2 text-sm font-semibold text-[#0a1628] disabled:opacity-50"
+              className="min-h-[44px] w-full rounded-lg bg-[#E8C84A] px-4 py-2 text-sm font-semibold text-[#0a1628] disabled:opacity-50 sm:w-auto"
             >
               {saving ? "Saving…" : savedId ? "Save" : "Save to database"}
             </button>
             <input
-              className="w-40 rounded-lg border border-white/15 bg-[#0a1628] px-2 py-2 text-sm text-white"
+              className="min-h-[44px] w-full rounded-lg border border-white/15 bg-[#0a1628] px-2 py-2 text-sm text-white sm:w-40"
               placeholder="Load ID (UUID)"
               value={loadId}
               onChange={(e) => setLoadId(e.target.value)}
             />
             <button
               type="button"
-              className="rounded-lg border border-white/20 px-3 py-2 text-sm text-white hover:bg-white/5"
+              className="min-h-[44px] w-full rounded-lg border border-white/20 px-3 py-2 text-sm text-white hover:bg-white/5 sm:w-auto"
               onClick={() => {
                 if (!loadId.trim()) return;
                 window.location.href = `/tools/project-breakdown?id=${encodeURIComponent(loadId.trim())}`;

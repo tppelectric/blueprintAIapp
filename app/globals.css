@@ -37,6 +37,51 @@ body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
+/* Mobile-first touch & readability (≤767px) */
+@media (max-width: 767.98px) {
+  html {
+    font-size: 17px;
+  }
+
+  .touch-target {
+    min-height: 44px;
+  }
+
+  .touch-target-sm {
+    min-height: 40px;
+    min-width: 40px;
+  }
+
+  .touch-target-md {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .card-pad-mobile {
+    padding: 0.875rem 1rem;
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .app-mobile-main-pad {
+    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (min-width: 768px) {
+  .app-mobile-main-pad {
+    padding-bottom: 0;
+  }
+}
+
+.table-scroll-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* Nav headers: navy in both themes (FIX 3) */
 .app-header-wide {
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);

@@ -333,7 +333,7 @@ export function AvAnalyzerClient() {
         </div>
       </ToolPageHeader>
 
-      <main className="mx-auto max-w-4xl px-6 py-8">
+      <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="space-y-10 rounded-2xl border border-white/10 bg-white/[0.03] p-6 sm:p-8">
           <section className="space-y-4">
             <SectionTitle>Project setup</SectionTitle>
@@ -800,7 +800,7 @@ export function AvAnalyzerClient() {
 
               <section className="space-y-4">
                 <SectionTitle>Good / better / best</SectionTitle>
-                <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                   {results.tiers.map((t) => (
                     <div
                       key={t.id}

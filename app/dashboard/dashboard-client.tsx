@@ -440,7 +440,7 @@ export function DashboardClient() {
     <div className="dashboard-root flex min-h-screen flex-col">
       <WideAppHeader active="dashboard" showTppSubtitle />
 
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 py-10 sm:py-12">
+      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 py-8 sm:px-6 sm:py-12">
         {flashMessage ? (
           <div
             className="flash-banner-ok mt-6 rounded-xl px-4 py-3 text-sm font-medium"
@@ -452,7 +452,7 @@ export function DashboardClient() {
 
         <div className="flex w-full min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
           <div className="min-w-0 shrink-0 sm:max-w-[min(100%,28rem)]">
-            <h1 className="border-l-4 border-[#E8C84A] pl-4 text-3xl font-semibold tracking-tight text-[var(--foreground)] sm:text-4xl">
+            <h1 className="border-l-4 border-[#E8C84A] pl-3 text-2xl font-semibold tracking-tight text-[var(--foreground)] sm:pl-4 sm:text-3xl md:text-4xl">
               My Projects
             </h1>
             {monthUsage && monthUsage.pages > 0 ? (
@@ -465,16 +465,19 @@ export function DashboardClient() {
               </p>
             ) : null}
           </div>
-          <div className="flex min-w-0 w-full flex-1 flex-wrap items-center justify-end gap-2 sm:w-auto sm:justify-end">
-            <Link href="/jobs" className="dash-header-btn shrink-0">
+          <div className="grid min-w-0 w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-1 sm:flex-wrap sm:justify-end">
+            <Link href="/jobs" className="dash-header-btn shrink-0 justify-center">
               Jobs
             </Link>
-            <Link href="/customers" className="dash-header-btn shrink-0">
+            <Link
+              href="/customers"
+              className="dash-header-btn shrink-0 justify-center"
+            >
               Customers
             </Link>
             <Link
               href="/tools"
-              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-[#E8C84A]/40 bg-[#E8C84A]/10 px-4 py-2.5 text-sm font-semibold text-[#E8C84A] transition-colors hover:bg-[#E8C84A]/20"
+              className="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-lg border border-[#E8C84A]/40 bg-[#E8C84A]/10 px-4 py-2.5 text-sm font-semibold text-[#E8C84A] transition-colors hover:bg-[#E8C84A]/20"
             >
               Tools
             </Link>
@@ -529,7 +532,9 @@ export function DashboardClient() {
           </div>
         </div>
 
-        <DashboardApiUsageCard />
+        <div className="w-full min-w-0">
+          <DashboardApiUsageCard />
+        </div>
 
         {loading && (
           <div
@@ -606,7 +611,7 @@ export function DashboardClient() {
         )}
 
         {!loading && !error && projects.length > 0 && (
-          <ul className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
             {projects.map((p) => {
               const thumbPath = firstSheetStoragePath(p);
               return (

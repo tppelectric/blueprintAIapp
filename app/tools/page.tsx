@@ -66,7 +66,7 @@ export default function ToolsHubPage() {
         subtitle="Calculators, checklists & planners"
         showToolsBackLink={false}
       />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-12">
+      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8 sm:px-6 sm:py-12">
         <nav
           className="mb-10 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm font-medium"
           aria-label="Leave tools hub"
@@ -92,7 +92,7 @@ export default function ToolsHubPage() {
             <li key={t.href}>
               <Link
                 href={t.href}
-                className={`tool-surface-card block border p-6 transition-opacity hover:opacity-95 ${t.tone}`}
+                className={`tool-surface-card card-pad-mobile block border p-5 transition-opacity hover:opacity-95 sm:p-6 ${t.tone}`}
               >
                 <h2 className="text-lg font-semibold text-[var(--foreground)]">
                   {t.title}

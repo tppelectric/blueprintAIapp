@@ -372,7 +372,7 @@ export function LoadCalculatorClient() {
         </div>
       </ToolPageHeader>
 
-      <main className="mx-auto max-w-4xl px-6 py-8">
+      <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="flex gap-2 rounded-xl border border-white/10 bg-white/[0.04] p-1">
           <button
             type="button"

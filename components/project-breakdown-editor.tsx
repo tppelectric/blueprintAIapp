@@ -273,7 +273,7 @@ export function ProjectBreakdownEditor({
           Materials
         </summary>
         <div className={variant === "full" ? "mt-4" : "mt-3"}>
-          <div className="overflow-x-auto rounded-lg border border-[#E8C84A]/25">
+          <div className="table-scroll-wrap overflow-x-auto rounded-lg border border-[#E8C84A]/25">
             <table
               className={`w-full border-collapse text-sm text-white/90 ${showEq ? "min-w-[820px]" : "min-w-[680px]"}`}
             >
@@ -585,7 +585,7 @@ export function ProjectBreakdownEditor({
           Labor
         </summary>
         <div className={variant === "full" ? "mt-4" : "mt-3"}>
-          <div className="overflow-x-auto rounded-lg border border-[#E8C84A]/25">
+          <div className="table-scroll-wrap overflow-x-auto rounded-lg border border-[#E8C84A]/25">
             <table className="w-full min-w-[680px] border-collapse text-sm text-white/90">
               <thead>
                 <tr className={th}>
@@ -841,7 +841,7 @@ export function ProjectBreakdownEditor({
         <h3 className="text-sm font-bold uppercase tracking-wide text-[#E8C84A]">
           Totals
         </h3>
-        <div className="mt-4 overflow-x-auto">
+        <div className="table-scroll-wrap mt-4 overflow-x-auto">
           <table className="w-full min-w-[320px] border-collapse text-sm">
             <tbody className="text-white/88">
               <tr className="border-t border-white/10">

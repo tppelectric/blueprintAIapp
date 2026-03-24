@@ -8,6 +8,7 @@ import { HeaderToolsMenu } from "@/components/header-tools-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TppLogoPill } from "@/components/tpp-logo-pill";
 import { TPP_COMPANY_FULL, TPP_TAGLINE } from "@/lib/tpp-branding";
+import { AppMobileNavButton } from "@/components/app-mobile-nav";
 
 export type NavKey = "dashboard" | "jobs" | "customers" | "upload";
 
@@ -26,30 +27,39 @@ export function WideAppHeader({
 }) {
   return (
     <header className="app-header-wide border-b backdrop-blur-md">
-      <div className="mx-auto flex max-w-6xl flex-col gap-3 px-6 py-3 sm:px-8 md:flex-row md:items-center md:gap-4">
-        <Link
-          href="/"
-          className="flex min-w-0 max-w-[min(100%,28rem)] shrink-0 items-center gap-3 transition-opacity hover:opacity-95"
-        >
-          <TppLogoPill size="header" />
-          <div className="min-w-0 text-left">
-            <span className="app-header-title block truncate text-lg font-semibold tracking-tight">
-              Blueprint AI
-            </span>
-            {showTppSubtitle ? (
-              <span className="mt-0.5 block truncate text-xs font-semibold text-[#E8C84A] sm:text-sm">
-                {TPP_COMPANY_FULL}
+      <div className="mx-auto max-w-6xl px-4 py-3 sm:px-8">
+        <div className="flex items-center justify-between gap-2">
+          <Link
+            href="/"
+            className="flex min-w-0 max-w-[min(100%,20rem)] shrink items-center gap-2 transition-opacity hover:opacity-95 sm:max-w-[min(100%,28rem)] sm:gap-3 md:shrink-0"
+          >
+            <TppLogoPill size="header" />
+            <div className="min-w-0 text-left">
+              <span className="app-header-title block truncate text-base font-semibold tracking-tight sm:text-lg">
+                Blueprint AI
               </span>
-            ) : (
-              <span className="app-header-sub mt-0.5 hidden text-xs sm:block">
-                {TPP_TAGLINE}
-              </span>
-            )}
+              {showTppSubtitle ? (
+                <span className="mt-0.5 block truncate text-xs font-semibold text-[#E8C84A] sm:text-sm">
+                  {TPP_COMPANY_FULL}
+                </span>
+              ) : (
+                <span className="app-header-sub mt-0.5 hidden text-xs sm:block">
+                  {TPP_TAGLINE}
+                </span>
+              )}
+            </div>
+          </Link>
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <GlobalNavSearch />
+            <ThemeToggle />
+            <HeaderAuthMenu />
+            {extraLinks}
+            <AppMobileNavButton variant="app" active={active} />
           </div>
-        </Link>
+        </div>
 
         <nav
-          className="order-last flex w-full flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm font-medium md:order-none md:flex-1 md:justify-center"
+          className="mt-3 hidden flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm font-medium md:flex md:flex-1"
           aria-label="Primary"
         >
           <Link href="/" className={NAV_IDLE}>
@@ -85,13 +95,6 @@ export function WideAppHeader({
             </Link>
           )}
         </nav>
-
-        <div className="flex w-full items-center justify-center gap-2 sm:w-auto sm:shrink-0 sm:justify-end">
-          <GlobalNavSearch />
-          <ThemeToggle />
-          <HeaderAuthMenu />
-          {extraLinks}
-        </div>
       </div>
     </header>
   );

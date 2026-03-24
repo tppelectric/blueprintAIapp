@@ -79,7 +79,7 @@ export function DashboardApiUsageCard() {
               {busy ? "Refreshing…" : "Refresh"}
             </button>
           </div>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <UsageBlock title="Today" data={today} />
             <UsageBlock title="This month" data={month} />
             <UsageBlock title="All time" data={all} allTime />

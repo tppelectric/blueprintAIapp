@@ -208,20 +208,22 @@ export function CustomersClient() {
       <WideAppHeader active="customers" showTppSubtitle />
       {toastMsg ? (
         <div
-          className="fixed bottom-6 right-6 z-[250] max-w-sm rounded-xl border border-emerald-500/40 bg-emerald-950/95 px-4 py-3 text-sm font-medium text-emerald-100 shadow-lg"
+          className="fixed bottom-20 left-4 right-4 z-[250] mx-auto max-w-sm rounded-xl border border-emerald-500/40 bg-emerald-950/95 px-4 py-3 text-sm font-medium text-emerald-100 shadow-lg sm:bottom-6 sm:left-auto sm:right-6"
           role="status"
         >
           {toastMsg}
         </div>
       ) : null}
-      <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-10">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <h1 className="text-3xl font-semibold text-white">Customers</h1>
-          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8 sm:px-6 sm:py-10">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+          <h1 className="text-2xl font-semibold text-white sm:text-3xl">
+            Customers
+          </h1>
+          <div className="flex flex-col gap-2 sm:ml-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
             <button
               type="button"
               onClick={openCreate}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#E8C84A] px-6 py-3 text-base font-bold text-[#0a1628] shadow-md hover:bg-[#f0d56e]"
+              className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-[#E8C84A] px-6 py-3 text-base font-bold text-[#0a1628] shadow-md hover:bg-[#f0d56e] sm:w-auto"
             >
               <span className="text-xl leading-none" aria-hidden>
                 +
@@ -230,7 +232,7 @@ export function CustomersClient() {
             </button>
             <Link
               href="/jobs"
-              className="rounded-lg border border-white/20 px-4 py-2.5 text-sm font-medium text-[#E8C84A] hover:bg-white/5"
+              className="flex min-h-[44px] w-full items-center justify-center rounded-lg border border-white/20 px-4 py-2.5 text-sm font-medium text-[#E8C84A] hover:bg-white/5 sm:w-auto"
             >
               Jobs →
             </Link>
@@ -238,7 +240,7 @@ export function CustomersClient() {
               type="button"
               disabled={rows.length === 0}
               onClick={exportJobTreadCsv}
-              className="rounded-lg border border-[#E8C84A]/50 px-4 py-2.5 text-sm font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10 disabled:cursor-not-allowed disabled:opacity-40"
+              className="min-h-[44px] w-full rounded-lg border border-[#E8C84A]/50 px-4 py-2.5 text-sm font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
             >
               Export for JobTread
             </button>
@@ -255,9 +257,9 @@ export function CustomersClient() {
             {rows.map((c) => (
               <li
                 key={c.id}
-                className="rounded-xl border border-white/10 bg-white/[0.04] p-4"
+                className="w-full rounded-xl border border-white/10 bg-white/[0.04] p-3 sm:p-4"
               >
-                <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
                   <Link
                     href={`/customers/${c.id}`}
                     className="min-w-0 flex-1 hover:text-[#E8C84A]"
@@ -265,15 +267,17 @@ export function CustomersClient() {
                     <p className="font-semibold text-white">
                       {c.company_name || c.contact_name || "Customer"}
                     </p>
-                    <p className="text-sm text-white/55">
-                      {c.phone} · {c.email}
+                    <p className="text-xs text-white/55 sm:text-sm">
+                      <span className="block sm:inline">{c.phone}</span>
+                      <span className="hidden sm:inline"> · </span>
+                      <span className="block sm:inline">{c.email}</span>
                     </p>
-                    <p className="mt-1 text-xs text-white/40">
+                    <p className="mt-0.5 text-[11px] text-white/40 sm:mt-1 sm:text-xs">
                       {c.job_count ?? 0} job
                       {(c.job_count ?? 0) === 1 ? "" : "s"}
                     </p>
                   </Link>
-                  <div className="flex shrink-0 flex-wrap gap-2">
+                  <div className="flex w-full shrink-0 flex-wrap gap-2 sm:w-auto">
                     <button
                       type="button"
                       onClick={() => openEdit(c)}

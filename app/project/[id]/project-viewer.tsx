@@ -538,6 +538,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const [takeoffExportRoom, setTakeoffExportRoom] =
     useState<DetectedRoomRow | null>(null);
   const [jobLinkOpen, setJobLinkOpen] = useState(false);
+  const [mobileThumbsOpen, setMobileThumbsOpen] = useState(false);
+  const [mobileResultsOpen, setMobileResultsOpen] = useState(false);
 
   const [scanModeDialogOpen, setScanModeDialogOpen] = useState(false);
   const [scanModeDialogTarget, setScanModeDialogTarget] = useState<
@@ -2204,6 +2206,18 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     openScanModeForPage();
   }, [openScanModeForPage]);
 
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const onChange = () => {
+      if (mq.matches) {
+        setMobileThumbsOpen(false);
+        setMobileResultsOpen(false);
+      }
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
   const performPageReset = useCallback(async () => {
     setAnalyzeError(null);
     const res = await fetch("/api/analysis/reset-page", {
@@ -3295,6 +3309,13 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
             </Link>
             <button
               type="button"
+              onClick={() => setMobileThumbsOpen(true)}
+              className="shrink-0 rounded-lg border border-white/25 bg-white/10 px-2.5 py-2 text-xs font-semibold text-white hover:bg-white/15 lg:hidden"
+            >
+              Pages
+            </button>
+            <button
+              type="button"
               onClick={() => setJobLinkOpen(true)}
               className="shrink-0 rounded-lg border border-sky-500/45 bg-sky-500/15 px-3 py-1.5 text-sm font-semibold text-sky-100 hover:bg-sky-500/25"
             >
@@ -3379,8 +3400,24 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
 
       {!pdfLoading && !pdfError && pdfDocs && pdfDocs.length > 0 && numPages > 0 && (
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
+          {mobileThumbsOpen ? (
+            <button
+              type="button"
+              className="fixed inset-0 z-[50] bg-black/55 lg:hidden"
+              aria-label="Close page list"
+              onClick={() => setMobileThumbsOpen(false)}
+            />
+          ) : null}
           <aside
-            className="flex shrink-0 gap-2 overflow-x-auto border-b border-white/10 bg-[#071422]/60 px-3 py-3 lg:w-[16.5rem] lg:flex-col lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-2 lg:py-4"
+            className={[
+              "shrink-0 gap-2 border-white/10 bg-[#071422]/60",
+              "flex flex-col overflow-y-auto overflow-x-hidden",
+              "border-b px-3 py-3 lg:w-[16.5rem] lg:border-b-0 lg:border-r lg:px-2 lg:py-4",
+              mobileThumbsOpen
+                ? "fixed bottom-0 left-0 top-0 z-[55] flex w-[min(88vw,18rem)] border-r p-2 shadow-2xl max-lg:flex"
+                : "max-lg:hidden",
+              "lg:flex",
+            ].join(" ")}
             aria-label="Page thumbnails"
           >
             {Array.from({ length: numPages }, (_, i) => i + 1).map((n) => {
@@ -3393,7 +3430,15 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                   pageNumber={mapped.localPage}
                   globalPageLabel={n}
                   selected={n === currentPage}
-                  onSelect={() => setCurrentPage(n)}
+                  onSelect={() => {
+                    setCurrentPage(n);
+                    if (
+                      typeof window !== "undefined" &&
+                      window.matchMedia("(max-width: 1023px)").matches
+                    ) {
+                      setMobileThumbsOpen(false);
+                    }
+                  }}
                   disabled={blockPageNav}
                   scanStatus={thumbByPage[n]}
                 />
@@ -4275,7 +4320,34 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                   </div>
                 </div>
               </div>
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col border-t border-white/10 lg:max-w-md lg:border-l lg:border-t-0 xl:max-w-lg">
+              <div
+                className={[
+                  "flex min-h-0 min-w-0 flex-1 flex-col border-t border-white/10",
+                  "lg:relative lg:max-w-md lg:border-l lg:border-t-0 xl:max-w-lg",
+                  "max-lg:fixed max-lg:bottom-0 max-lg:left-0 max-lg:right-0 max-lg:z-[45]",
+                  "max-lg:rounded-t-2xl max-lg:border max-lg:border-white/12 max-lg:bg-[#0a1628]",
+                  "max-lg:shadow-[0_-12px_40px_rgba(0,0,0,0.5)]",
+                  mobileResultsOpen
+                    ? "max-lg:max-h-[min(85vh,560px)]"
+                    : "max-lg:max-h-[3.25rem]",
+                ].join(" ")}
+              >
+                <button
+                  type="button"
+                  className="flex w-full shrink-0 items-center justify-center border-b border-white/10 py-2.5 text-sm font-semibold text-[#E8C84A] hover:bg-white/5 lg:hidden"
+                  onClick={() => setMobileResultsOpen((o) => !o)}
+                >
+                  {mobileResultsOpen
+                    ? "▼ Hide results"
+                    : "▲ Results & analysis"}
+                </button>
+                <div
+                  className={
+                    !mobileResultsOpen
+                      ? "flex min-h-0 flex-1 flex-col overflow-hidden max-lg:hidden"
+                      : "flex min-h-0 flex-1 flex-col overflow-hidden"
+                  }
+                >
                 {targetResult ? (
                   <div className="max-h-[38vh] shrink-0 overflow-y-auto border-b border-fuchsia-500/35 bg-fuchsia-950/25 px-3 py-3">
                     <div className="mb-2 flex items-start justify-between gap-2">
@@ -4364,11 +4436,46 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                     }}
                   />
                 </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
       )}
+
+      {!pdfLoading && !pdfError && pdfDocs && pdfDocs.length > 0 && numPages > 0 ? (
+        <div
+          className="pointer-events-none fixed right-3 z-[46] flex flex-col gap-2 lg:hidden"
+          style={{
+            bottom: "calc(5.25rem + env(safe-area-inset-bottom, 0px))",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => analyzeThisPage()}
+            disabled={analyzeBusy || legendBusy || symbolToolboxBusy}
+            className="pointer-events-auto rounded-full border-2 border-sky-400/60 bg-sky-600/90 px-4 py-3 text-sm font-bold text-white shadow-lg disabled:opacity-45"
+          >
+            Analyze
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setTakeoffExportRoom(null);
+              setTakeoffExportOpen(true);
+            }}
+            disabled={
+              analyzeBusy ||
+              legendBusy ||
+              symbolToolboxBusy ||
+              analysisItems.length === 0
+            }
+            className="pointer-events-auto rounded-full border-2 border-emerald-400/60 bg-emerald-800/95 px-4 py-3 text-sm font-bold text-emerald-50 shadow-lg disabled:opacity-45"
+          >
+            Export
+          </button>
+        </div>
+      ) : null}
 
       {project ? (
         <TakeoffExportDialog

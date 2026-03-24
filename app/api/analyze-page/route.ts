@@ -32,6 +32,14 @@ const STRICT_JSON_USER_ADDENDUM = `
 
 IMPORTANT: You MUST respond with valid JSON only: a single JSON object with keys "electrical_items" and "rooms" (both arrays). If the page has no electrical content at all, return {"electrical_items":[],"rooms":[]}. If the page has panel schedules, riser diagrams, specifications, tables, or other electrical text, you MUST extract them into electrical_items per the system instructions — do not return empty electrical_items in that case. Never respond with plain text, apologies, or markdown. Only the JSON object.`;
 
+function stripMarkdownCodeFences(text: string): string {
+  return text
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
 function claudeTextLooksLikeJson(text: string): boolean {
   const t = text.trim();
   return t.startsWith("{") || t.startsWith("[");
@@ -579,8 +587,9 @@ No project-specific symbol legend is on file for this project — use standard N
   let payload: { electrical_items: unknown[]; rooms: unknown[] } | null = null;
   let claudeTurnsUsed = 1;
 
-  if (claudeTextLooksLikeJson(assistantText1)) {
-    payload = tryExtractAnalyzePayload(assistantText1);
+  const cleanedText1 = stripMarkdownCodeFences(assistantText1);
+  if (claudeTextLooksLikeJson(cleanedText1)) {
+    payload = tryExtractAnalyzePayload(cleanedText1);
   }
   if (payload) {
     console.log("[analyze-page] parsed payload (pre-strict-retry):", {
@@ -620,8 +629,9 @@ No project-specific symbol legend is on file for this project — use standard N
       preview: assistantText2.slice(0, 500),
     });
 
-    if (claudeTextLooksLikeJson(assistantText2)) {
-      payload = tryExtractAnalyzePayload(assistantText2);
+    const cleanedText2 = stripMarkdownCodeFences(assistantText2);
+    if (claudeTextLooksLikeJson(cleanedText2)) {
+      payload = tryExtractAnalyzePayload(cleanedText2);
     }
     if (!payload) {
       console.error(
@@ -685,10 +695,11 @@ No project-specific symbol legend is on file for this project — use standard N
       preview: retryText.slice(0, 500),
     });
 
+    const cleanedRetryText = stripMarkdownCodeFences(retryText);
     let retryPayload: ParsedAnalyzePayload | null = claudeTextLooksLikeJson(
-      retryText,
+      cleanedRetryText,
     )
-      ? tryExtractAnalyzePayload(retryText)
+      ? tryExtractAnalyzePayload(cleanedRetryText)
       : null;
 
     if (!retryPayload) {
@@ -716,8 +727,9 @@ No project-specific symbol legend is on file for this project — use standard N
         pageNumber,
         preview: assistantRetry2.slice(0, 500),
       });
-      if (claudeTextLooksLikeJson(assistantRetry2)) {
-        retryPayload = tryExtractAnalyzePayload(assistantRetry2);
+      const cleanedRetry2 = stripMarkdownCodeFences(assistantRetry2);
+      if (claudeTextLooksLikeJson(cleanedRetry2)) {
+        retryPayload = tryExtractAnalyzePayload(cleanedRetry2);
       }
     }
 

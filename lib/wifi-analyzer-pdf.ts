@@ -1,8 +1,10 @@
 import { jsPDF } from "jspdf";
 import { drawTppPdfLetterhead, fetchTppLogoDataUrl } from "@/lib/tpp-pdf-header";
 import type { WifiAnalyzerInputs, WifiAnalyzerResults } from "@/lib/wifi-analyzer-engine";
+import { buildWorkScopeText } from "@/lib/wifi-work-scope";
 
-const FOOTER = "Blueprint AI — blueprint-a-iapp.vercel.app";
+const FOOTER_PRIMARY = "Prepared by Blueprint AI";
+const FOOTER_SECONDARY = "blueprint-a-iapp.vercel.app";
 
 function addParagraphs(
   doc: jsPDF,
@@ -108,7 +110,7 @@ export async function downloadWifiAnalysisPdf(
   doc.setFont("helvetica", "normal");
   const zoneLines = results.roomRows.map((row) =>
     row.complete
-      ? `${row.name} (fl ${row.floor}, ${row.areaSqFt} sq ft) — ${row.zoneType}`
+      ? `${row.name} (fl ${row.floor}, ${row.areaSqFt} sq ft) — ${row.zoneType} — ${row.servedByAp}`
       : `${row.name} — incomplete: ${row.incompleteReason ?? "fix inputs"}`,
   );
   y = addParagraphs(doc, zoneLines, margin, maxW, pageH, y, 14);
@@ -168,6 +170,34 @@ export async function downloadWifiAnalysisPdf(
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.setTextColor(0, 0, 0);
+  doc.text("Labor planning estimates", margin, y);
+  y += 14;
+  doc.setFont("helvetica", "normal");
+  const lh = results.laborHours;
+  const laborLines = [
+    `Cable rough-in: ${lh.cableRoughInHours} h (${results.cat6Drops} drops × 1.5 h)`,
+    `AP mount & terminate: ${lh.apMountTerminateHours} h (${results.recommendedAps} APs × 0.5 h)`,
+    `Switch & gateway setup: ${lh.switchGatewaySetupHours} h (flat)`,
+    `Network configuration: ${lh.networkConfigHours} h (1 h per 10 APs, min 1)`,
+    `Testing & walkthrough: ${lh.testingWalkthroughHours} h (flat)`,
+    `Total estimated labor: ${lh.totalLaborHours} h`,
+  ];
+  y = addParagraphs(doc, laborLines, margin, maxW, pageH, y, 13);
+  y += 10;
+
+  doc.setFont("helvetica", "bold");
+  doc.text("Work scope notes", margin, y);
+  y += 14;
+  doc.setFont("helvetica", "normal");
+  const scopeNoteLines = [
+    "Whole-home RF design: AP count is not one-per-room; final positions coordinated on site.",
+    "Low-voltage: homerun CAT6 from each AP to the PoE switch location; terminate to keystone.",
+    "Configuration: SSID, WPA3 where supported, optional guest VLAN — per owner direction.",
+  ];
+  y = addParagraphs(doc, scopeNoteLines, margin, maxW, pageH, y, 13);
+  y += 10;
+
+  doc.setFont("helvetica", "bold");
   doc.text("Planning notes", margin, y);
   y += 14;
   doc.setFont("helvetica", "normal");
@@ -195,7 +225,8 @@ export async function downloadWifiAnalysisPdf(
 
   doc.setFontSize(7);
   doc.setTextColor(100, 100, 100);
-  doc.text(FOOTER, margin, pageH - 28);
+  doc.text(FOOTER_PRIMARY, margin, pageH - 36);
+  doc.text(FOOTER_SECONDARY, margin, pageH - 26);
 
   const safe =
     (inputs.projectName || "wifi-plan")
@@ -203,4 +234,49 @@ export async function downloadWifiAnalysisPdf(
       .trim()
       .replace(/\s+/g, "-") || "wifi-plan";
   doc.save(`wifi-analyzer-${safe}.pdf`);
+}
+
+/** Full scope-of-work PDF with TPP letterhead. */
+export async function downloadWifiWorkScopePdf(
+  inputs: WifiAnalyzerInputs,
+  results: WifiAnalyzerResults,
+): Promise<void> {
+  const body = buildWorkScopeText(inputs, results);
+  const logo = await fetchTppLogoDataUrl();
+  const doc = new jsPDF({ unit: "pt", format: "letter" });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 48;
+  const maxW = pageW - margin * 2;
+
+  let y = drawTppPdfLetterhead(doc, margin, margin + 8, logo, {
+    logoWidthPt: 52,
+    pageWidth: pageW,
+  });
+
+  doc.setFont("courier", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(25, 25, 25);
+  y = addParagraphs(
+    doc,
+    body.split("\n"),
+    margin,
+    maxW,
+    pageH,
+    y,
+    11,
+  );
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(100, 100, 100);
+  doc.text(FOOTER_PRIMARY, margin, pageH - 36);
+  doc.text(FOOTER_SECONDARY, margin, pageH - 26);
+
+  const safe =
+    (inputs.projectName || "wifi-scope")
+      .replace(/[^\w\- ]+/g, "")
+      .trim()
+      .replace(/\s+/g, "-") || "wifi-scope";
+  doc.save(`wifi-work-scope-${safe}.pdf`);
 }

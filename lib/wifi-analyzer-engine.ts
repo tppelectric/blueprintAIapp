@@ -92,7 +92,93 @@ export type RoomPlanRow = {
   incompleteReason?: string;
   score: number;
   zoneType: string;
+  outdoor: boolean;
+  /** Whole-home plan: notional AP assignment for scope documents. */
+  servedByAp: string;
 };
+
+/** Labor hours for installation planning (rule-based). */
+export type LaborHoursBreakdown = {
+  cableRoughInHours: number;
+  apMountTerminateHours: number;
+  switchGatewaySetupHours: number;
+  networkConfigHours: number;
+  testingWalkthroughHours: number;
+  totalLaborHours: number;
+};
+
+export function computeLaborHours(
+  cat6Drops: number,
+  totalAps: number,
+): LaborHoursBreakdown {
+  const cableRoughInHours = Math.max(0, cat6Drops) * 1.5;
+  const apMountTerminateHours = Math.max(0, totalAps) * 0.5;
+  const switchGatewaySetupHours = 2;
+  const networkConfigHours = Math.max(1, Math.ceil(Math.max(0, totalAps) / 10));
+  const testingWalkthroughHours = 1;
+  const totalLaborHours =
+    cableRoughInHours +
+    apMountTerminateHours +
+    switchGatewaySetupHours +
+    networkConfigHours +
+    testingWalkthroughHours;
+  return {
+    cableRoughInHours,
+    apMountTerminateHours,
+    switchGatewaySetupHours,
+    networkConfigHours,
+    testingWalkthroughHours,
+    totalLaborHours: Math.round(totalLaborHours * 10) / 10,
+  };
+}
+
+function assignServedByAp(
+  rows: Omit<RoomPlanRow, "servedByAp">[],
+  indoorAps: number,
+  outdoorAps: number,
+): RoomPlanRow[] {
+  const indoorOrder = rows
+    .filter((r) => r.complete && !r.outdoor)
+    .sort((a, b) => a.floor - b.floor || b.areaSqFt - a.areaSqFt);
+  const outdoorOrder = rows
+    .filter((r) => r.complete && r.outdoor)
+    .sort((a, b) => a.floor - b.floor || b.areaSqFt - a.areaSqFt);
+
+  const indoorMap = new Map<string, string>();
+  indoorOrder.forEach((row, idx) => {
+    if (indoorAps <= 0) {
+      indoorMap.set(row.id, "No indoor APs in this plan");
+      return;
+    }
+    const n = (idx % indoorAps) + 1;
+    indoorMap.set(
+      row.id,
+      `Indoor AP ${n} of ${indoorAps} (whole-home layout; final placement on site)`,
+    );
+  });
+
+  const outdoorMap = new Map<string, string>();
+  outdoorOrder.forEach((row, idx) => {
+    if (outdoorAps <= 0) {
+      outdoorMap.set(row.id, "No dedicated outdoor AP in plan");
+      return;
+    }
+    const n = (idx % outdoorAps) + 1;
+    outdoorMap.set(
+      row.id,
+      `Outdoor AP ${n} of ${outdoorAps} (placement on site)`,
+    );
+  });
+
+  return rows.map((row) => ({
+    ...row,
+    servedByAp: !row.complete
+      ? "—"
+      : row.outdoor
+        ? outdoorMap.get(row.id) ?? "—"
+        : indoorMap.get(row.id) ?? "—",
+  }));
+}
 
 export type EquipmentRec = {
   apModel: string;
@@ -443,6 +529,7 @@ export type WifiAnalyzerResults = {
   gatewayRecommendation: string;
   planNotes: string[];
   incompleteWarnings: string[];
+  laborHours: LaborHoursBreakdown;
   cat6Drops: number;
   cat6FootageLf: number;
   lvBrackets: number;
@@ -495,6 +582,9 @@ function buildSummaryText(
     "ESTIMATED HARDWARE",
     r.hardwareCostEstimateLabel,
     "",
+    "LABOR (planning est.)",
+    `Cable rough-in: ${r.laborHours.cableRoughInHours} h · AP mount/term: ${r.laborHours.apMountTerminateHours} h · Switch/gateway: ${r.laborHours.switchGatewaySetupHours} h · Config: ${r.laborHours.networkConfigHours} h · Test/walkthrough: ${r.laborHours.testingWalkthroughHours} h · Total: ${r.laborHours.totalLaborHours} h`,
+    "",
     "NOTES",
     ...r.planNotes.map((n) => `• ${n}`),
     ...(r.incompleteWarnings.length
@@ -512,7 +602,7 @@ export function computeWifiPlan(inputs: WifiAnalyzerInputs): WifiAnalyzerResults
   const completeRooms = rooms.filter(isRoomComplete).length;
   const incompleteRooms = totalRooms - completeRooms;
 
-  const roomRows: RoomPlanRow[] = rooms.map((r) => {
+  const roomRowsBase = rooms.map((r) => {
     const areaSqFt = Math.round(
       Math.max(0, r.lengthFt) * Math.max(0, r.widthFt),
     );
@@ -530,6 +620,7 @@ export function computeWifiPlan(inputs: WifiAnalyzerInputs): WifiAnalyzerResults
       incompleteReason: complete ? undefined : incompleteReason(r),
       score,
       zoneType,
+      outdoor: r.outdoor,
     };
   });
 
@@ -550,6 +641,8 @@ export function computeWifiPlan(inputs: WifiAnalyzerInputs): WifiAnalyzerResults
   );
   let indoorAps = applyCoverageGoalToIndoor(baseIndoor, inputs.coverageGoal);
   if (indoorRooms.length === 0) indoorAps = 0;
+
+  const roomRows = assignServedByAp(roomRowsBase, indoorAps, outdoorAps);
 
   const recommendedAps = indoorAps + outdoorAps;
 
@@ -618,6 +711,8 @@ export function computeWifiPlan(inputs: WifiAnalyzerInputs): WifiAnalyzerResults
 
   const assumptionsLine = `Rooms: ${completeRooms}/${totalRooms} complete · Indoor ${totalIndoorSqFt} sq ft · Devices ${totalDevices} · Priority ${inputs.planningPriority.replace(/_/g, " ")} · Coverage goal ${inputs.coverageGoal.replace(/_/g, " ")} · Internet ${inputs.internetSpeedMbps} Mbps`;
 
+  const laborHours = computeLaborHours(cat6Drops, recommendedAps);
+
   const base: WifiAnalyzerResults = {
     recommendedAps,
     indoorAps,
@@ -634,6 +729,7 @@ export function computeWifiPlan(inputs: WifiAnalyzerInputs): WifiAnalyzerResults
     gatewayRecommendation: gatewayRec,
     planNotes,
     incompleteWarnings,
+    laborHours,
     cat6Drops,
     cat6FootageLf,
     lvBrackets,

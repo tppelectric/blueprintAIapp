@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ToolPageHeader } from "@/components/tool-page-header";
 import { createBrowserClient } from "@/lib/supabase/client";
 import {
@@ -21,7 +21,11 @@ import {
   type WifiAnalyzerResults,
   type WifiRoomInput,
 } from "@/lib/wifi-analyzer-engine";
-import { downloadWifiAnalysisPdf } from "@/lib/wifi-analyzer-pdf";
+import {
+  downloadWifiAnalysisPdf,
+  downloadWifiWorkScopePdf,
+} from "@/lib/wifi-analyzer-pdf";
+import { buildWorkScopeText } from "@/lib/wifi-work-scope";
 
 function newId() {
   return typeof crypto !== "undefined" && crypto.randomUUID
@@ -29,10 +33,11 @@ function newId() {
     : `r-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+/** Stable IDs avoid SSR/client hydration mismatches that can break interactivity. */
 function exampleRooms(): WifiRoomInput[] {
   return [
     {
-      id: newId(),
+      id: "wifi-demo-living",
       name: "Living room",
       floor: 1,
       lengthFt: 18,
@@ -44,7 +49,7 @@ function exampleRooms(): WifiRoomInput[] {
       expectedDevices: 14,
     },
     {
-      id: newId(),
+      id: "wifi-demo-bedroom",
       name: "Primary bedroom",
       floor: 2,
       lengthFt: 14,
@@ -56,7 +61,7 @@ function exampleRooms(): WifiRoomInput[] {
       expectedDevices: 8,
     },
     {
-      id: newId(),
+      id: "wifi-demo-patio",
       name: "Back patio",
       floor: 1,
       lengthFt: 12,
@@ -69,6 +74,12 @@ function exampleRooms(): WifiRoomInput[] {
     },
   ];
 }
+
+type BlueprintProjectOption = {
+  id: string;
+  project_name: string | null;
+  file_name: string;
+};
 
 const ROOM_TYPES: { value: RoomTypeOption; label: string }[] = [
   { value: "living_room", label: "Living room" },
@@ -92,31 +103,119 @@ const ROOM_WALLS: { value: RoomWallMaterial; label: string }[] = [
   { value: "mixed", label: "Mixed" },
 ];
 
+function csvCell(v: string | number): string {
+  const s = String(v);
+  if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
 function buildCsv(inputs: WifiAnalyzerInputs, r: WifiAnalyzerResults): string {
-  const lines = [
+  const lines: string[] = [
     "TPP Electrical Contractors Inc. — Wi-Fi takeoff export",
-    `Project,${inputs.projectName}`,
-    `Building,${inputs.buildingType}`,
+    `Project,${csvCell(inputs.projectName)}`,
+    `Building_type,${csvCell(inputs.buildingType)}`,
     `Internet_Mbps,${inputs.internetSpeedMbps}`,
-    `Planning_priority,${inputs.planningPriority}`,
-    `Rooms_complete,${r.completeRooms}/${r.totalRooms}`,
+    `Planning_priority,${csvCell(inputs.planningPriority)}`,
+    `Coverage_goal,${csvCell(inputs.coverageGoal)}`,
+    `Vendor,${csvCell(inputs.vendor)}`,
+    `Budget_tier,${csvCell(r.estimatedHardwareCostRange)}`,
+    `Rooms_total,${r.totalRooms}`,
+    `Rooms_complete,${r.completeRooms}`,
+    `Rooms_incomplete,${r.incompleteRooms}`,
     "",
-    "Metric,Value",
-    `Recommended_APs_total,${r.recommendedAps}`,
+    "ROOM_INPUTS",
+    [
+      "Room_id",
+      "Name",
+      "Floor",
+      "Length_ft",
+      "Width_ft",
+      "Sq_ft_calc",
+      "Room_type",
+      "Wall_material",
+      "Outdoor",
+      "Ceiling",
+      "Expected_devices",
+    ].join(","),
+  ];
+
+  for (const room of inputs.rooms) {
+    const sq = Math.round(
+      Math.max(0, room.lengthFt) * Math.max(0, room.widthFt),
+    );
+    lines.push(
+      [
+        csvCell(room.id),
+        csvCell(room.name),
+        room.floor,
+        room.lengthFt,
+        room.widthFt,
+        sq,
+        csvCell(room.roomType),
+        csvCell(room.wallMaterial),
+        room.outdoor ? "yes" : "no",
+        csvCell(room.ceilingHeight),
+        room.expectedDevices,
+      ].join(","),
+    );
+  }
+
+  lines.push(
+    "",
+    "ZONE_AND_AP_ASSIGNMENT",
+    [
+      "Room_name",
+      "Floor",
+      "Area_sq_ft",
+      "Complete",
+      "Zone_type",
+      "Served_by_AP",
+      "Score",
+    ].join(","),
+  );
+  for (const row of r.roomRows) {
+    lines.push(
+      [
+        csvCell(row.name),
+        row.floor,
+        row.areaSqFt,
+        row.complete ? "yes" : "no",
+        csvCell(row.zoneType),
+        csvCell(row.servedByAp),
+        row.score,
+      ].join(","),
+    );
+  }
+
+  lines.push(
+    "",
+    "AP_PLAN",
     `Indoor_APs,${r.indoorAps}`,
     `Outdoor_APs,${r.outdoorAps}`,
-    `Indoor_sq_ft,${r.totalIndoorSqFt}`,
-    `Devices_total,${r.totalDevices}`,
+    `Total_APs,${r.recommendedAps}`,
+    `Whole_home_plan,${csvCell(r.equipment.wholeHomeApPlan)}`,
+    `Gateway,${csvCell(r.gatewayRecommendation)}`,
+    "",
+    "MATERIALS",
     `CAT6_LF,${r.cat6FootageLf}`,
-    `CAT6_Drops,${r.cat6Drops}`,
-    `LV_Brackets_EA,${r.lvBrackets}`,
-    `RJ45_Jacks_EA,${r.rj45Jacks}`,
+    `CAT6_drops,${r.cat6Drops}`,
+    `LV_brackets_EA,${r.lvBrackets}`,
+    `RJ45_jacks_EA,${r.rj45Jacks}`,
     `Patch_cables_EA,${r.patchCables}`,
-    `PoE_switch_ports,${r.poeSwitchPorts}`,
-    `Whole_home_AP_plan,"${r.equipment.wholeHomeApPlan.replace(/"/g, '""')}"`,
-    `Gateway,"${r.gatewayRecommendation.replace(/"/g, '""')}"`,
-    `Hardware_cost_estimate,"${r.hardwareCostEstimateLabel.replace(/"/g, '""')}"`,
-  ];
+    `PoE_switch_ports_target,${r.poeSwitchPorts}`,
+    "",
+    "LABOR_HOURS_ESTIMATE",
+    `Cable_rough_in_h,${r.laborHours.cableRoughInHours}`,
+    `AP_mount_terminate_h,${r.laborHours.apMountTerminateHours}`,
+    `Switch_gateway_setup_h,${r.laborHours.switchGatewaySetupHours}`,
+    `Network_config_h,${r.laborHours.networkConfigHours}`,
+    `Testing_walkthrough_h,${r.laborHours.testingWalkthroughHours}`,
+    `Total_labor_h,${r.laborHours.totalLaborHours}`,
+    "",
+    "HARDWARE_COST_ESTIMATE",
+    csvCell(r.hardwareCostEstimateLabel),
+  );
+
   return lines.join("\r\n");
 }
 
@@ -126,6 +225,22 @@ function SectionTitle({ children }: { children: ReactNode }) {
       {children}
     </h2>
   );
+}
+
+function printWorkScopePlainText(text: string) {
+  const w = window.open("", "_blank");
+  if (!w) return;
+  const d = w.document;
+  d.open();
+  d.write("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Work scope</title>");
+  d.write(
+    "<style>body{font-family:system-ui,sans-serif;white-space:pre-wrap;padding:24px;color:#111;font-size:11px;line-height:1.45;} @media print{body{padding:12px;}}</style>",
+  );
+  d.write("</head><body></body></html>");
+  d.close();
+  d.body.textContent = text;
+  w.focus();
+  w.print();
 }
 
 export function WifiAnalyzerClient() {
@@ -146,6 +261,46 @@ export function WifiAnalyzerClient() {
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [copyMsg, setCopyMsg] = useState<string | null>(null);
+  const [calculating, setCalculating] = useState(false);
+  const [calcError, setCalcError] = useState<string | null>(null);
+  const [scopeModalOpen, setScopeModalOpen] = useState(false);
+  const [scopePdfBusy, setScopePdfBusy] = useState(false);
+  const [scopeCopyMsg, setScopeCopyMsg] = useState<string | null>(null);
+
+  const [blueprintProjects, setBlueprintProjects] = useState<
+    BlueprintProjectOption[]
+  >([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [linkedProjectId, setLinkedProjectId] = useState<string>("");
+
+  const resultsAnchorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setProjectsLoading(true);
+      try {
+        const sb = createBrowserClient();
+        const { data, error } = await sb
+          .from("projects")
+          .select("id, project_name, file_name")
+          .order("created_at", { ascending: false })
+          .limit(200);
+        if (error) throw error;
+        if (!cancelled && data)
+          setBlueprintProjects(
+            data as { id: string; project_name: string | null; file_name: string }[],
+          );
+      } catch {
+        if (!cancelled) setBlueprintProjects([]);
+      } finally {
+        if (!cancelled) setProjectsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const inputs: WifiAnalyzerInputs = useMemo(
     () => ({
@@ -171,6 +326,11 @@ export function WifiAnalyzerClient() {
       budget,
     ],
   );
+
+  const workScopeText = useMemo(() => {
+    if (!results) return "";
+    return buildWorkScopeText(inputs, results);
+  }, [inputs, results]);
 
   const updateRoom = (id: string, patch: Partial<WifiRoomInput>) => {
     setRooms((prev) =>
@@ -201,9 +361,35 @@ export function WifiAnalyzerClient() {
   };
 
   const runCalc = useCallback(() => {
-    setResults(computeWifiPlan(inputs));
+    setCalcError(null);
     setSaveMsg(null);
     setCopyMsg(null);
+    setCalculating(true);
+    setResults(null);
+    const started = Date.now();
+    window.setTimeout(() => {
+      try {
+        const next = computeWifiPlan(inputs);
+        setResults(next);
+      } catch (e) {
+        console.error(e);
+        setCalcError(
+          e instanceof Error ? e.message : "Calculation failed. Check inputs.",
+        );
+      } finally {
+        const elapsed = Date.now() - started;
+        const pad = Math.max(0, 280 - elapsed);
+        window.setTimeout(() => {
+          setCalculating(false);
+          window.setTimeout(() => {
+            resultsAnchorRef.current?.scrollIntoView({
+              behavior: "smooth",
+              block: "start",
+            });
+          }, 80);
+        }, pad);
+      }
+    }, 0);
   }, [inputs]);
 
   const exportPdf = () => {
@@ -235,7 +421,7 @@ export function WifiAnalyzerClient() {
     }
   };
 
-  const saveToSupabase = async () => {
+  const saveToProject = async () => {
     if (!results) {
       setSaveMsg("Run Calculate first.");
       return;
@@ -244,21 +430,48 @@ export function WifiAnalyzerClient() {
     setSaveMsg(null);
     try {
       const sb = createBrowserClient();
-      const { error } = await sb.from("wifi_calculations").insert({
+      const row: Record<string, unknown> = {
         project_name: inputs.projectName,
         building_type: buildingType,
         inputs_json: inputs as unknown as Record<string, unknown>,
         results_json: results as unknown as Record<string, unknown>,
         equipment_json: results.equipment as unknown as Record<string, unknown>,
-      });
+      };
+      if (linkedProjectId) {
+        row.project_id = linkedProjectId;
+      }
+      const { error } = await sb.from("wifi_calculations").insert(row);
       if (error) throw error;
-      setSaveMsg("Saved to database.");
+      setSaveMsg("Saved successfully");
     } catch (e) {
       setSaveMsg(
-        e instanceof Error ? e.message : "Save failed (run Supabase SQL?).",
+        e instanceof Error
+          ? e.message
+          : "Save failed. If needed, add project_id column (see supabase/wifi_calculations_add_project_id.sql).",
       );
     } finally {
       setSaving(false);
+    }
+  };
+
+  const copyWorkScope = async () => {
+    if (!workScopeText) return;
+    try {
+      await navigator.clipboard.writeText(workScopeText);
+      setScopeCopyMsg("Copied to clipboard.");
+      window.setTimeout(() => setScopeCopyMsg(null), 2500);
+    } catch {
+      setScopeCopyMsg("Could not copy.");
+    }
+  };
+
+  const exportWorkScopePdf = async () => {
+    if (!results) return;
+    setScopePdfBusy(true);
+    try {
+      await downloadWifiWorkScopePdf(inputs, results);
+    } finally {
+      setScopePdfBusy(false);
     }
   };
 
@@ -288,6 +501,34 @@ export function WifiAnalyzerClient() {
                 className="mt-1 w-full rounded-lg border border-white/15 bg-[#0a1628] px-3 py-2 text-white"
                 placeholder="e.g. Smith residence — Wi-Fi upgrade"
               />
+            </label>
+            <label className="block text-sm">
+              <span className="text-white/70">
+                Link to blueprint project (optional)
+              </span>
+              <select
+                value={linkedProjectId}
+                onChange={(e) => setLinkedProjectId(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-white/15 bg-[#0a1628] px-3 py-2 text-white"
+                disabled={projectsLoading}
+              >
+                <option value="">
+                  {projectsLoading
+                    ? "Loading projects…"
+                    : "Standalone (not linked)"}
+                </option>
+                {blueprintProjects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {(p.project_name?.trim() ||
+                      p.file_name.replace(/\.pdf$/i, "")) ?? p.id}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs text-white/45">
+                When linked, saves attach{" "}
+                <code className="text-white/60">project_id</code> for this
+                blueprint. Leave unlinked for a standalone Wi‑Fi record.
+              </span>
             </label>
             <label className="block text-sm">
               <span className="text-white/70">Building type</span>
@@ -417,7 +658,10 @@ export function WifiAnalyzerClient() {
                 const zone = complete
                   ? (() => {
                       if (room.outdoor) return "Outdoor coverage zone";
-                      if (room.roomType === "office" && room.expectedDevices >= 8)
+                      if (
+                        room.roomType === "office" &&
+                        room.expectedDevices >= 8
+                      )
                         return "High-demand office";
                       if (sc >= 12) return "Primary coverage zone";
                       if (sc >= 8) return "Shared coverage zone";
@@ -670,14 +914,61 @@ export function WifiAnalyzerClient() {
           <button
             type="button"
             onClick={runCalc}
-            className="w-full rounded-xl border-2 border-[#E8C84A] bg-[#E8C84A] py-3 text-center text-sm font-bold text-[#0a1628] transition-colors hover:bg-[#f0d56e]"
+            disabled={calculating}
+            className="w-full rounded-xl border-2 border-[#E8C84A] bg-[#E8C84A] py-3 text-center text-sm font-bold text-[#0a1628] transition-colors hover:bg-[#f0d56e] disabled:opacity-60"
           >
-            Calculate coverage
+            {calculating ? "Calculating…" : "Calculate coverage"}
           </button>
+          {calculating ? (
+            <p className="text-center text-sm font-medium text-[#E8C84A]/95">
+              Calculating coverage plan...
+            </p>
+          ) : null}
+          {calcError ? (
+            <p className="text-center text-sm text-red-300/95">{calcError}</p>
+          ) : null}
         </div>
 
         {results ? (
-          <div className="mt-10 space-y-8">
+          <div
+            ref={resultsAnchorRef}
+            className="mt-10 space-y-8 scroll-mt-24"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void saveToProject()}
+                className="rounded-lg border border-emerald-500/50 bg-emerald-500/15 px-4 py-2.5 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/25 disabled:opacity-50"
+              >
+                {saving ? "Saving…" : "Save to project"}
+              </button>
+              <button
+                type="button"
+                onClick={exportPdf}
+                className="rounded-lg border border-[#E8C84A]/50 bg-[#E8C84A]/15 px-4 py-2.5 text-sm font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/25"
+              >
+                Export to PDF
+              </button>
+              <button
+                type="button"
+                onClick={exportCsv}
+                className="rounded-lg border border-white/20 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                Export to CSV
+              </button>
+              <button
+                type="button"
+                onClick={() => setScopeModalOpen(true)}
+                className="rounded-lg border border-violet-400/40 bg-violet-500/15 px-4 py-2.5 text-sm font-semibold text-violet-100 hover:bg-violet-500/25"
+              >
+                Create work scope
+              </button>
+            </div>
+            {saveMsg ? (
+              <p className="text-sm text-white/80">{saveMsg}</p>
+            ) : null}
+
             <section className="rounded-2xl border border-emerald-500/30 bg-emerald-950/25 p-6">
               <h2 className="text-lg font-semibold text-emerald-100">
                 Coverage summary
@@ -716,6 +1007,9 @@ export function WifiAnalyzerClient() {
                         <span className="font-medium text-white">{row.name}</span>{" "}
                         (fl {row.floor}, {row.areaSqFt} sq ft) —{" "}
                         <span className="text-[#E8C84A]/95">{row.zoneType}</span>
+                        <span className="block text-xs text-white/55">
+                          {row.servedByAp}
+                        </span>
                       </>
                     ) : (
                       <span className="text-amber-200/90">
@@ -738,7 +1032,7 @@ export function WifiAnalyzerClient() {
 
             <section className="rounded-2xl border border-white/12 bg-white/[0.04] p-6">
               <h2 className="border-l-4 border-[#E8C84A] pl-3 text-lg font-semibold">
-                Whole-home AP plan
+                AP recommendations
               </h2>
               <p className="mt-3 text-sm text-white/90">
                 {results.equipment.wholeHomeApPlan}
@@ -756,6 +1050,40 @@ export function WifiAnalyzerClient() {
                   PoE: size a managed PoE+ switch for the port count above.
                 </p>
               ) : null}
+            </section>
+
+            <section className="rounded-2xl border border-orange-500/25 bg-orange-950/20 p-6">
+              <h2 className="text-lg font-semibold text-orange-100">
+                Labor (planning estimate)
+              </h2>
+              <ul className="mt-3 space-y-1.5 text-sm text-white/85">
+                <li>
+                  Cable rough-in: {results.laborHours.cableRoughInHours} h (
+                  {results.cat6Drops} drops × 1.5 h)
+                </li>
+                <li>
+                  AP mount &amp; terminate:{" "}
+                  {results.laborHours.apMountTerminateHours} h (
+                  {results.recommendedAps} APs × 0.5 h)
+                </li>
+                <li>
+                  Switch &amp; gateway setup:{" "}
+                  {results.laborHours.switchGatewaySetupHours} h
+                </li>
+                <li>
+                  Network configuration:{" "}
+                  {results.laborHours.networkConfigHours} h (1 h per 10 APs,
+                  min 1)
+                </li>
+                <li>
+                  Testing &amp; walkthrough:{" "}
+                  {results.laborHours.testingWalkthroughHours} h
+                </li>
+                <li className="pt-2 font-semibold text-[#E8C84A]">
+                  Total estimated labor: {results.laborHours.totalLaborHours}{" "}
+                  hours
+                </li>
+              </ul>
             </section>
 
             <section className="rounded-2xl border border-sky-500/25 bg-sky-950/20 p-6">
@@ -778,7 +1106,9 @@ export function WifiAnalyzerClient() {
                 <tbody className="divide-y divide-white/10">
                   <tr>
                     <td className="py-2 text-white/65">CAT6 cable</td>
-                    <td className="py-2 font-medium">{results.cat6FootageLf} LF</td>
+                    <td className="py-2 font-medium">
+                      {results.cat6FootageLf} LF
+                    </td>
                   </tr>
                   <tr>
                     <td className="py-2 text-white/65">Low-voltage brackets</td>
@@ -834,7 +1164,9 @@ export function WifiAnalyzerClient() {
                   </li>
                 ))}
               </ul>
-              <p className="mt-4 text-xs text-white/50">{results.assumptionsLine}</p>
+              <p className="mt-4 text-xs text-white/50">
+                {results.assumptionsLine}
+              </p>
             </section>
 
             <div>
@@ -858,34 +1190,67 @@ export function WifiAnalyzerClient() {
                 <p className="mt-1 text-xs text-emerald-300/90">{copyMsg}</p>
               ) : null}
             </div>
+          </div>
+        ) : null}
 
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={exportPdf}
-                className="rounded-lg border border-[#E8C84A]/50 bg-[#E8C84A]/15 px-4 py-2 text-sm font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/25"
-              >
-                Export PDF
-              </button>
-              <button
-                type="button"
-                onClick={exportCsv}
-                className="rounded-lg border border-white/20 bg-white/5 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10"
-              >
-                Export CSV
-              </button>
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => void saveToSupabase()}
-                className="rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-100 disabled:opacity-50"
-              >
-                {saving ? "Saving…" : "Save calculation"}
-              </button>
+        {scopeModalOpen && results ? (
+          <div
+            className="fixed inset-0 z-50 flex items-end justify-center bg-black/65 p-4 sm:items-center"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wifi-scope-title"
+          >
+            <div className="max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-2xl border border-white/15 bg-[#0a1628] shadow-xl">
+              <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                <h2
+                  id="wifi-scope-title"
+                  className="text-base font-semibold text-white"
+                >
+                  Work scope document
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setScopeModalOpen(false)}
+                  className="rounded-lg px-2 py-1 text-sm text-white/70 hover:bg-white/10 hover:text-white"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="max-h-[55vh] overflow-y-auto px-4 py-3">
+                <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-white/88">
+                  {workScopeText}
+                </pre>
+              </div>
+              <div className="flex flex-wrap gap-2 border-t border-white/10 px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => void copyWorkScope()}
+                  className="rounded-lg border border-[#E8C84A]/50 bg-[#E8C84A]/15 px-3 py-2 text-sm font-semibold text-[#E8C84A]"
+                >
+                  Copy to clipboard
+                </button>
+                <button
+                  type="button"
+                  onClick={() => printWorkScopePlainText(workScopeText)}
+                  className="rounded-lg border border-white/20 bg-white/5 px-3 py-2 text-sm font-semibold text-white"
+                >
+                  Print
+                </button>
+                <button
+                  type="button"
+                  disabled={scopePdfBusy}
+                  onClick={() => void exportWorkScopePdf()}
+                  className="rounded-lg border border-violet-400/40 bg-violet-500/15 px-3 py-2 text-sm font-semibold text-violet-100 disabled:opacity-50"
+                >
+                  {scopePdfBusy ? "PDF…" : "Export scope PDF"}
+                </button>
+              </div>
+              {scopeCopyMsg ? (
+                <p className="px-4 pb-3 text-xs text-emerald-300/90">
+                  {scopeCopyMsg}
+                </p>
+              ) : null}
             </div>
-            {saveMsg ? (
-              <p className="text-sm text-white/70">{saveMsg}</p>
-            ) : null}
           </div>
         ) : null}
       </main>

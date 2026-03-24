@@ -4,11 +4,16 @@ create table if not exists public.wifi_calculations (
   id uuid primary key default gen_random_uuid(),
   project_name text not null default '',
   building_type text not null default '',
+  project_id uuid references public.projects (id) on delete set null,
   inputs_json jsonb not null default '{}'::jsonb,
   results_json jsonb not null default '{}'::jsonb,
   equipment_json jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
+
+-- If the table already existed without project_id, run once:
+-- alter table public.wifi_calculations
+--   add column if not exists project_id uuid references public.projects (id) on delete set null;
 
 create index if not exists wifi_calculations_created_at_idx
   on public.wifi_calculations (created_at desc);

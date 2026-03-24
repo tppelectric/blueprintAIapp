@@ -10,6 +10,7 @@ const TOOL_LINKS: { href: string; label: string }[] = [
   { href: "/tools/wifi-analyzer", label: "Wi‑Fi Analyzer" },
   { href: "/tools/av-analyzer", label: "AV Analyzer" },
   { href: "/tools/smarthome-analyzer", label: "Smart Home Analyzer" },
+  { href: "/tools/electrical-analyzer", label: "Electrical Analyzer" },
   { href: "/tools/load-calculator", label: "Load Calculator" },
   { href: "/tools/nec-checker", label: "NEC Code Checker" },
   { href: "/tools/electrical-reference", label: "Electrical Reference" },

@@ -75,6 +75,21 @@ create policy "wifi_calculations_update_auth" on public.wifi_calculations
 create policy "wifi_calculations_delete_auth" on public.wifi_calculations
   for delete to authenticated using (true);
 
+-- ── electrical_projects ───────────────────────────────────────────────────
+drop policy if exists "electrical_projects_select_all" on public.electrical_projects;
+drop policy if exists "electrical_projects_insert_all" on public.electrical_projects;
+drop policy if exists "electrical_projects_update_all" on public.electrical_projects;
+drop policy if exists "electrical_projects_delete_all" on public.electrical_projects;
+
+create policy "electrical_projects_select_auth" on public.electrical_projects
+  for select to authenticated using (true);
+create policy "electrical_projects_insert_auth" on public.electrical_projects
+  for insert to authenticated with check (true);
+create policy "electrical_projects_update_auth" on public.electrical_projects
+  for update to authenticated using (true) with check (true);
+create policy "electrical_projects_delete_auth" on public.electrical_projects
+  for delete to authenticated using (true);
+
 -- ── sheets (if created via projects_sheets_migration.sql) ─────────────────
 drop policy if exists "sheets_select_all" on public.sheets;
 drop policy if exists "sheets_insert_all" on public.sheets;

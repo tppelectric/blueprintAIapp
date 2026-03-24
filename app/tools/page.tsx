@@ -45,6 +45,12 @@ const tools = [
     tone: "border-cyan-500/45 text-cyan-100",
   },
   {
+    href: "/tools/electrical-analyzer",
+    title: "Electrical Project Analyzer",
+    desc: "Room-by-room circuits, panel & NEC-style estimates",
+    tone: "border-lime-500/45 text-lime-100",
+  },
+  {
     href: "/tools/project-breakdown",
     title: "Project breakdown",
     desc: "Cost, markup, sell price, and profit",

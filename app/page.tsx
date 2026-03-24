@@ -96,6 +96,25 @@ function SmartHomeIcon({ className }: { className?: string }) {
   );
 }
 
+function PanelScheduleIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="4" y="3" width="16" height="18" rx="2" />
+      <path d="M8 8h2v3H8zM11 8h2v3h-2zM14 8h2v3h-2z" />
+      <path d="M8 13h8v2H8zM8 16h5v2H8z" />
+    </svg>
+  );
+}
+
 function DescriberIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -221,6 +240,24 @@ export default function Home() {
             </h2>
             <p className="mt-2 text-sm leading-relaxed text-white/60">
               Automation design, device counts, and network guidance
+            </p>
+            <span className="mt-4 text-sm font-medium text-[#E8C84A] group-hover:text-[#f0d56e]">
+              Open tool →
+            </span>
+          </Link>
+
+          <Link
+            href="/tools/electrical-analyzer"
+            className="group card-pad-mobile flex flex-col rounded-2xl border border-white/12 bg-white/[0.04] p-5 text-left shadow-sm transition-colors hover:border-[#E8C84A] hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50 sm:p-6"
+          >
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-lime-500/15 text-lime-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-lime-500/25 group-hover:ring-[#E8C84A]/50">
+              <PanelScheduleIcon className="h-6 w-6" />
+            </div>
+            <h2 className="mt-4 text-lg font-semibold text-white">
+              Electrical Project Analyzer
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-white/60">
+              Room-by-room circuits, panel schedule, materials, and proposals
             </p>
             <span className="mt-4 text-sm font-medium text-[#E8C84A] group-hover:text-[#f0d56e]">
               Open tool →

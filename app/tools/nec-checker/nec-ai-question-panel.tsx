@@ -2,7 +2,7 @@
 
 import { jsPDF } from "jspdf";
 import type { ReactNode } from "react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LinkToJobDialog } from "@/components/link-to-job-dialog";
 
 function escapeRe(s: string): string {
@@ -364,6 +364,19 @@ export function NecAiQuestionPanel({
   const [copyMsg, setCopyMsg] = useState<string | null>(null);
   const [jobLinkOpen, setJobLinkOpen] = useState(false);
   const askAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = sessionStorage.getItem("blueprint-nec-checker-prefill");
+      if (!raw) return;
+      const j = JSON.parse(raw) as { question?: string };
+      if (j.question?.trim()) setQInput(j.question.trim());
+      sessionStorage.removeItem("blueprint-nec-checker-prefill");
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const parsed = useMemo(() => {
     if (rawAnswer === null) return null;

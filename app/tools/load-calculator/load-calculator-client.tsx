@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ToolPageHeader } from "@/components/tool-page-header";
 import { LinkToJobDialog } from "@/components/link-to-job-dialog";
 import { createBrowserClient } from "@/lib/supabase/client";
@@ -88,6 +88,44 @@ export function LoadCalculatorClient() {
   const [loadBusy, setLoadBusy] = useState(false);
   const [savedLoadCalcId, setSavedLoadCalcId] = useState<string | null>(null);
   const [jobLinkOpen, setJobLinkOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = sessionStorage.getItem("blueprint-load-calc-from-electrical");
+    if (!raw) return;
+    try {
+      const j = JSON.parse(raw) as Partial<ResidentialInputs>;
+      if (j.projectName != null) setProjectName(String(j.projectName));
+      if (typeof j.squareFootage === "number" && j.squareFootage > 0) {
+        setSqFt(Math.round(j.squareFootage));
+      }
+      if (j.buildingType) setBuildingType(j.buildingType);
+      if (typeof j.bedrooms === "number" && j.bedrooms >= 0) {
+        setBedrooms(Math.min(20, Math.max(0, j.bedrooms)));
+      }
+      if (typeof j.bathrooms === "number" && j.bathrooms >= 0) {
+        setBathrooms(Math.min(20, Math.max(0, j.bathrooms)));
+      }
+      if (j.appliances && typeof j.appliances === "object") {
+        setAppliances((prev) => {
+          const next = { ...prev };
+          for (const k of Object.keys(next) as (keyof typeof next)[]) {
+            const inc = j.appliances![k];
+            if (inc && typeof inc === "object") {
+              next[k] = { ...next[k], ...inc };
+            }
+          }
+          return next;
+        });
+      }
+      if (j.futureGrowthSolar) setFutureGrowthSolar(true);
+      if (j.garageLoads) setGarageLoads(true);
+      setTab("residential");
+    } catch {
+      /* ignore */
+    }
+    sessionStorage.removeItem("blueprint-load-calc-from-electrical");
+  }, []);
 
   const resSquareFootage = sqFt === "" ? 0 : sqFt;
   const comSquareFootage = cSq === "" ? 0 : cSq;

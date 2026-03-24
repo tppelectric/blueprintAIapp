@@ -287,6 +287,7 @@ export type ElectricalResults = {
     circuitsWithGrowth: number;
     recommendedPanelSpaces: number;
     recommendedPanelAmps: number;
+    /** Amps; may be 100–1200 depending on target service selection. */
     recommendedServiceAmps: number;
     estimatedWireFootageLf: number;
     loadCalcTotalVa: number;
@@ -525,19 +526,16 @@ export function computeElectricalPlan(input: ElectricalInputs): ElectricalResult
   };
 
   const load = computeResidentialLoad(resInput);
-  let recommendedServiceAmps = load.recommendedServiceAmps;
+  let recommendedServiceAmps: number = load.recommendedServiceAmps;
 
   const target = setup.targetService;
   if (target === "100") recommendedServiceAmps = 100;
   else if (target === "150") recommendedServiceAmps = 150;
   else if (target === "200") recommendedServiceAmps = 200;
   else if (target === "400") recommendedServiceAmps = 400;
-  else if (target === "800" || target === "1200") {
-    recommendedServiceAmps = Math.max(
-      recommendedServiceAmps,
-      target === "800" ? 400 : 400,
-    );
-  } else {
+  else if (target === "800") recommendedServiceAmps = 800;
+  else if (target === "1200") recommendedServiceAmps = 1200;
+  else {
     recommendedServiceAmps = Math.max(
       recommendedServiceAmps,
       roundUpServiceAmps(load.requiredAmps),

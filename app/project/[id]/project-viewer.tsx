@@ -76,8 +76,26 @@ import {
   totalCostPerPage,
   type ScanModeId,
 } from "@/lib/scan-modes";
+import {
+  downloadPageSummaryCsv,
+  openPageSummaryPdfReport,
+  renderPageThumbDataUrl,
+  type PageSummaryExportRow,
+  type PageThumbScanStatusExport,
+} from "@/lib/page-summary-export";
+import { runTakeoffExport, type TakeoffExportInclude } from "@/lib/scan-export";
 
 type PageThumbScanStatus = "ok" | "warn" | "error" | "spin" | "wait";
+
+const DEFAULT_TAKEOFF_INCLUDE: TakeoffExportInclude = {
+  aiCounts: true,
+  manualCounts: true,
+  finalCounts: true,
+  confidence: true,
+  planNotes: true,
+  summaryTotals: true,
+  lowConfidenceFlagged: false,
+};
 
 const RESUME_STORAGE_KEY = "blueprint-scan-resume-v1";
 
@@ -604,6 +622,11 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const [thumbByPage, setThumbByPage] = useState<
     Record<number, PageThumbScanStatus>
   >({});
+  const [pageScanMeta, setPageScanMeta] = useState<
+    Record<number, { at: string; modeLabel: string }>
+  >({});
+  const [pageSummaryExportOpen, setPageSummaryExportOpen] = useState(false);
+  const [pageSummaryExportBusy, setPageSummaryExportBusy] = useState(false);
   const [resumeSnapshot, setResumeSnapshot] = useState<ResumePayload | null>(
     null,
   );
@@ -729,6 +752,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     setRoomScanHistory([]);
     setSelectedRoomScanId(null);
     setRoomScanSavedAtLabel(null);
+    setPageScanMeta({});
   }, [projectId]);
 
   const reloadRoomScanHistory = useCallback(async () => {
@@ -1791,6 +1815,16 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     scanCancelRequestedRef.current = false;
   }, []);
 
+  const recordPageScanMeta = useCallback((page: number, mode: ScanModeId) => {
+    setPageScanMeta((prev) => ({
+      ...prev,
+      [page]: {
+        at: new Date().toISOString(),
+        modeLabel: scanModeById(mode).label,
+      },
+    }));
+  }, []);
+
   const runOnePageWithMode = useCallback(
     async (
       pageToAnalyze: number,
@@ -1928,15 +1962,22 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       const incomingCount = ((json.items ?? []) as ElectricalItemRow[]).length;
       if (json.persisted === false && json.pageAnalysisWarning) {
         updateThumb(pageToAnalyze, "warn");
+        recordPageScanMeta(pageToAnalyze, mode);
         return { itemCount: incomingCount, outcome: "warn" };
       }
       updateThumb(pageToAnalyze, "ok");
+      recordPageScanMeta(pageToAnalyze, mode);
       return {
         itemCount: incomingCount,
         outcome: incomingCount > 0 ? "ok" : "empty",
       };
     },
-    [projectId, applyAnalyzePageJson, refreshProjectUsageTotal],
+    [
+      projectId,
+      applyAnalyzePageJson,
+      refreshProjectUsageTotal,
+      recordPageScanMeta,
+    ],
   );
 
   const lastBatchPageCompletedRef = useRef(0);
@@ -3506,6 +3547,193 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   symbolCaptureRef.current = symbolCaptureState;
   symbolMatchStateRef.current = symbolMatchState;
 
+  const pageSummaryExportData = useMemo(() => {
+    if (numPages < 1) {
+      return {
+        rows: [] as PageSummaryExportRow[],
+        totals: {
+          totalPages: 0,
+          pagesScanned: 0,
+          totalItems: 0,
+          unscannedPages: 0,
+        },
+      };
+    }
+    const rows: PageSummaryExportRow[] = [];
+    for (let p = 1; p <= numPages; p++) {
+      const st = thumbByPage[p] as PageThumbScanStatusExport | undefined;
+      const meta = pageScanMeta[p];
+      rows.push({
+        page: p,
+        scanStatus: st,
+        itemCount: analysisItems.filter((i) => i.page_number === p).length,
+        roomCount: detectedRooms.filter((r) => r.page_number === p).length,
+        lastScanned: meta?.at
+          ? new Date(meta.at).toLocaleString()
+          : "—",
+        scanMode: meta?.modeLabel ?? "—",
+      });
+    }
+    const pagesScanned = rows.filter(
+      (r) => r.scanStatus === "ok" || r.scanStatus === "warn",
+    ).length;
+    return {
+      rows,
+      totals: {
+        totalPages: numPages,
+        pagesScanned,
+        totalItems: analysisItems.length,
+        unscannedPages: rows.filter(
+          (r) => !r.scanStatus || r.scanStatus === "wait",
+        ).length,
+      },
+    };
+  }, [numPages, thumbByPage, pageScanMeta, analysisItems, detectedRooms]);
+
+  const runPageSummaryCsvExport = useCallback(() => {
+    if (pageSummaryExportData.rows.length === 0) return;
+    const label = project
+      ? project.project_name?.trim() ||
+        projectDisplayName(project.file_name)
+      : "Project";
+    const stamp = new Date().toISOString().slice(0, 10);
+    const safe = label.replace(/[^\w\- ]+/g, "").trim() || "project";
+    downloadPageSummaryCsv(
+      `page-summary-${safe}-${stamp}.csv`,
+      pageSummaryExportData.rows,
+    );
+    setPageSummaryExportOpen(false);
+  }, [pageSummaryExportData.rows, project]);
+
+  const runPageSummaryPdfExport = useCallback(async () => {
+    if (!pdfDocs?.length || numPages < 1) return;
+    setPageSummaryExportBusy(true);
+    try {
+      const rows: PageSummaryExportRow[] = [];
+      for (let p = 1; p <= numPages; p++) {
+        const mapped = globalPageToLocal(p, pdfDocs);
+        let thumbDataUrl = "";
+        if (mapped) {
+          try {
+            thumbDataUrl = await renderPageThumbDataUrl(
+              mapped.doc,
+              mapped.localPage,
+            );
+          } catch {
+            thumbDataUrl = "";
+          }
+        }
+        const st = thumbByPage[p] as PageThumbScanStatusExport | undefined;
+        const meta = pageScanMeta[p];
+        rows.push({
+          page: p,
+          scanStatus: st,
+          itemCount: analysisItems.filter((i) => i.page_number === p).length,
+          roomCount: detectedRooms.filter((r) => r.page_number === p).length,
+          lastScanned: meta?.at
+            ? new Date(meta.at).toLocaleString()
+            : "—",
+          scanMode: meta?.modeLabel ?? "—",
+          thumbDataUrl: thumbDataUrl || undefined,
+        });
+      }
+      const totals = {
+        totalPages: numPages,
+        pagesScanned: rows.filter(
+          (r) => r.scanStatus === "ok" || r.scanStatus === "warn",
+        ).length,
+        totalItems: analysisItems.length,
+        unscannedPages: rows.filter(
+          (r) => !r.scanStatus || r.scanStatus === "wait",
+        ).length,
+      };
+      const label = project
+        ? project.project_name?.trim() ||
+          projectDisplayName(project.file_name)
+        : "Project";
+      openPageSummaryPdfReport(label, rows, totals);
+      setPageSummaryExportOpen(false);
+    } finally {
+      setPageSummaryExportBusy(false);
+    }
+  }, [
+    pdfDocs,
+    numPages,
+    thumbByPage,
+    pageScanMeta,
+    analysisItems,
+    detectedRooms,
+    project,
+  ]);
+
+  const exportAllTakeoffPdf = useCallback(() => {
+    if (!project) return;
+    const pn =
+      project.project_name?.trim() ||
+      projectDisplayName(project.file_name);
+    runTakeoffExport(
+      {
+        projectName: pn,
+        analyzedAt: new Date(),
+        totalPagesScanned: numPages,
+        docNumPages:
+          pdfDocs?.map((d) => d.numPages) ??
+          sheets.map((s) => Math.max(1, s.page_count ?? 1)),
+        sheets,
+        items: analysisItems,
+        rooms: detectedRooms,
+        manualCounts,
+        manualMode,
+      },
+      "pdf",
+      "room_floor",
+      DEFAULT_TAKEOFF_INCLUDE,
+    );
+  }, [
+    project,
+    numPages,
+    pdfDocs,
+    sheets,
+    analysisItems,
+    detectedRooms,
+    manualCounts,
+    manualMode,
+  ]);
+
+  const exportAllTakeoffCsv = useCallback(() => {
+    if (!project) return;
+    const pn =
+      project.project_name?.trim() ||
+      projectDisplayName(project.file_name);
+    runTakeoffExport(
+      {
+        projectName: pn,
+        analyzedAt: new Date(),
+        totalPagesScanned: numPages,
+        docNumPages:
+          pdfDocs?.map((d) => d.numPages) ??
+          sheets.map((s) => Math.max(1, s.page_count ?? 1)),
+        sheets,
+        items: analysisItems,
+        rooms: detectedRooms,
+        manualCounts,
+        manualMode,
+      },
+      "csv",
+      "room_floor",
+      DEFAULT_TAKEOFF_INCLUDE,
+    );
+  }, [
+    project,
+    numPages,
+    pdfDocs,
+    sheets,
+    analysisItems,
+    detectedRooms,
+    manualCounts,
+    manualMode,
+  ]);
+
   const pageThumbnailItems = useMemo(() => {
     if (!pdfDocs?.length || numPages < 1) return null;
     return Array.from({ length: numPages }, (_, i) => i + 1).map((n) => {
@@ -4917,6 +5145,16 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                     analyzeBusy={analyzeBusy}
                     onExportRoom={(room) => {
                       setTakeoffExportRoom(room);
+                      setTakeoffExportOpen(true);
+                    }}
+                    projectId={projectId}
+                    projectLabel={
+                      project.project_name?.trim() ||
+                      project.file_name ||
+                      "Project"
+                    }
+                    onOpenTakeoffExport={() => {
+                      setTakeoffExportRoom(null);
                       setTakeoffExportOpen(true);
                     }}
                   />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { ElectricalItemRow } from "@/lib/electrical-item-types";
 import type { DetectedRoomRow } from "@/lib/detected-room-types";
 import {
@@ -10,6 +10,7 @@ import {
   type TakeoffExportProjectInput,
   type TakeoffOrganizeBy,
 } from "@/lib/scan-export";
+import type { TakeoffCategoryExportScope } from "@/lib/takeoff-category";
 
 const DEFAULT_INCLUDE: TakeoffExportInclude = {
   aiCounts: true,
@@ -20,6 +21,12 @@ const DEFAULT_INCLUDE: TakeoffExportInclude = {
   summaryTotals: true,
   lowConfidenceFlagged: false,
 };
+
+type ExportFormatChoice =
+  | "full_pdf"
+  | "schedule_pdf"
+  | "csv_estimate"
+  | "csv_materials";
 
 export function TakeoffExportDialog({
   open,
@@ -50,15 +57,43 @@ export function TakeoffExportDialog({
   filterRoom?: Pick<DetectedRoomRow, "id" | "page_number" | "room_name">;
   title?: string;
 }) {
-  const [format, setFormat] = useState<TakeoffExportFormat>("csv");
+  const [formatChoice, setFormatChoice] =
+    useState<ExportFormatChoice>("full_pdf");
   const [organizeBy, setOrganizeBy] =
     useState<TakeoffOrganizeBy>("room_floor");
   const [include, setInclude] = useState<TakeoffExportInclude>(DEFAULT_INCLUDE);
+  const [allCategories, setAllCategories] = useState(true);
+  const [scope, setScope] = useState<
+    Record<Exclude<TakeoffCategoryExportScope, "all">, boolean>
+  >({
+    fixtures: false,
+    receptacles: false,
+    switches: false,
+    panels: false,
+    plan_notes: false,
+    low_voltage: false,
+    wiring: false,
+  });
+
+  const categoryScopes = useMemo((): TakeoffCategoryExportScope[] => {
+    if (allCategories) return ["all"];
+    const picks = (
+      Object.entries(scope) as [TakeoffCategoryExportScope, boolean][]
+    )
+      .filter(([k, v]) => k !== "all" && v)
+      .map(([k]) => k);
+    return picks.length ? picks : ["all"];
+  }, [allCategories, scope]);
 
   if (!open) return null;
 
   const toggleInclude = (key: keyof TakeoffExportInclude) => {
     setInclude((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleScope = (key: Exclude<TakeoffCategoryExportScope, "all">) => {
+    setAllCategories(false);
+    setScope((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   const runExport = () => {
@@ -75,7 +110,25 @@ export function TakeoffExportDialog({
       filterPages,
       filterRoom,
     };
-    runTakeoffExport(input, format, organizeBy, include);
+
+    const mapFormat = (): TakeoffExportFormat => {
+      switch (formatChoice) {
+        case "full_pdf":
+          return "pdf";
+        case "schedule_pdf":
+          return "pdf_schedule";
+        case "csv_estimate":
+          return "csv";
+        case "csv_materials":
+          return "csv_materials";
+        default:
+          return "pdf";
+      }
+    };
+
+    runTakeoffExport(input, mapFormat(), organizeBy, include, {
+      categoryScopes,
+    });
     onClose();
   };
 
@@ -102,37 +155,100 @@ export function TakeoffExportDialog({
         </h2>
 
         <fieldset className="mt-5 border-0 p-0">
+          <legend className="text-sm font-semibold text-white/90">
+            Categories to include
+          </legend>
+          <div className="mt-2 space-y-2 text-sm text-white/85">
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={allCategories}
+                onChange={() => {
+                  setAllCategories(true);
+                  setScope({
+                    fixtures: false,
+                    receptacles: false,
+                    switches: false,
+                    panels: false,
+                    plan_notes: false,
+                    low_voltage: false,
+                    wiring: false,
+                  });
+                }}
+                className="accent-sky-500"
+              />
+              All items
+            </label>
+            <p className="text-[11px] text-white/45">
+              Or limit export to specific groups:
+            </p>
+            {(
+              [
+                ["fixtures", "Fixtures only"],
+                ["receptacles", "Receptacles only"],
+                ["switches", "Switches only"],
+                ["panels", "Panels only"],
+                ["plan_notes", "Plan notes only"],
+                ["low_voltage", "Low voltage only"],
+                ["wiring", "Wiring only"],
+              ] as const
+            ).map(([key, label]) => (
+              <label key={key} className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={!allCategories && scope[key]}
+                  disabled={allCategories}
+                  onChange={() => toggleScope(key)}
+                  className="accent-emerald-500 disabled:opacity-40"
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        <fieldset className="mt-5 border-0 p-0">
           <legend className="text-sm font-semibold text-white/90">Format</legend>
           <div className="mt-2 space-y-2 text-sm text-white/85">
             <label className="flex cursor-pointer items-center gap-2">
               <input
                 type="radio"
-                name="takeoff-format"
-                checked={format === "pdf"}
-                onChange={() => setFormat("pdf")}
+                name="takeoff-format-v2"
+                checked={formatChoice === "full_pdf"}
+                onChange={() => setFormatChoice("full_pdf")}
                 className="accent-sky-500"
               />
-              PDF Report (formatted multi-page download)
+              Full report PDF
             </label>
             <label className="flex cursor-pointer items-center gap-2">
               <input
                 type="radio"
-                name="takeoff-format"
-                checked={format === "csv"}
-                onChange={() => setFormat("csv")}
+                name="takeoff-format-v2"
+                checked={formatChoice === "schedule_pdf"}
+                onChange={() => setFormatChoice("schedule_pdf")}
                 className="accent-sky-500"
               />
-              CSV Spreadsheet
+              Schedule format PDF (print from browser)
             </label>
             <label className="flex cursor-pointer items-center gap-2">
               <input
                 type="radio"
-                name="takeoff-format"
-                checked={format === "both"}
-                onChange={() => setFormat("both")}
+                name="takeoff-format-v2"
+                checked={formatChoice === "csv_estimate"}
+                onChange={() => setFormatChoice("csv_estimate")}
                 className="accent-sky-500"
               />
-              Both PDF and CSV
+              CSV for estimating (line-by-line)
+            </label>
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="radio"
+                name="takeoff-format-v2"
+                checked={formatChoice === "csv_materials"}
+                onChange={() => setFormatChoice("csv_materials")}
+                className="accent-sky-500"
+              />
+              Materials takeoff CSV (grouped quantities)
             </label>
           </div>
         </fieldset>

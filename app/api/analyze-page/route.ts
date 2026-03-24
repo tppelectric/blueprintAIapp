@@ -885,6 +885,10 @@ No project-specific symbol legend is on file for this project — use standard N
       rooms_snapshot: insertedRooms,
       total_items: rows.length,
       notes: null,
+      scan_mode:
+        typeof body.scanType === "string" && body.scanType.trim()
+          ? body.scanType.trim()
+          : null,
     });
     if (scanErr) {
       console.error(

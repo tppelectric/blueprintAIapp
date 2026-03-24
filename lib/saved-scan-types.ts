@@ -7,6 +7,8 @@ export type SavedScanRow = {
   page_number: number;
   scan_name: string;
   scan_date: string;
+  /** Scan mode from analyze-page request when present (e.g. batch / single). */
+  scan_mode?: string | null;
   items_snapshot: ElectricalItemRow[] | unknown;
   rooms_snapshot: DetectedRoomRow[] | unknown;
   total_items: number;

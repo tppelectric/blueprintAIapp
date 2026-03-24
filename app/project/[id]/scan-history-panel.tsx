@@ -35,10 +35,12 @@ export function ScanHistoryPanel({
   const [scans, setScans] = useState<SavedScanRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [compareA, setCompareA] = useState<SavedScanRow | null>(null);
-  const [compareB, setCompareB] = useState<SavedScanRow | null>(null);
+  const [compareOlder, setCompareOlder] = useState<SavedScanRow | null>(null);
+  const [compareNewer, setCompareNewer] = useState<SavedScanRow | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
   const [exportKey, setExportKey] = useState(0);
+  const [cmpLeftId, setCmpLeftId] = useState("");
+  const [cmpRightId, setCmpRightId] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -74,6 +76,44 @@ export function ScanHistoryPanel({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
+  useEffect(() => {
+    if (scans.length < 2) return;
+    const by = [...scans].sort(
+      (a, b) =>
+        new Date(a.scan_date).getTime() - new Date(b.scan_date).getTime(),
+    );
+    setCmpLeftId((prev) =>
+      prev && scans.some((s) => s.id === prev) ? prev : by[0]!.id,
+    );
+    setCmpRightId((prev) =>
+      prev && scans.some((s) => s.id === prev)
+        ? prev
+        : by[by.length - 1]!.id,
+    );
+  }, [scans]);
+
+  const saveScanName = useCallback(
+    async (id: string, scanName: string) => {
+      const trimmed = scanName.trim();
+      if (!trimmed) return;
+      try {
+        const res = await fetch("/api/saved-scans", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, scanName: trimmed }),
+        });
+        const json = (await res.json()) as { scan?: SavedScanRow; error?: string };
+        if (!res.ok) throw new Error(json.error ?? "Rename failed.");
+        if (json.scan) {
+          setScans((prev) => prev.map((s) => (s.id === id ? json.scan! : s)));
+        }
+      } catch (e) {
+        window.alert(e instanceof Error ? e.message : "Rename failed.");
+      }
+    },
+    [],
+  );
 
   const saveNotes = useCallback(
     async (id: string, notes: string) => {
@@ -119,13 +159,40 @@ export function ScanHistoryPanel({
     [],
   );
 
-  const openCompare = useCallback((a: SavedScanRow, bId: string) => {
-    const b = scans.find((s) => s.id === bId);
-    if (!b) return;
-    setCompareA(a);
-    setCompareB(b);
-    setCompareOpen(true);
-  }, [scans]);
+  const openComparePair = useCallback(
+    (left: SavedScanRow, right: SavedScanRow) => {
+      const tL = new Date(left.scan_date).getTime();
+      const tR = new Date(right.scan_date).getTime();
+      if (tL <= tR) {
+        setCompareOlder(left);
+        setCompareNewer(right);
+      } else {
+        setCompareOlder(right);
+        setCompareNewer(left);
+      }
+      setCompareOpen(true);
+    },
+    [],
+  );
+
+  const openCompareFromPicker = useCallback(() => {
+    const left = scans.find((s) => s.id === cmpLeftId);
+    const right = scans.find((s) => s.id === cmpRightId);
+    if (!left || !right || left.id === right.id) {
+      window.alert("Choose two different scans.");
+      return;
+    }
+    openComparePair(left, right);
+  }, [scans, cmpLeftId, cmpRightId, openComparePair]);
+
+  const openCompare = useCallback(
+    (a: SavedScanRow, bId: string) => {
+      const b = scans.find((s) => s.id === bId);
+      if (!b) return;
+      openComparePair(a, b);
+    },
+    [scans, openComparePair],
+  );
 
   const runExport = useCallback(
     (scan: SavedScanRow, kind: string) => {
@@ -201,6 +268,51 @@ export function ScanHistoryPanel({
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+            {scans.length >= 2 ? (
+              <div className="mb-4 space-y-2 rounded-xl border border-sky-500/35 bg-sky-950/25 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-sky-200/95">
+                  Compare scans
+                </p>
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                  <select
+                    value={cmpLeftId}
+                    onChange={(e) => setCmpLeftId(e.target.value)}
+                    className="max-w-full rounded-lg border border-white/20 bg-[#0a1628] px-2 py-1.5 text-xs text-white"
+                    aria-label="First scan to compare"
+                  >
+                    {scans.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.scan_name} · p.{s.page_number}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="hidden text-white/40 sm:inline">vs</span>
+                  <select
+                    value={cmpRightId}
+                    onChange={(e) => setCmpRightId(e.target.value)}
+                    className="max-w-full rounded-lg border border-white/20 bg-[#0a1628] px-2 py-1.5 text-xs text-white"
+                    aria-label="Second scan to compare"
+                  >
+                    {scans.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.scan_name} · p.{s.page_number}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => openCompareFromPicker()}
+                    className="rounded-lg border border-sky-500/50 bg-sky-600/35 px-3 py-1.5 text-xs font-semibold text-sky-50 hover:bg-sky-600/50"
+                  >
+                    View diff
+                  </button>
+                </div>
+                <p className="text-[10px] text-white/45">
+                  Older scan on the left, newer on the right (auto-ordered by
+                  date). Green = added, red = removed, yellow = qty changed.
+                </p>
+              </div>
+            ) : null}
             {loading && scans.length === 0 ? (
               <p className="text-sm text-white/60">Loading…</p>
             ) : null}
@@ -224,9 +336,24 @@ export function ScanHistoryPanel({
                       <p className="text-xs text-white/55">
                         {formatScanDate(scan.scan_date)} · Page{" "}
                         {scan.page_number} · {scan.total_items} item line(s)
+                        {scan.scan_mode ? ` · Mode: ${scan.scan_mode}` : ""}
                       </p>
                     </div>
                   </div>
+                  <label className="mt-2 block text-xs text-white/60">
+                    Label / name
+                    <input
+                      type="text"
+                      defaultValue={scan.scan_name}
+                      className="mt-1 w-full rounded-lg border border-white/15 bg-[#0a1628] px-2 py-1.5 text-sm text-white"
+                      onBlur={(e) => {
+                        const v = e.target.value.trim();
+                        if (v && v !== scan.scan_name) {
+                          void saveScanName(scan.id, v);
+                        }
+                      }}
+                    />
+                  </label>
                   <label className="mt-2 block text-xs text-white/60">
                     Notes
                     <textarea
@@ -311,11 +438,11 @@ export function ScanHistoryPanel({
         open={compareOpen}
         onClose={() => {
           setCompareOpen(false);
-          setCompareA(null);
-          setCompareB(null);
+          setCompareOlder(null);
+          setCompareNewer(null);
         }}
-        scanA={compareA}
-        scanB={compareB}
+        scanOlder={compareOlder}
+        scanNewer={compareNewer}
       />
     </>
   );

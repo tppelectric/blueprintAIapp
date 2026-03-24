@@ -166,7 +166,7 @@ export async function DELETE(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  let body: { id?: string; notes?: string | null };
+  let body: { id?: string; notes?: string | null; scanName?: string };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -180,8 +180,29 @@ export async function PATCH(request: Request) {
 
   const notes =
     body.notes === null || body.notes === undefined
-      ? null
+      ? undefined
       : String(body.notes).trim() || null;
+
+  const scanNameRaw = body.scanName?.trim();
+  const scanName =
+    scanNameRaw === undefined ? undefined : scanNameRaw || undefined;
+  if (scanName !== undefined && !scanName) {
+    return NextResponse.json(
+      { error: "scanName cannot be empty." },
+      { status: 400 },
+    );
+  }
+
+  const patch: Record<string, unknown> = {};
+  if (notes !== undefined) patch.notes = notes;
+  if (scanName !== undefined) patch.scan_name = scanName;
+
+  if (Object.keys(patch).length === 0) {
+    return NextResponse.json(
+      { error: "Provide notes and/or scanName to update." },
+      { status: 400 },
+    );
+  }
 
   let supabase;
   try {
@@ -200,7 +221,7 @@ export async function PATCH(request: Request) {
 
   const { data, error } = await supabase
     .from("saved_scans")
-    .update({ notes })
+    .update(patch)
     .eq("id", id)
     .select()
     .maybeSingle();

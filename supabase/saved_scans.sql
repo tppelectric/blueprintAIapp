@@ -11,6 +11,7 @@ create table if not exists public.saved_scans (
   rooms_snapshot jsonb not null default '[]'::jsonb,
   total_items integer not null default 0 check (total_items >= 0),
   notes text,
+  scan_mode text,
   created_at timestamptz not null default now()
 );
 

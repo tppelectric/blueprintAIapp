@@ -58,6 +58,13 @@ import { TakeoffExportDialog } from "./takeoff-export-dialog";
 import { ScanModeDialog } from "./scan-mode-dialog";
 import { LinkToJobDialog } from "@/components/link-to-job-dialog";
 import { ProjectRoomScanDialog } from "@/components/project-room-scan-dialog";
+import {
+  formatRoomScanBannerDate,
+  projectRoomScanRowToResponse,
+  summarizeScanRow,
+  type ProjectRoomScanListItem,
+  type ProjectRoomScanRow,
+} from "@/lib/project-room-scans";
 import type { FloorPlanScanApiResponse } from "@/lib/tool-floor-plan-scan";
 import {
   ScanProgressOverlay,
@@ -670,6 +677,19 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const [roomScanBusy, setRoomScanBusy] = useState(false);
   const [roomScanData, setRoomScanData] =
     useState<FloorPlanScanApiResponse | null>(null);
+  const [roomScanHistory, setRoomScanHistory] = useState<
+    ProjectRoomScanListItem[]
+  >([]);
+  const [roomScanBannerDismissed, setRoomScanBannerDismissed] =
+    useState(false);
+  const [roomScanAutosave, setRoomScanAutosave] = useState(true);
+  const [roomScanDialogPage, setRoomScanDialogPage] = useState(1);
+  const [selectedRoomScanId, setSelectedRoomScanId] = useState<string | null>(
+    null,
+  );
+  const [roomScanSavedAtLabel, setRoomScanSavedAtLabel] = useState<
+    string | null
+  >(null);
   const [scanReloadToken, setScanReloadToken] = useState(0);
   const [resetDialog, setResetDialog] = useState<{
     itemCount: number;
@@ -708,7 +728,55 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     scanProgressOpenRef.current = false;
     setScanCompleteMessage(null);
     setResumeSnapshot(null);
+    setRoomScanBannerDismissed(false);
+    setRoomScanHistory([]);
+    setSelectedRoomScanId(null);
+    setRoomScanSavedAtLabel(null);
   }, [projectId]);
+
+  const reloadRoomScanHistory = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      const sb = createBrowserClient();
+      const { data, error } = await sb
+        .from("project_room_scans")
+        .select(
+          "id, project_id, created_at, scan_page, rooms_json, equipment_suggestions_json, scan_notes, total_sqft, floor_count",
+        )
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      const rows = (data ?? []) as ProjectRoomScanRow[];
+      setRoomScanHistory(rows.map(summarizeScanRow));
+    } catch {
+      setRoomScanHistory([]);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    void reloadRoomScanHistory();
+  }, [reloadRoomScanHistory]);
+
+  const handleSelectHistoryScan = useCallback(
+    (id: string) => {
+      const row = roomScanHistory.find((h) => h.id === id);
+      if (!row) return;
+      setSelectedRoomScanId(id);
+      setRoomScanData(projectRoomScanRowToResponse(row));
+      setRoomScanDialogPage(row.scan_page);
+      setRoomScanAutosave(false);
+      setRoomScanSavedAtLabel(formatRoomScanBannerDate(row.created_at));
+    },
+    [roomScanHistory],
+  );
+
+  const openLatestSavedRoomScan = useCallback(() => {
+    const row = roomScanHistory[0];
+    if (!row) return;
+    handleSelectHistoryScan(row.id);
+    setRoomScanOpen(true);
+  }, [roomScanHistory, handleSelectHistoryScan]);
 
   const manualCountsRef = useRef(manualCounts);
   manualCountsRef.current = manualCounts;
@@ -2259,6 +2327,11 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           json.equipment_placement_suggestions ?? [],
         scan_notes: json.scan_notes ?? "",
       });
+      setRoomScanDialogPage(currentPage);
+      setRoomScanAutosave(true);
+      setSelectedRoomScanId(null);
+      setRoomScanSavedAtLabel(null);
+      setRoomScanBannerDismissed(false);
       setRoomScanOpen(true);
     } catch (e) {
       window.alert(
@@ -3910,6 +3983,40 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                 </span>
               </div>
 
+              {!roomScanBannerDismissed && roomScanHistory.length > 0 ? (
+                <div className="mb-3 w-full rounded-xl border border-teal-500/35 bg-teal-950/25 px-4 py-3 text-sm text-teal-50/95">
+                  <p className="font-semibold text-teal-100">
+                    Room scan from{" "}
+                    {formatRoomScanBannerDate(roomScanHistory[0]!.created_at)}{" "}
+                    available
+                  </p>
+                  <p className="mt-1 text-teal-100/85">
+                    {roomScanHistory[0]!.room_count} rooms ·{" "}
+                    {(roomScanHistory[0]!.total_sqft ?? 0).toLocaleString()} sq ft
+                    total
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openLatestSavedRoomScan()}
+                      className="rounded-lg border border-teal-400/50 bg-teal-600/30 px-3 py-1.5 text-xs font-semibold text-teal-50 hover:bg-teal-600/45"
+                    >
+                      View Results
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRoomScanBannerDismissed(true);
+                        setRoomScanOpen(false);
+                      }}
+                      className="rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/15"
+                    >
+                      New Scan
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="flex w-full flex-wrap items-center justify-center gap-2 sm:w-auto">
                 <button
                   type="button"
@@ -5023,9 +5130,17 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         open={roomScanOpen}
         onClose={() => setRoomScanOpen(false)}
         data={roomScanData}
-        scanPage={currentPage}
+        scanPage={roomScanDialogPage}
         projectId={projectId}
         projectLabel={name}
+        autosaveEnabled={roomScanAutosave}
+        onScansUpdated={() => void reloadRoomScanHistory()}
+        historyScans={roomScanHistory}
+        selectedHistoryId={selectedRoomScanId}
+        onSelectHistoryScan={(id) => {
+          handleSelectHistoryScan(id);
+        }}
+        savedAtLabel={roomScanSavedAtLabel}
       />
 
       {symbolMatchState ? (

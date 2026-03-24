@@ -142,3 +142,15 @@ create policy "nec_questions_insert_auth" on public.nec_questions
 -- Note: `api_usage` is written only via service-role API routes; leave RLS off or
 -- add service-only policies as needed. `electrical_items` / scan tables:
 -- apply the same `to authenticated` pattern if they currently use `using (true)`.
+
+-- ── project_room_scans (see also supabase/project_room_scans.sql) ────────────
+drop policy if exists "project_room_scans_select_auth" on public.project_room_scans;
+drop policy if exists "project_room_scans_insert_auth" on public.project_room_scans;
+drop policy if exists "project_room_scans_delete_auth" on public.project_room_scans;
+
+create policy "project_room_scans_select_auth" on public.project_room_scans
+  for select to authenticated using (true);
+create policy "project_room_scans_insert_auth" on public.project_room_scans
+  for insert to authenticated with check (true);
+create policy "project_room_scans_delete_auth" on public.project_room_scans
+  for delete to authenticated using (true);

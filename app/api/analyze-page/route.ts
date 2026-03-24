@@ -425,6 +425,19 @@ export async function POST(request: Request) {
 
   const imageBuffer = Buffer.from(imageBase64, "base64");
   const decodedBytes = imageBuffer.length;
+  const b64Compact = imageBase64.replace(/\s/g, "");
+  const base64LooksValid = /^[A-Za-z0-9+/]+=*$/.test(b64Compact);
+  console.log("[analyze-page] image received:", {
+    pageNumber,
+    projectId,
+    decodedBytes,
+    incomingBase64Length: imageBase64.length,
+    base64CharsetOk: base64LooksValid,
+    mediaTypeHeader: body.imageMediaType ?? "(missing)",
+  });
+  if (decodedBytes === 0) {
+    console.warn("[analyze-page] decoded image is 0 bytes:", { pageNumber });
+  }
   if (decodedBytes > MAX_INCOMING_IMAGE_BYTES) {
     return NextResponse.json(
       {
@@ -436,6 +449,14 @@ export async function POST(request: Request) {
   }
 
   const rasterProbe = await imageBufferAppearsBlank(imageBuffer);
+  console.log("[analyze-page] raster blank check:", {
+    pageNumber,
+    blank: rasterProbe.blank,
+    width: rasterProbe.width,
+    height: rasterProbe.height,
+    sampleMean: rasterProbe.sampleMean,
+    sampleStd: rasterProbe.sampleStd,
+  });
   if (rasterProbe.blank) {
     return NextResponse.json(
       { error: "Page appears to be blank", blankPage: true },
@@ -446,6 +467,13 @@ export async function POST(request: Request) {
   const mediaTypeRaw = body.imageMediaType?.trim().toLowerCase();
   const claudeMediaType =
     mediaTypeRaw === "image/jpeg" ? "image/jpeg" : "image/png";
+  console.log("[analyze-page] Claude image media:", {
+    pageNumber,
+    raw: mediaTypeRaw ?? null,
+    sendingAs: claudeMediaType,
+    isJpeg: claudeMediaType === "image/jpeg",
+    isPng: claudeMediaType === "image/png",
+  });
 
   let legendAppendix = "";
   try {
@@ -478,7 +506,16 @@ No project-specific symbol legend is on file for this project — use standard N
     userText: string,
     imageB64: string,
     media: "image/png" | "image/jpeg",
+    callLabel: string,
   ): Promise<string> {
+    console.log("[analyze-page] Claude API call:", {
+      label: callLabel,
+      pageNumber,
+      projectId,
+      model: MODEL,
+      mediaType: media,
+      imageBase64CharLength: imageB64.length,
+    });
     const msg = await withClaudeOverloadRetries(() =>
       anthropic.messages.create({
         model: MODEL,
@@ -518,8 +555,14 @@ No project-specific symbol legend is on file for this project — use standard N
       baseUserText,
       imageBase64,
       claudeMediaType,
+      "primary",
     );
   } catch (e) {
+    console.error("[analyze-page] Claude primary call failed:", {
+      pageNumber,
+      projectId,
+      error: e instanceof Error ? e.message : String(e),
+    });
     const message =
       e instanceof Error ? e.message : "Claude API request failed.";
     const status =
@@ -527,11 +570,24 @@ No project-specific symbol legend is on file for this project — use standard N
     return NextResponse.json({ error: message }, { status });
   }
 
+  console.log("[analyze-page] raw Claude response (first 500 chars):", {
+    pageNumber,
+    preview: assistantText1.slice(0, 500),
+    totalChars: assistantText1.length,
+  });
+
   let payload: { electrical_items: unknown[]; rooms: unknown[] } | null = null;
   let claudeTurnsUsed = 1;
 
   if (claudeTextLooksLikeJson(assistantText1)) {
     payload = tryExtractAnalyzePayload(assistantText1);
+  }
+  if (payload) {
+    console.log("[analyze-page] parsed payload (pre-strict-retry):", {
+      pageNumber,
+      electricalItemsCount: payload.electrical_items.length,
+      roomsCount: payload.rooms.length,
+    });
   }
 
   if (!payload) {
@@ -545,14 +601,24 @@ No project-specific symbol legend is on file for this project — use standard N
         baseUserText + STRICT_JSON_USER_ADDENDUM,
         imageBase64,
         claudeMediaType,
+        "strict-json-followup",
       );
     } catch (e) {
+      console.error("[analyze-page] Claude strict-json call failed:", {
+        pageNumber,
+        error: e instanceof Error ? e.message : String(e),
+      });
       const message =
         e instanceof Error ? e.message : "Claude API request failed.";
       const status =
         message === CLAUDE_OVERLOADED_USER_MESSAGE ? 503 : 502;
       return NextResponse.json({ error: message }, { status });
     }
+
+    console.log("[analyze-page] raw Claude response 2 (first 500 chars):", {
+      pageNumber,
+      preview: assistantText2.slice(0, 500),
+    });
 
     if (claudeTextLooksLikeJson(assistantText2)) {
       payload = tryExtractAnalyzePayload(assistantText2);
@@ -579,36 +645,45 @@ No project-specific symbol legend is on file for this project — use standard N
   let rows = materializeElectricalItemRows(projectId, pageNumber, payload);
   let roomRows = materializeRoomRows(projectId, pageNumber, payload);
 
-  console.log(
-    "[analyze-page] Page",
-    pageNumber + ":",
-    "items found:",
-    rows.length,
-    "rooms:",
-    roomRows.length,
-    "image size:",
-    decodedBytes,
-    "attempt:",
+  console.log("[analyze-page] materialized rows (after normalize):", {
+    pageNumber,
+    itemRows: rows.length,
+    roomRows: roomRows.length,
+    rawPayloadItems: payload.electrical_items.length,
+    imageBytes: decodedBytes,
     claudeTurnsUsed,
-  );
+  });
 
   if (rows.length === 0 && !rasterProbe.blank) {
     const aggressiveUser = aggressiveEmptyRetryUserText(pageNumber);
+    console.log("[analyze-page] starting aggressive empty-items retry:", {
+      pageNumber,
+    });
     let retryText: string;
     try {
       retryText = await runClaudeTurn(
         aggressiveUser,
         imageBase64,
         claudeMediaType,
+        "aggressive-retry",
       );
       claudeTurnsUsed += 1;
     } catch (e) {
+      console.error("[analyze-page] aggressive retry Claude failed:", {
+        pageNumber,
+        error: e instanceof Error ? e.message : String(e),
+      });
       const message =
         e instanceof Error ? e.message : "Claude API request failed.";
       const status =
         message === CLAUDE_OVERLOADED_USER_MESSAGE ? 503 : 502;
       return NextResponse.json({ error: message }, { status });
     }
+
+    console.log("[analyze-page] aggressive retry raw (first 500 chars):", {
+      pageNumber,
+      preview: retryText.slice(0, 500),
+    });
 
     let retryPayload: ParsedAnalyzePayload | null = claudeTextLooksLikeJson(
       retryText,
@@ -623,15 +698,24 @@ No project-specific symbol legend is on file for this project — use standard N
           aggressiveUser + STRICT_JSON_USER_ADDENDUM,
           imageBase64,
           claudeMediaType,
+          "aggressive-strict-json",
         );
         claudeTurnsUsed += 1;
       } catch (e) {
+        console.error("[analyze-page] aggressive strict-json failed:", {
+          pageNumber,
+          error: e instanceof Error ? e.message : String(e),
+        });
         const message =
           e instanceof Error ? e.message : "Claude API request failed.";
         const status =
           message === CLAUDE_OVERLOADED_USER_MESSAGE ? 503 : 502;
         return NextResponse.json({ error: message }, { status });
       }
+      console.log("[analyze-page] aggressive strict raw (first 500 chars):", {
+        pageNumber,
+        preview: assistantRetry2.slice(0, 500),
+      });
       if (claudeTextLooksLikeJson(assistantRetry2)) {
         retryPayload = tryExtractAnalyzePayload(assistantRetry2);
       }
@@ -702,6 +786,10 @@ No project-specific symbol legend is on file for this project — use standard N
     .eq("page_number", pageNumber);
 
   if (delRoomErr) {
+    console.error("[analyze-page] detected_rooms delete failed:", {
+      pageNumber,
+      message: delRoomErr.message,
+    });
     return NextResponse.json(
       {
         error: delRoomErr.message,
@@ -718,6 +806,10 @@ No project-specific symbol legend is on file for this project — use standard N
     .eq("page_number", pageNumber);
 
   if (delItemErr) {
+    console.error("[analyze-page] electrical_items delete failed:", {
+      pageNumber,
+      message: delItemErr.message,
+    });
     return NextResponse.json(
       {
         error: delItemErr.message,
@@ -735,6 +827,10 @@ No project-specific symbol legend is on file for this project — use standard N
       .select();
 
     if (error) {
+      console.error("[analyze-page] electrical_items insert failed:", {
+        pageNumber,
+        message: error.message,
+      });
       return NextResponse.json(
         {
           error: error.message,

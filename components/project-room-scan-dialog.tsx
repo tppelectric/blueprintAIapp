@@ -1,12 +1,17 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
+import {
+  formatRoomScanBannerDate,
+  type ProjectRoomScanListItem,
+} from "@/lib/project-room-scans";
 import { TPP_COMPANY_FULL } from "@/lib/tpp-branding";
 import type { FloorPlanScanApiResponse } from "@/lib/tool-floor-plan-scan";
 import {
   floorPlanScanToAvRooms,
+  floorPlanScanToElectricalRooms,
   floorPlanScanToSmartHomeRooms,
   floorPlanScanToWifiRooms,
 } from "@/lib/tool-floor-plan-scan";
@@ -30,6 +35,12 @@ export function ProjectRoomScanDialog({
   scanPage,
   projectId,
   projectLabel,
+  autosaveEnabled = true,
+  onScansUpdated,
+  historyScans = [],
+  selectedHistoryId,
+  onSelectHistoryScan,
+  savedAtLabel,
 }: {
   open: boolean;
   onClose: () => void;
@@ -37,11 +48,18 @@ export function ProjectRoomScanDialog({
   scanPage: number;
   projectId: string;
   projectLabel: string;
+  /** When false, viewing a stored scan — do not insert again. */
+  autosaveEnabled?: boolean;
+  onScansUpdated?: () => void;
+  historyScans?: ProjectRoomScanListItem[];
+  selectedHistoryId?: string | null;
+  onSelectHistoryScan?: (id: string) => void;
+  /** e.g. formatted created_at when showing a saved scan */
+  savedAtLabel?: string | null;
 }) {
   const router = useRouter();
-  const [saveBusy, setSaveBusy] = useState(false);
-  const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [copyMsg, setCopyMsg] = useState<string | null>(null);
+  const autosaveKeyRef = useRef<string | null>(null);
 
   const totals = useMemo(() => {
     if (!data?.rooms.length) {
@@ -61,6 +79,64 @@ export function ProjectRoomScanDialog({
       roomCount: data.rooms.length,
     };
   }, [data]);
+
+  const payloadFingerprint = useMemo(() => {
+    if (!data?.rooms.length) return "";
+    return JSON.stringify({
+      scanPage,
+      rooms: data.rooms,
+      notes: data.scan_notes,
+      sug: data.equipment_placement_suggestions,
+    });
+  }, [data, scanPage]);
+
+  useEffect(() => {
+    if (!open) {
+      autosaveKeyRef.current = null;
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !autosaveEnabled || !projectId || !data?.rooms.length) return;
+    if (!payloadFingerprint) return;
+    if (autosaveKeyRef.current === payloadFingerprint) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const sb = createBrowserClient();
+        const { error } = await sb.from("project_room_scans").insert({
+          project_id: projectId,
+          rooms_json: data.rooms,
+          total_sqft: totals.totalSq,
+          floor_count: totals.floors,
+          scan_page: scanPage,
+          equipment_suggestions_json: data.equipment_placement_suggestions,
+          scan_notes: data.scan_notes ?? "",
+        });
+        if (cancelled) return;
+        if (!error) {
+          autosaveKeyRef.current = payloadFingerprint;
+          onScansUpdated?.();
+        }
+      } catch {
+        /* silent auto-save */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    open,
+    autosaveEnabled,
+    projectId,
+    payloadFingerprint,
+    data,
+    totals.totalSq,
+    totals.floors,
+    scanPage,
+    onScansUpdated,
+  ]);
 
   const csv = useMemo(() => {
     if (!data) return "";
@@ -156,28 +232,6 @@ export function ProjectRoomScanDialog({
     w.print();
   }, [data, projectLabel, scanPage, totals]);
 
-  const saveToProject = useCallback(async () => {
-    if (!data) return;
-    setSaveBusy(true);
-    setSaveMsg(null);
-    try {
-      const sb = createBrowserClient();
-      const { error } = await sb.from("project_room_scans").insert({
-        project_id: projectId,
-        rooms_json: data.rooms,
-        total_sqft: totals.totalSq,
-        floor_count: totals.floors,
-        scan_page: scanPage,
-      });
-      if (error) throw error;
-      setSaveMsg("Saved to project.");
-    } catch (e) {
-      setSaveMsg(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setSaveBusy(false);
-    }
-  }, [data, projectId, scanPage, totals.floors, totals.totalSq]);
-
   const pushWifi = useCallback(() => {
     if (!data) return;
     const rooms = floorPlanScanToWifiRooms(data.rooms, newId);
@@ -223,6 +277,21 @@ export function ProjectRoomScanDialog({
     router.push("/tools/smarthome-analyzer");
   }, [data, projectLabel, router, totals.floors, totals.totalSq]);
 
+  const pushElectrical = useCallback(() => {
+    if (!data) return;
+    const rooms = floorPlanScanToElectricalRooms(data.rooms, newId);
+    sessionStorage.setItem(
+      "blueprint-room-scan-electrical",
+      JSON.stringify({
+        rooms,
+        projectName: projectLabel,
+        totalSqFt: totals.totalSq,
+        numFloors: Math.max(1, totals.floors),
+      }),
+    );
+    router.push("/tools/electrical-analyzer");
+  }, [data, projectLabel, router, totals.floors, totals.totalSq]);
+
   if (!open || !data) return null;
 
   return (
@@ -233,14 +302,45 @@ export function ProjectRoomScanDialog({
       aria-labelledby="room-scan-title"
     >
       <div className="flex max-h-[min(92vh,880px)] w-full max-w-4xl flex-col rounded-2xl border border-white/15 bg-[#0a1628] shadow-2xl">
-        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
-          <h2 id="room-scan-title" className="text-lg font-semibold text-white">
-            Room scan · Page {scanPage}
-          </h2>
+        <div className="flex shrink-0 flex-col gap-2 border-b border-white/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 id="room-scan-title" className="text-lg font-semibold text-white">
+              Room scan · Page {scanPage}
+              {savedAtLabel ? (
+                <span className="ml-2 text-sm font-normal text-white/50">
+                  · Saved {savedAtLabel}
+                </span>
+              ) : null}
+            </h2>
+            {historyScans.length > 1 &&
+            onSelectHistoryScan &&
+            !autosaveEnabled ? (
+              <label className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/60">
+                <span>Scan history</span>
+                <select
+                  value={
+                    selectedHistoryId ??
+                    historyScans[0]?.id ??
+                    ""
+                  }
+                  onChange={(e) => onSelectHistoryScan(e.target.value)}
+                  className="max-w-[min(100%,20rem)] rounded-lg border border-white/20 bg-[#071422] px-2 py-1 text-white"
+                >
+                  {historyScans.map((h) => (
+                    <option key={h.id} value={h.id}>
+                      {formatRoomScanBannerDate(h.created_at)} · p.{h.scan_page}{" "}
+                      · {h.room_count} rooms ·{" "}
+                      {(h.total_sqft ?? 0).toLocaleString()} sq ft
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-3 py-1.5 text-sm text-white/80 hover:bg-white/10"
+            className="self-end rounded-lg px-3 py-1.5 text-sm text-white/80 hover:bg-white/10 sm:self-auto"
           >
             Close
           </button>
@@ -333,14 +433,9 @@ export function ProjectRoomScanDialog({
           >
             Print / PDF
           </button>
-          <button
-            type="button"
-            disabled={saveBusy}
-            onClick={() => void saveToProject()}
-            className="rounded-lg border border-emerald-500/45 bg-emerald-950/35 px-3 py-2 text-xs font-semibold text-emerald-100 hover:bg-emerald-950/50 disabled:opacity-50"
-          >
-            {saveBusy ? "Saving…" : "Save to project"}
-          </button>
+          {copyMsg ? (
+            <span className="self-center text-xs text-emerald-300">{copyMsg}</span>
+          ) : null}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2 border-t border-white/10 px-4 py-3">
           <span className="w-full text-xs font-semibold uppercase text-white/45">
@@ -367,12 +462,13 @@ export function ProjectRoomScanDialog({
           >
             Smart Home Analyzer
           </button>
-          {copyMsg ? (
-            <span className="self-center text-xs text-emerald-300">{copyMsg}</span>
-          ) : null}
-          {saveMsg ? (
-            <span className="self-center text-xs text-white/70">{saveMsg}</span>
-          ) : null}
+          <button
+            type="button"
+            onClick={pushElectrical}
+            className="rounded-lg border border-amber-500/40 bg-amber-950/30 px-3 py-2 text-xs font-semibold text-amber-100 hover:bg-amber-950/45"
+          >
+            Electrical Analyzer
+          </button>
         </div>
       </div>
     </div>

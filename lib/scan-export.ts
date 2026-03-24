@@ -122,7 +122,7 @@ export function openScanPrintableReport(
 <style>
 body{font-family:system-ui,sans-serif;max-width:900px;margin:24px auto;color:#111;line-height:1.4}
 .brand{display:flex;align-items:center;gap:16px;margin-bottom:20px;padding:12px 16px;background:#fff;border-radius:12px;border:1px solid #e5e5e5;border-bottom:3px solid #E8C84A}
-.brand img{width:120px;height:auto;object-fit:contain;mix-blend-mode:multiply}
+.brand img{width:120px;height:auto;object-fit:contain}
 .brand-text h1{font-size:1.15rem;margin:0;color:#0a1628}
 .brand-text p{margin:4px 0 0;font-size:0.8rem;color:#b8860b}
 h1{font-size:1.35rem} h2{font-size:1.05rem;margin-top:1.25rem;border-left:3px solid #E8C84A;padding-left:10px}
@@ -135,7 +135,7 @@ tr.low{background:#fff9c4}
 footer{margin-top:2rem;font-size:0.8rem;color:#666;border-top:1px solid #ddd;padding-top:8px}
 </style></head><body>
 <div class="brand">
-<img src="/tpp-electric-logo.jpg" alt="TPP Electric" width="120" height="80" style="mix-blend-mode:multiply" />
+<img src="/tpp-electric-logo.jpg" alt="TPP Electric" width="120" height="80" />
 <div class="brand-text">
 <h1>${escapeHtml(COMPANY)}</h1>
 <p>Est. 1982 · Powered by Blueprint AI</p>

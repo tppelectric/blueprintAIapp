@@ -209,7 +209,7 @@ export function computeSmartHomePlan(inputs: ShInputs): ShResults {
     {
       tier: "good",
       control: "Apple HomeKit or Amazon Alexa",
-      lighting: "Lutron Caseta",
+      lighting: "Lutron Caseta PD-6WCL ~$59",
       voice: "Alexa or Google Assistant",
       hardwareCostRange: "$5k – $25k",
       programmingHours: "4 – 12 hrs",
@@ -217,18 +217,18 @@ export function computeSmartHomePlan(inputs: ShInputs): ShResults {
     },
     {
       tier: "better",
-      control: "Control4 EA-1 or EA-3",
-      lighting: "Lutron RadioRA 3",
-      voice: "Josh.ai or Control4 voice",
+      control: "Control4 EA-1 ~$599 or EA-3 ~$1,199",
+      lighting: "Lutron RadioRA3 RRD-6ND ~$89",
+      voice: "Josh.ai Josh Micro ~$399 or Control4 voice",
       hardwareCostRange: "$30k – $90k",
       programmingHours: "16 – 40 hrs",
       suitedFor: "Whole-home residential, dedicated AV rooms",
     },
     {
       tier: "best",
-      control: "Control4 CA-10 or Savant",
-      lighting: "Lutron HomeWorks QSX",
-      voice: "Josh.ai",
+      control: "Control4 CA-10 ~$2,499 or Savant SSC-1 ~$1,999",
+      lighting: "Lutron HomeWorks HQD7-WBX ~$149",
+      voice: "Josh.ai Josh Micro ~$399 / Nano ~$199",
       hardwareCostRange: "$100k – $300k+",
       programmingHours: "40 – 120+ hrs",
       suitedFor: "Estate, commercial, mission-critical",
@@ -240,36 +240,51 @@ export function computeSmartHomePlan(inputs: ShInputs): ShResults {
     controller = {
       title: "Good-fit controller",
       why: "Budget and device count favor consumer or prosumer platforms with lower programming overhead.",
-      model: inputs.controlSystem === "homekit" ? "Apple Home hub + bridges" : "Alexa/Google + Caseta bridge",
+      model:
+        inputs.controlSystem === "homekit"
+          ? "Apple Home hub + bridges"
+          : "Alexa/Google + Lutron Caseta Smart Bridge",
       qty: 1,
       programmingHours: 6 + Math.ceil(totalDevices / 20),
       networkNotes: "Solid Wi‑Fi coverage; segregate IoT where possible.",
-      integrationNotes: "Verify cloud API limits for locks and cameras.",
+      integrationNotes:
+        "Cameras: Ring Pro 2 ~$249, Nest Cam w/ Floodlight ~$279, or Hikvision DS-2CD2147G2 ~$149. Locks: Schlage Encode Plus ~$299, Yale Assure Lock 2 ~$249, August WiFi ~$199.",
     };
   } else if (bIdx <= 3) {
     controller = {
       title: "Professional integrated controller",
       why: "Device density and lifestyle priority warrant a centralized control processor.",
-      model: "Control4 EA-3 (typical) — scale to EA-5 for video walls",
+      model: "Control4 EA-3 ~$1,199 (typical) — EA-1 ~$599 for smaller jobs",
       qty: 1,
       programmingHours: 24 + Math.ceil(totalDevices / 8),
       networkNotes: "Wired backbone recommended; PoE for touchpanels and keypads.",
-      integrationNotes: "RadioRA 3 / Control4 lighting sync; AV zones tie-in.",
+      integrationNotes:
+        "Cameras: Luma LUM-500-DOM-IPW ~$299. URC MRX-10 ~$1,499 optional. Lutron RadioRA3 + Control4 lighting sync.",
     };
   } else {
     controller = {
       title: "Flagship control platform",
       why: "Large footprint and automation scope need redundant processing and lighting-grade infrastructure.",
-      model: "Savant host or Control4 CA-10 + expansion",
+      model: "Savant SSC-1 ~$1,999 or Control4 CA-10 ~$2,499 + I/O expansion",
       qty: 1,
       programmingHours: 60 + Math.ceil(totalDevices / 5),
       networkNotes: "Managed switches, VLANs for AV / automation / guest.",
-      integrationNotes: "HomeWorks QSX for lighting; Josh.ai for voice layer.",
+      integrationNotes:
+        "HomeWorks QSX lighting; Josh.ai voice. Cameras: Verkada CD61 ~$999 where spec’d. Crestron CP4-R ~$4,999 for Cresnet-heavy commercial.",
     };
   }
 
+  if (inputs.controlSystem === "josh") {
+    controller.model += " · Josh.ai Josh Micro ~$399 / Nano ~$199";
+  }
+  if (inputs.controlSystem === "urc") {
+    controller.model = "URC MRX-10 ~$1,499 (typical)";
+  }
+  if (inputs.controlSystem === "savant" && bIdx > 1) {
+    controller.model = "Savant SSC-1 ~$1,999 (typical host)";
+  }
   if (inputs.controlSystem === "crestron" || inputs.buildingType === "commercial") {
-    controller.model = "Crestron CP4 / VC-4 (design-dependent)";
+    controller.model = "Crestron CP4-R ~$4,999 (design-dependent)";
     controller.programmingHours += 20;
   }
 

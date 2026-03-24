@@ -1,6 +1,17 @@
 import { jsPDF } from "jspdf";
 import { drawTppPdfLetterhead, fetchTppLogoDataUrl } from "@/lib/tpp-pdf-header";
+import {
+  buildSmartHomeClientProposalText,
+  buildSmartHomeWorkOrderText,
+  type ShProposalInvestment,
+} from "@/lib/smarthome-field-documents";
+import {
+  addProposalPdfLines,
+  addWorkOrderPdfLines,
+  drawTppFieldDocFooter,
+} from "@/lib/tpp-field-doc-pdf";
 import type { ShInputs, ShResults } from "@/lib/smarthome-analyzer-engine";
+
 const FOOTER = "TPP Electrical Contractors Inc. · Est. 1982";
 
 function addLines(
@@ -108,6 +119,7 @@ export async function downloadSmartHomeWorkOrderPdf(
   results: ShResults,
   docNo: string,
 ): Promise<void> {
+  const body = buildSmartHomeWorkOrderText(inputs, results, docNo);
   const logo = await fetchTppLogoDataUrl();
   const doc = new jsPDF({ unit: "pt", format: "letter" });
   const pageW = doc.internal.pageSize.getWidth();
@@ -118,38 +130,17 @@ export async function downloadSmartHomeWorkOrderPdf(
     logoWidthPt: 52,
     pageWidth: pageW,
   });
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.text(`Smart Home Work Order ${docNo}`, margin, y);
-  y += 20;
-  doc.setFont("helvetica", "normal");
-  const lines = [
-    `Project: ${inputs.projectName}`,
-    `Client: ${inputs.clientName || "—"}`,
-    "",
-    "INSTALLATION",
-    "□ Controller / processor mounted and powered",
-    "□ Keypads and dimmers — rough-in and trim",
-    "□ Shades — limits set",
-    "□ Cameras — aim and focus",
-    "□ Network — VLANs per design",
-    "",
-    "PROGRAMMING",
-    `□ Estimated ${results.controller.programmingHours} hrs — scenes, schedules, voice`,
-    "",
-    "ROOMS",
-    ...results.roomRows.map(
-      (r) =>
-        `□ ${r.roomName}: dimmers ${r.dimmers}, shades ${r.shades}, cams ${r.camera}`,
-    ),
-    "",
-    "SIGN-OFF",
-    "Technician: ______________  Date: _______",
-    "Customer: ______________  Date: _______",
-  ];
-  y = addLines(doc, lines, margin, maxW, pageH, y, 13);
-  doc.setFontSize(8);
-  doc.text(FOOTER, margin, pageH - 28);
+  y = addWorkOrderPdfLines(
+    doc,
+    body.split("\n"),
+    margin,
+    maxW,
+    pageH,
+    y,
+    13,
+    "Smart Home",
+  );
+  drawTppFieldDocFooter(doc, margin, pageH);
   doc.save(`SH-WO-${docNo}.pdf`);
 }
 
@@ -157,7 +148,9 @@ export async function downloadSmartHomeProposalPdf(
   inputs: ShInputs,
   results: ShResults,
   docNo: string,
+  investment: ShProposalInvestment | null,
 ): Promise<void> {
+  const body = buildSmartHomeClientProposalText(inputs, results, docNo, investment);
   const logo = await fetchTppLogoDataUrl();
   const doc = new jsPDF({ unit: "pt", format: "letter" });
   const pageW = doc.internal.pageSize.getWidth();
@@ -168,37 +161,16 @@ export async function downloadSmartHomeProposalPdf(
     logoWidthPt: 52,
     pageWidth: pageW,
   });
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.text(`Smart Home Proposal ${docNo}`, margin, y);
-  y += 18;
-  doc.setFont("helvetica", "normal");
-  const tiers = results.tiers
-    .map(
-      (t) =>
-        `${t.tier.toUpperCase()}: ${t.control} · ${t.hardwareCostRange} · ${t.suitedFor}`,
-    )
-    .join("\n");
-  const body = [
-    `Prepared for: ${inputs.clientName || "Valued client"}`,
-    "",
-    "Overview",
-    "Control lighting, comfort, security, and entertainment from one cohesive system.",
-    "",
-    "What we're planning",
-    `• ${results.summary.totalDevices} addressable devices across the home`,
-    `• ${results.controller.title}: ${results.controller.model}`,
-    "",
-    "Good / Better / Best",
-    tiers,
-    "",
-    "Next steps",
-    "Final device counts after walkthrough; programming hours may adjust.",
-    "",
-    "Signature: ___________________________  Date: __________",
-  ];
-  y = addLines(doc, body, margin, maxW, pageH, y, 13);
-  doc.setFontSize(8);
-  doc.text(FOOTER, margin, pageH - 28);
+  y = addProposalPdfLines(
+    doc,
+    body.split("\n"),
+    margin,
+    maxW,
+    pageH,
+    y,
+    13,
+    "Smart Home",
+  );
+  drawTppFieldDocFooter(doc, margin, pageH);
   doc.save(`SH-PROP-${docNo}.pdf`);
 }

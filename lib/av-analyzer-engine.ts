@@ -451,29 +451,33 @@ export function computeAvPlan(inputs: AvAvInputs): AvResults {
     {
       id: "good",
       label: "Good (budget)",
-      speakersNote: "Polk or Klipsch 6.5\" — ~$80–120/pair",
-      displaysNote: "Samsung / LG entry",
-      distributionNote: "Sonos ecosystem",
-      ampNote: "Sonos Amp or AV receiver",
+      speakersNote:
+        "Polk 80F/X-LS ~$89/ea · Klipsch CDT-5800-C II 8\" ~$179/ea",
+      displaysNote: "Samsung QN85B QLED · LG C3 OLED (sizing per room)",
+      distributionNote: "Sonos Era 100 / Era 300 + Sonos Amp + Port (as needed)",
+      ampNote: "Sonos Amp (~$699) or AV receiver",
       costRange: "$8k – $25k installed (typical resi, varies)",
     },
     {
       id: "better",
       label: "Better (standard)",
-      speakersNote: "Sonance or Klipsch Reference 8\" — ~$200–350/pair",
-      displaysNote: "Samsung QLED or LG OLED C-series",
-      distributionNote: "Sonos + multi-zone amplification",
-      ampNote: "Sonance SA series",
+      speakersNote:
+        "Sonance SA Series (e.g. SA-1750) · Origin Director D83 8\" ~$279/ea",
+      displaysNote: "Samsung QN85B · LG G3 OLED gallery · Sony A80K OLED",
+      distributionNote: "Sonos Amp + Era 300 zones; Sonance SA multi-zone amps",
+      ampNote: "Sonance SA series / Sonos Amp stacks",
       costRange: "$25k – $75k installed (typical)",
       popular: true,
     },
     {
       id: "best",
       label: "Best (premium)",
-      speakersNote: "Origin Acoustics or James — ~$400–800/pair",
-      displaysNote: "Sony OLED or Sony/JVC projection",
-      distributionNote: "Control4 or Savant matrix",
-      ampNote: "Triad / custom amplification",
+      speakersNote:
+        "Origin Director D103 10\" ~$399/ea · James Architectural · Triad custom",
+      displaysNote:
+        "Sony A95K QD-OLED · Epson LS800 UST ~$3,999 · BenQ TK860i ~$1,299 · Sony VPL-XW5000ES ~$5,999 · JVC NZ7 ~$5,499",
+      distributionNote: "Control4 or Savant video matrix + DSP",
+      ampNote: "Triad / QSC AD-C6T (~$299) / Bose FreeSpace DS 40F (~$299) as spec",
       costRange: "$75k – $200k+ installed (typical)",
     },
   ];

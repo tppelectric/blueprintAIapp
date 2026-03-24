@@ -871,7 +871,9 @@ export function ProjectBreakdownEditor({
                 </td>
               </tr>
               <tr className="border-t border-white/10">
-                <td className="px-2 py-2 text-white/70">Labor (customer price)</td>
+                <td className="px-2 py-2 text-white/70">
+                  Labor (no sales tax)
+                </td>
                 <td className="px-2 py-2 text-right tabular-nums text-emerald-200">
                   {formatMoneyCell(g.laborCustomerPrice)}
                 </td>

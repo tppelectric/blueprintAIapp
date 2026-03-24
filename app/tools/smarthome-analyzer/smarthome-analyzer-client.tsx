@@ -20,8 +20,10 @@ import {
   type ShRoomType,
   type ShVoice,
 } from "@/lib/smarthome-analyzer-engine";
+import type { ShProposalInvestment } from "@/lib/smarthome-field-documents";
 import {
   defaultProjectBreakdownState,
+  grandTotals,
   seedProjectBreakdownFromSmartHome,
   SMARTHOME_LABOR_PRESETS,
   SMARTHOME_MATERIAL_PRESETS,
@@ -190,6 +192,21 @@ export function SmartHomeAnalyzerClient() {
       voice,
     ],
   );
+
+  const pbInvestment = useMemo((): ShProposalInvestment | null => {
+    if (pbState.materials.length === 0 && pbState.labor.length === 0) {
+      return null;
+    }
+    const g = grandTotals(pbState);
+    return {
+      materialsAfterMarkup: g.materialsCustomerAfterMarkup,
+      salesTax: g.materialsTaxAmount,
+      materialsWithTax: g.materialsWithTaxCustomer,
+      laborNoTax: g.laborCustomerPrice,
+      total: g.grandCustomer,
+      taxPct: pbState.salesTaxPct,
+    };
+  }, [pbState]);
 
   const runCalc = useCallback(() => {
     const r = computeSmartHomePlan(inputs);
@@ -1049,7 +1066,12 @@ export function SmartHomeAnalyzerClient() {
               <button
                 type="button"
                 onClick={() =>
-                  void downloadSmartHomeProposalPdf(inputs, results, propNo)
+                  void downloadSmartHomeProposalPdf(
+                    inputs,
+                    results,
+                    propNo,
+                    pbInvestment,
+                  )
                 }
                 className="rounded bg-[#E8C84A] px-3 py-2 text-sm font-semibold text-[#0a1628]"
               >

@@ -25,10 +25,12 @@ import {
   type AvRoomType,
   type AvVideoBrand,
 } from "@/lib/av-analyzer-engine";
+import type { AvProposalInvestment } from "@/lib/av-field-documents";
 import {
   AV_LABOR_PRESETS,
   AV_MATERIAL_PRESETS,
   defaultProjectBreakdownState,
+  grandTotals,
   seedProjectBreakdownFromAv,
   type ProjectBreakdownState,
 } from "@/lib/project-breakdown";
@@ -158,6 +160,21 @@ export function AvAnalyzerClient() {
       c = true;
     };
   }, []);
+
+  const pbInvestment = useMemo((): AvProposalInvestment | null => {
+    if (pbState.materials.length === 0 && pbState.labor.length === 0) {
+      return null;
+    }
+    const g = grandTotals(pbState);
+    return {
+      materialsAfterMarkup: g.materialsCustomerAfterMarkup,
+      salesTax: g.materialsTaxAmount,
+      materialsWithTax: g.materialsWithTaxCustomer,
+      laborNoTax: g.laborCustomerPrice,
+      total: g.grandCustomer,
+      taxPct: pbState.salesTaxPct,
+    };
+  }, [pbState]);
 
   const inputs: AvAvInputs = useMemo(
     () => ({
@@ -964,7 +981,9 @@ export function AvAnalyzerClient() {
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => void downloadAvWorkOrderPdf(inputs, results, woNo)}
+                onClick={() =>
+                  void downloadAvWorkOrderPdf(inputs, results, woNo)
+                }
                 className="rounded bg-[#E8C84A] px-3 py-2 text-sm font-semibold text-[#0a1628]"
               >
                 Download PDF
@@ -989,7 +1008,14 @@ export function AvAnalyzerClient() {
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => void downloadAvProposalPdf(inputs, results, propNo)}
+                onClick={() =>
+                  void downloadAvProposalPdf(
+                    inputs,
+                    results,
+                    propNo,
+                    pbInvestment,
+                  )
+                }
                 className="rounded bg-[#E8C84A] px-3 py-2 text-sm font-semibold text-[#0a1628]"
               >
                 Download PDF

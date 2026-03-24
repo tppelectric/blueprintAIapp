@@ -235,6 +235,13 @@ export function DashboardClient() {
     setError(null);
     try {
       const supabase = createBrowserClient();
+
+      await supabase.auth.getSession();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      console.log("Current user:", user);
+
       const { data, error: qError } = await supabase
         .from("projects")
         .select(
@@ -243,6 +250,7 @@ export function DashboardClient() {
         .order("created_at", { ascending: false });
 
       if (qError) {
+        console.error("[dashboard] projects query:", qError.message, qError);
         setError(qError.message);
         setProjects([]);
         return;
@@ -280,6 +288,22 @@ export function DashboardClient() {
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  useEffect(() => {
+    const supabase = createBrowserClient();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (
+        event === "SIGNED_IN" ||
+        event === "SIGNED_OUT" ||
+        event === "USER_UPDATED"
+      ) {
+        void load();
+      }
+    });
+    return () => subscription.unsubscribe();
   }, [load]);
 
   useEffect(() => {

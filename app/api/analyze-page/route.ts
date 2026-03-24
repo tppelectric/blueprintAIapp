@@ -142,7 +142,7 @@ If page appears to be a schedule:
 If page has non-standard symbols:
 - Describe what you see
 - Make best guess at item type
-- Flag with low confidence score
+- Flag with a low-but-valid confidence score in the 0.50–0.69 range (never below 0.50 or items may be discarded)
 - Never return empty
 
 If page is very dense:

@@ -16,6 +16,7 @@ import {
   CLAUDE_OVERLOADED_USER_MESSAGE,
   withClaudeOverloadRetries,
 } from "@/lib/ai-api-retries";
+import { checkAiRouteRateLimit } from "@/lib/rate-limit";
 
 export const maxDuration = 180;
 
@@ -187,6 +188,17 @@ Return your complete response as a single JSON object with this exact shape (no 
 }`;
 
 export async function POST(request: Request) {
+  const rl = checkAiRouteRateLimit(request, "analyze-page");
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again shortly." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rl.retryAfterSeconds) },
+      },
+    );
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return NextResponse.json(

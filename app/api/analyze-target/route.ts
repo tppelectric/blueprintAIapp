@@ -11,6 +11,7 @@ import {
 import { buildAnalysisLegendAppendix } from "@/lib/analysis-legend-context";
 import { MAX_IMAGE_BYTES } from "@/lib/pdf-page-image";
 import { createServiceRoleClient } from "@/lib/supabase/service";
+import { checkAiRouteRateLimit } from "@/lib/rate-limit";
 
 export const maxDuration = 120;
 
@@ -55,6 +56,17 @@ Rules:
 - rooms: include rooms only if helpful for context; may be an empty array.`;
 
 export async function POST(request: Request) {
+  const rl = checkAiRouteRateLimit(request, "analyze-target");
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again shortly." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rl.retryAfterSeconds) },
+      },
+    );
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return NextResponse.json(

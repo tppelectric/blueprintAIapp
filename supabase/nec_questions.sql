@@ -1,4 +1,4 @@
--- NEC AI Q&A log (also appended to load_calculations_nec_checklists.sql).
+-- NEC AI Q&A log (canonical DDL for `nec_questions`; paired tools use load_calculations_nec_checklists.sql for other tables).
 -- Inserts from /api/nec-question use the Supabase service role (bypasses RLS).
 
 CREATE TABLE IF NOT EXISTS public.nec_questions (

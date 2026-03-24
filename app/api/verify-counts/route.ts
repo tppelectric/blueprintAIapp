@@ -6,6 +6,7 @@ import {
   withOpenAIRateLimitRetries,
 } from "@/lib/ai-api-retries";
 import { MAX_IMAGE_BYTES } from "@/lib/pdf-page-image";
+import { checkAiRouteRateLimit } from "@/lib/rate-limit";
 
 export const maxDuration = 180;
 
@@ -36,6 +37,17 @@ type ClaudeItemInput = {
 };
 
 export async function POST(request: Request) {
+  const rl = checkAiRouteRateLimit(request, "verify-counts");
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again shortly." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rl.retryAfterSeconds) },
+      },
+    );
+  }
+
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     return NextResponse.json(

@@ -40,7 +40,9 @@ export function LoginClient() {
       let leaveBusyUntilNavigate = false;
       try {
         const sb = createBrowserClient();
-        console.log("Sign in attempt:", trimmedEmail);
+        if (process.env.NODE_ENV === "development") {
+          console.log("Sign in attempt:", trimmedEmail);
+        }
 
         let data: Awaited<
           ReturnType<typeof sb.auth.signInWithPassword>
@@ -61,12 +63,14 @@ export function LoginClient() {
           data = res.data;
           signErr = res.error;
 
-          console.log("Full Supabase signInWithPassword response:", res);
-          console.log("Auth response summary:", {
-            hasSession: Boolean(res.data?.session),
-            userId: res.data?.session?.user?.id ?? null,
-            error: res.error,
-          });
+          if (process.env.NODE_ENV === "development") {
+            console.log("Full Supabase signInWithPassword response:", res);
+            console.log("Auth response summary:", {
+              hasSession: Boolean(res.data?.session),
+              userId: res.data?.session?.user?.id ?? null,
+              error: res.error,
+            });
+          }
 
           if (signErr) {
             setError(signErr.message || "Sign-in failed.");
@@ -98,7 +102,9 @@ export function LoginClient() {
       } catch (ex) {
         const msg =
           ex instanceof Error ? ex.message : "Sign-in failed unexpectedly.";
-        console.error("Sign-in exception:", ex);
+        if (process.env.NODE_ENV === "development") {
+          console.error("Sign-in exception:", ex);
+        }
         setError(msg);
       } finally {
         setStatusHint(null);

@@ -44,6 +44,7 @@ export async function updateSession(request: NextRequest) {
   /** Must stay in sync with browser auth: use `createBrowserClient` from `@/lib/supabase/client` (SSR cookie client). */
 
   const isPublic =
+    path === "/" ||
     path === "/login" ||
     path === "/setup" ||
     path.startsWith("/auth/callback") ||

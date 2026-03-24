@@ -240,7 +240,9 @@ export function DashboardClient() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      console.log("Current user:", user);
+      if (process.env.NODE_ENV === "development") {
+        console.log("Current user:", user);
+      }
 
       const { data, error: qError } = await supabase
         .from("projects")
@@ -250,7 +252,9 @@ export function DashboardClient() {
         .order("created_at", { ascending: false });
 
       if (qError) {
-        console.error("[dashboard] projects query:", qError.message, qError);
+        if (process.env.NODE_ENV === "development") {
+          console.error("[dashboard] projects query:", qError.message, qError);
+        }
         setError(qError.message);
         setProjects([]);
         return;
@@ -266,13 +270,17 @@ export function DashboardClient() {
           .order("updated_at", { ascending: false })
           .limit(5);
         if (jErr) {
-          console.warn("[dashboard] jobs query:", jErr.message);
+          if (process.env.NODE_ENV === "development") {
+            console.warn("[dashboard] jobs query:", jErr.message);
+          }
           setRecentJobs([]);
         } else {
           setRecentJobs((jData ?? []) as unknown as JobListRow[]);
         }
       } catch (je) {
-        console.warn("[dashboard] jobs load failed:", je);
+        if (process.env.NODE_ENV === "development") {
+          console.warn("[dashboard] jobs load failed:", je);
+        }
         setRecentJobs([]);
       }
     } catch (e) {

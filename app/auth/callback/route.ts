@@ -3,6 +3,15 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { validatePublicSupabaseEnv } from "@/lib/env";
 
+function isSafeRedirectPath(path: string): boolean {
+  if (!path) return false;
+  if (!path.startsWith("/")) return false;
+  if (path.startsWith("//")) return false;
+  if (path.includes("\\")) return false;
+  if (path.includes(":")) return false;
+  return true;
+}
+
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
@@ -46,6 +55,6 @@ export async function GET(request: Request) {
     );
   }
 
-  const safeNext = nextPath.startsWith("/") ? nextPath : "/dashboard";
+  const safeNext = isSafeRedirectPath(nextPath) ? nextPath : "/dashboard";
   return NextResponse.redirect(`${origin}${safeNext}`);
 }

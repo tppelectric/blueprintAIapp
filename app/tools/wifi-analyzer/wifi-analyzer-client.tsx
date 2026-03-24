@@ -948,10 +948,13 @@ export function WifiAnalyzerClient() {
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="space-y-10 rounded-2xl border border-white/10 bg-white/[0.03] p-6 sm:p-8">
           <AnalyzerProjectAssistant
+            tool="wifi"
             hints={["wifi"]}
             roomSectionId="wifi-analyzer-room-list"
             onApply={(a) => {
-              setRooms(analysisToWifiRooms(a, newId));
+              const newRooms = analysisToWifiRooms(a, newId);
+              console.log("Setting rooms from assistant:", newRooms);
+              setRooms(newRooms);
               setTotalBuildingSqFtInput(
                 String(totalSqFtFromAnalysis(a)),
               );

@@ -431,11 +431,16 @@ export function ElectricalAnalyzerClient() {
       <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="space-y-10 rounded-2xl border border-white/10 bg-white/[0.03] p-6 sm:p-8">
           <AnalyzerProjectAssistant
+            tool="electrical"
             hints={["electrical"]}
             roomSectionId="electrical-analyzer-room-list"
             onApply={(a) => {
-              setRooms(analysisToElectricalRooms(a, newId));
-              setSetup((s) => ({ ...s, ...electricalSetupFromAnalysis(a) }));
+              const newRooms = analysisToElectricalRooms(a, newId);
+              const setupPatch = electricalSetupFromAnalysis(a);
+              console.log("Setting rooms from assistant:", newRooms);
+              console.log("Setting setup from assistant:", setupPatch);
+              setRooms(newRooms);
+              setSetup((s) => ({ ...s, ...setupPatch }));
             }}
           />
           <section className="space-y-4">

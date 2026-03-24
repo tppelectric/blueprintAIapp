@@ -8,6 +8,7 @@ import type {
 } from "@/lib/wifi-analyzer-engine";
 import type {
   DetectedDevice,
+  DetectedRoomArea,
   ProjectDescriptionAnalysis,
 } from "@/lib/project-describer-types";
 
@@ -324,4 +325,67 @@ export function floorsFromAnalysis(a: ProjectDescriptionAnalysis): number {
   const fs = a.rooms.map((r) => r.floor).filter((f): f is number => f != null && f > 0);
   if (!fs.length) return a.scope_size === "commercial" ? 2 : 2;
   return Math.min(4, Math.max(1, Math.round(Math.max(...fs))));
+}
+
+const BEDROOM_PHRASE = /\b(\d+)\s*-?\s*bedroom\b/i;
+const SQFT_PHRASE =
+  /\b(\d{3,5})\s*(?:sq\.?\s*ft\.?|sqft|sf)\b/i;
+
+/**
+ * If the user text says "N bedroom(s)" but the model returned fewer bedroom
+ * rows, synthesize bedroom entries (e.g. "3 bedroom house 2000 sqft").
+ */
+export function augmentAnalysisFromBedroomPhrase(
+  description: string,
+  a: ProjectDescriptionAnalysis,
+): ProjectDescriptionAnalysis {
+  const m = description.trim().match(BEDROOM_PHRASE);
+  if (!m) return a;
+  const n = Math.min(8, Math.max(1, parseInt(m[1]!, 10)));
+  const bedroomish = (r: DetectedRoomArea) =>
+    /bed|bdrm|br\b/i.test(r.name) ||
+    String(r.room_type ?? "")
+      .toLowerCase()
+      .includes("bed");
+  const existingBedLike = a.rooms.filter(bedroomish);
+  if (existingBedLike.length >= n) return a;
+
+  const sqMatch = description.match(SQFT_PHRASE);
+  const totalSq = sqMatch
+    ? parseInt(sqMatch[1]!, 10)
+    : totalSqFtFromAnalysis(a);
+  const perBed = Math.max(120, Math.round(totalSq / Math.max(n + 3, 5)));
+
+  const newBedrooms: DetectedRoomArea[] = [];
+  for (let i = 1; i <= n; i++) {
+    newBedrooms.push({
+      name: n === 1 ? "Bedroom" : i === 1 ? "Primary bedroom" : `Bedroom ${i}`,
+      floor: 1,
+      approximate_sq_ft: perBed,
+      approximate_width_ft: null,
+      approximate_length_ft: null,
+      room_type: "bedroom",
+    });
+  }
+
+  const others = a.rooms.filter((r) => !bedroomish(r));
+  const hasLiving = others.some((r) =>
+    /living|great|family/i.test(r.name),
+  );
+  const extra: DetectedRoomArea[] = [];
+  if (!hasLiving) {
+    extra.push({
+      name: "Living room",
+      floor: 1,
+      approximate_sq_ft: Math.max(200, Math.round(totalSq * 0.22)),
+      approximate_width_ft: null,
+      approximate_length_ft: null,
+      room_type: "living_room",
+    });
+  }
+
+  return {
+    ...a,
+    rooms: [...newBedrooms, ...extra, ...others],
+  };
 }

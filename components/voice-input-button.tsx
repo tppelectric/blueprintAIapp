@@ -32,6 +32,14 @@ function getSpeechRecognitionCtor(): (new () => SpeechRec) | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
+function isSecureContextForVoice(): boolean {
+  if (typeof window === "undefined") return true;
+  const { protocol, hostname } = window.location;
+  if (protocol === "https:") return true;
+  if (hostname === "localhost" || hostname === "127.0.0.1") return true;
+  return false;
+}
+
 function MicIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -52,6 +60,9 @@ function MicIcon({ className }: { className?: string }) {
   );
 }
 
+const TOOLTIP =
+  "Click to speak your project description (Chrome/Safari, HTTPS required)";
+
 export function VoiceInputButton({
   onTranscript,
   onAppend,
@@ -60,10 +71,20 @@ export function VoiceInputButton({
   disabled = false,
 }: VoiceInputButtonProps) {
   const [listening, setListening] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const recRef = useRef<SpeechRec | null>(null);
+  const doneTimerRef = useRef<number | null>(null);
+
+  const clearDoneTimer = useCallback(() => {
+    if (doneTimerRef.current != null) {
+      window.clearTimeout(doneTimerRef.current);
+      doneTimerRef.current = null;
+    }
+  }, []);
 
   const stop = useCallback(() => {
+    clearDoneTimer();
     try {
       recRef.current?.stop();
     } catch {
@@ -75,23 +96,55 @@ export function VoiceInputButton({
     }
     recRef.current = null;
     setListening(false);
-  }, []);
+    setStatus(null);
+  }, [clearDoneTimer]);
 
-  const start = useCallback(() => {
+  const start = useCallback(async () => {
     if (disabled) return;
     setError(null);
+    setStatus(null);
+    clearDoneTimer();
+
+    if (!isSecureContextForVoice()) {
+      setError("Voice requires HTTPS. Open the site over https://.");
+      return;
+    }
+
     const Ctor = getSpeechRecognitionCtor();
     if (!Ctor) {
       setError(
-        "Voice input is not supported in this browser. Try Chrome or Safari.",
+        "Voice not supported in this browser. Try Chrome or Safari.",
       );
       return;
     }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError(
+        "Microphone API not available in this context. Try Chrome or Safari.",
+      );
+      return;
+    }
+
+    setStatus("Requesting microphone access...");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      });
+      stream.getTracks().forEach((t) => t.stop());
+    } catch {
+      setError(
+        "Microphone access denied. Please allow microphone in browser settings.",
+      );
+      setStatus(null);
+      return;
+    }
+
     try {
       const r = new Ctor();
       r.continuous = true;
       r.interimResults = true;
       r.lang = "en-US";
+      let gotFinal = false;
       r.onresult = (ev: Event) => {
         const e = ev as unknown as {
           resultIndex: number;
@@ -101,6 +154,8 @@ export function VoiceInputButton({
           for (let i = e.resultIndex; i < e.results.length; i++) {
             const res = e.results[i];
             if (res?.isFinal && res[0]?.transcript?.trim()) {
+              gotFinal = true;
+              setStatus("Processing speech...");
               onTranscript(`${res[0].transcript.trim()} `);
             }
           }
@@ -114,27 +169,45 @@ export function VoiceInputButton({
           }
         }
         if (allFinal.trim()) {
+          gotFinal = true;
+          setStatus("Processing speech...");
           onTranscript(allFinal.trim());
         }
       };
       r.onerror = (ev: Event) => {
-        const err = (ev as unknown as { error?: string }).error;
-        setError(err || "Speech recognition error");
+        const errCode = (ev as unknown as { error?: string }).error;
+        setError(errCode || "Speech recognition error");
         setListening(false);
+        setStatus(null);
+        recRef.current = null;
       };
-      r.onend = () => setListening(false);
+      r.onend = () => {
+        setListening(false);
+        recRef.current = null;
+        if (gotFinal) {
+          setStatus("Done — text added");
+          doneTimerRef.current = window.setTimeout(() => {
+            setStatus(null);
+            doneTimerRef.current = null;
+          }, 2500);
+        } else {
+          setStatus(null);
+        }
+      };
       recRef.current = r;
       r.start();
       setListening(true);
+      setStatus("Listening… speak now");
     } catch {
-      setError("Could not start microphone.");
+      setError("Could not start speech recognition.");
+      setStatus(null);
     }
-  }, [disabled, onAppend, onTranscript]);
+  }, [clearDoneTimer, disabled, onAppend, onTranscript]);
 
   const toggle = useCallback(() => {
     if (disabled) return;
     if (listening) stop();
-    else start();
+    else void start();
   }, [disabled, listening, start, stop]);
 
   return (
@@ -143,7 +216,11 @@ export function VoiceInputButton({
         type="button"
         onClick={toggle}
         disabled={disabled}
-        title={listening ? "Stop listening" : placeholder}
+        title={
+          listening
+            ? "Stop listening"
+            : `${TOOLTIP} (${placeholder})`
+        }
         className={[
           "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-colors",
           listening
@@ -162,16 +239,17 @@ export function VoiceInputButton({
           <MicIcon className="h-5 w-5" />
         )}
       </button>
-      {listening ? (
-        <span className="text-[10px] font-medium text-[#E8C84A]">
-          Listening…
+      {status ? (
+        <span className="max-w-[11rem] text-center text-[10px] font-medium text-[#E8C84A]">
+          {status}
         </span>
       ) : null}
       {error ? (
-        <span className="max-w-[10rem] text-center text-[10px] text-red-300">
+        <span className="max-w-[11rem] text-center text-[10px] text-red-300">
           {error}
         </span>
       ) : null}
+      <span className="sr-only">{TOOLTIP}</span>
     </div>
   );
 }

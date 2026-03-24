@@ -83,7 +83,23 @@ body {
 }
 
 /* Nav headers: navy in both themes (FIX 3) */
+/* Mobile nav menu (portaled to body; z-index above headers) */
+.app-mobile-menu-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 999999 !important;
+}
+.app-mobile-menu-panel {
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  height: 100% !important;
+  z-index: 999999 !important;
+}
+
 .app-header-wide {
+  position: relative;
+  z-index: 30;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   background: #0a1628;
 }
@@ -137,6 +153,8 @@ body {
 }
 
 .app-tool-header {
+  position: relative;
+  z-index: 30;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   background: #0a1628;
 }

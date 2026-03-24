@@ -378,10 +378,13 @@ export function SmartHomeAnalyzerClient() {
       <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="space-y-10 rounded-2xl border border-white/10 bg-white/[0.03] p-6 sm:p-8">
           <AnalyzerProjectAssistant
+            tool="smarthome"
             hints={["smarthome"]}
             roomSectionId="smarthome-analyzer-room-list"
             onApply={(a) => {
-              setRooms(analysisToSmartHomeRooms(a, newId));
+              const newRooms = analysisToSmartHomeRooms(a, newId);
+              console.log("Setting rooms from assistant:", newRooms);
+              setRooms(newRooms);
               setTotalSqFt(totalSqFtFromAnalysis(a));
               setFloors(
                 Math.min(6, Math.max(1, floorsFromAnalysis(a))),

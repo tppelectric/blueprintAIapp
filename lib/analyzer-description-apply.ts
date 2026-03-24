@@ -403,3 +403,17 @@ export function electricalSetupFromAnalysis(
     constructionType,
   };
 }
+
+export type AnalyzerAssistantToolId =
+  | "wifi"
+  | "av"
+  | "smarthome"
+  | "electrical";
+
+export function logProjectAnalysisApply(
+  tool: AnalyzerAssistantToolId,
+  analysis: ProjectDescriptionAnalysis,
+): void {
+  console.log("Analysis result:", analysis);
+  console.log("Applying to tool:", tool);
+}

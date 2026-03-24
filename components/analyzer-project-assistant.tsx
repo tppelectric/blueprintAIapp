@@ -2,6 +2,11 @@
 
 import { useCallback, useState } from "react";
 import { VoiceInputButton } from "@/components/voice-input-button";
+import {
+  logProjectAnalysisApply,
+  type AnalyzerAssistantToolId,
+} from "@/lib/analyzer-description-apply";
+import { augmentAnalysisFromBedroomPhrase } from "@/lib/project-describer-prefill";
 import type {
   ProjectDescriptionAnalysis,
   ProjectDescriberHintId,
@@ -15,10 +20,12 @@ const PLACEHOLDER = `Describe your project...
 Example: 3 bedroom house, need WiFi throughout, outdoor coverage on patio, around 2500 sqft, prefer Ubiquiti`;
 
 export function AnalyzerProjectAssistant({
+  tool,
   hints,
   roomSectionId,
   onApply,
 }: {
+  tool: AnalyzerAssistantToolId;
   hints: ProjectDescriberHintId[];
   roomSectionId: string;
   onApply: (analysis: ProjectDescriptionAnalysis) => void;
@@ -28,14 +35,23 @@ export function AnalyzerProjectAssistant({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
+  const [lastRaw, setLastRaw] = useState<string | null>(null);
+  const [lastStatus, setLastStatus] = useState<number | null>(null);
 
   const scrollToRooms = useCallback(() => {
     const el = document.getElementById(roomSectionId);
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [roomSectionId]);
 
+  const collapse = useCallback(() => {
+    setOpen(false);
+    setErr(null);
+  }, []);
+
   const runAnalyze = useCallback(async () => {
     setErr(null);
+    setLastRaw(null);
+    setLastStatus(null);
     const trimmed = text.trim();
     if (trimmed.length < 20) {
       setErr("Please enter at least 20 characters.");
@@ -51,14 +67,36 @@ export function AnalyzerProjectAssistant({
           hints: hints.length ? hints : undefined,
         }),
       });
-      const data = (await res.json()) as {
+      const rawText = await res.text();
+      setLastStatus(res.status);
+      setLastRaw(rawText);
+      let data: {
         error?: string;
         analysis?: ProjectDescriptionAnalysis;
+        rawText?: string;
+        extractedSnippet?: string | null;
       };
-      if (!res.ok || !data.analysis) {
-        throw new Error(data.error || "Could not analyze description.");
+      try {
+        data = JSON.parse(rawText) as typeof data;
+      } catch {
+        throw new Error(
+          `Server returned non-JSON (HTTP ${res.status}). First 200 chars: ${rawText.slice(0, 200)}`,
+        );
       }
-      onApply(data.analysis);
+      if (!res.ok || !data.analysis) {
+        const detail = data.error
+          ? `HTTP ${res.status}: ${data.error}`
+          : `HTTP ${res.status}: No analysis in response.`;
+        throw new Error(detail);
+      }
+      const augmented = augmentAnalysisFromBedroomPhrase(trimmed, data.analysis);
+      logProjectAnalysisApply(tool, augmented);
+      console.log("onApply called with analysis (rooms in payload):", {
+        roomCount: augmented.rooms.length,
+        rooms: augmented.rooms,
+        scope_size: augmented.scope_size,
+      });
+      onApply(augmented);
       setBanner(SUCCESS_COPY);
       setOpen(false);
       setText("");
@@ -69,17 +107,26 @@ export function AnalyzerProjectAssistant({
     } finally {
       setBusy(false);
     }
-  }, [hints, onApply, scrollToRooms, text]);
+  }, [hints, onApply, scrollToRooms, text, tool]);
 
   return (
-    <section className="space-y-3 rounded-xl border border-[#E8C84A]/25 bg-[#071422]/90 p-4">
+    <section className="relative space-y-3 rounded-xl border border-[#E8C84A]/25 bg-[#071422]/90 p-4 pr-10">
+      <button
+        type="button"
+        onClick={collapse}
+        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-lg text-lg text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+        aria-label="Close assistant"
+      >
+        ×
+      </button>
+
       <button
         type="button"
         onClick={() => {
           setOpen((o) => !o);
           setErr(null);
         }}
-        className="flex w-full flex-col items-start gap-0.5 text-left"
+        className="flex w-full flex-col items-start gap-0.5 pr-2 text-left"
       >
         <span className="text-sm font-bold text-[#E8C84A]">
           AI Project Assistant
@@ -126,9 +173,26 @@ export function AnalyzerProjectAssistant({
             </button>
           </div>
           {err ? (
-            <p className="text-sm text-red-300/95" role="alert">
-              {err}
-            </p>
+            <div className="space-y-2 rounded-lg border border-red-500/35 bg-red-950/30 px-3 py-2">
+              <p className="text-sm font-medium text-red-200" role="alert">
+                {err}
+              </p>
+              {lastStatus != null ? (
+                <p className="text-xs text-red-200/80">
+                  HTTP status: {lastStatus}
+                </p>
+              ) : null}
+              {lastRaw ? (
+                <details className="text-xs text-white/70">
+                  <summary className="cursor-pointer text-[#E8C84A]/90">
+                    Raw API response (debug)
+                  </summary>
+                  <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded border border-white/10 bg-black/40 p-2 text-[11px] text-white/80">
+                    {lastRaw}
+                  </pre>
+                </details>
+              ) : null}
+            </div>
           ) : null}
         </div>
       ) : null}

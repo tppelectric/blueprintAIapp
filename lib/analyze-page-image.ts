@@ -1,10 +1,5 @@
 import sharp from "sharp";
 
-export type ClaudeImagePayload = {
-  base64: string;
-  mediaType: "image/png" | "image/jpeg";
-};
-
 /**
  * Heuristic: nearly uniform near-white raster (no meaningful linework).
  */
@@ -54,32 +49,4 @@ export async function imageBufferAppearsBlank(buffer: Buffer): Promise<{
       sampleStd: null,
     };
   }
-}
-
-/**
- * Second Claude attempt: mild upscale (when small) + higher JPEG quality / PNG encode.
- */
-export async function reencodeForAnalyzeRetry(
-  buffer: Buffer,
-  mediaType: "image/png" | "image/jpeg",
-): Promise<ClaudeImagePayload> {
-  const meta = await sharp(buffer).metadata();
-  const w = meta.width ?? 0;
-  const h = meta.height ?? 0;
-  const maxDim = 4096;
-  let pipeline = sharp(buffer);
-  if (w > 0 && h > 0 && w < 2400 && h < 2400) {
-    pipeline = pipeline.resize({
-      width: Math.min(maxDim, Math.round(w * 1.5)),
-      height: Math.min(maxDim, Math.round(h * 1.5)),
-      fit: "inside",
-      kernel: sharp.kernel.lanczos3,
-    });
-  }
-  if (mediaType === "image/jpeg") {
-    const out = await pipeline.jpeg({ quality: 92, mozjpeg: true }).toBuffer();
-    return { base64: out.toString("base64"), mediaType: "image/jpeg" };
-  }
-  const out = await pipeline.png({ compressionLevel: 3, effort: 4 }).toBuffer();
-  return { base64: out.toString("base64"), mediaType: "image/png" };
 }

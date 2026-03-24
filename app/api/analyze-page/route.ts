@@ -18,10 +18,7 @@ import {
 } from "@/lib/ai-api-retries";
 import { checkAiRouteRateLimit } from "@/lib/rate-limit";
 import { recordAnalyzePageApiUsage } from "@/lib/record-analyze-page-usage";
-import {
-  imageBufferAppearsBlank,
-  reencodeForAnalyzeRetry,
-} from "@/lib/analyze-page-image";
+import { imageBufferAppearsBlank } from "@/lib/analyze-page-image";
 
 export const maxDuration = 180;
 
@@ -126,18 +123,45 @@ function materializeRoomRows(
   return roomRows;
 }
 
-const CRITICAL_EMPTY_ITEMS_ADDENDUM = `
+function aggressiveEmptyRetryUserText(pageNum: number): string {
+  return `I am looking at page ${pageNum} of an electrical blueprint. I need you to find ANYTHING electrical on this page.
 
-CRITICAL: Your previous response returned no electrical items but this page clearly has electrical content. You MUST find and return at least one item.
+Please look for:
+- Any lines or symbols
+- Any text at all
+- Any numbers that could be circuit numbers
+- Any boxes that could be panels or devices
+- ANY marks whatsoever
 
-Look more carefully at:
-- Any lines, symbols or marks on the page
-- Any text that could be electrical notes
-- Any tables or schedules
-- Any symbols even if unclear
+Even if you cannot identify what something is, describe it as a plan_note.
 
-Return at least one item even if you are not sure what it is.
-Use confidence 0.5 for uncertain items.`;
+You MUST return at least one item.
+Return everything you can see.
+
+Respond with ONLY valid JSON: one object with keys "electrical_items" and "rooms" (arrays) as specified in the system instructions.`;
+}
+
+function fallbackUnclearPlanNoteRow(
+  projectId: string,
+  pageNumber: number,
+): ElectricalItemInsertRow {
+  return {
+    project_id: projectId,
+    page_number: pageNumber,
+    verification_status: "pending",
+    category: "plan_note",
+    description: `Page ${pageNumber} - content unclear - please verify manually`,
+    specification: "",
+    quantity: 1,
+    unit: "NOTE",
+    confidence: 0.5,
+    which_room: "UNASSIGNED",
+    raw_note: null,
+    gpt_count: null,
+    final_count: null,
+    verified_by: null,
+  };
+}
 
 const SYSTEM_PROMPT = `You are a licensed electrical estimator with 20 years of experience reading commercial and residential electrical blueprints under NEC 2023. Analyze this blueprint page and identify ALL electrical elements.
 
@@ -569,15 +593,37 @@ No project-specific symbol legend is on file for this project — use standard N
   );
 
   if (rows.length === 0 && !rasterProbe.blank) {
+    const aggressiveUser = aggressiveEmptyRetryUserText(pageNumber);
+    let retryText: string;
     try {
-      const re = await reencodeForAnalyzeRetry(imageBuffer, claudeMediaType);
-      const retryB64 = re.base64;
-      const retryMedia = re.mediaType;
-      const criticalUser = baseUserText + CRITICAL_EMPTY_ITEMS_ADDENDUM;
+      retryText = await runClaudeTurn(
+        aggressiveUser,
+        imageBase64,
+        claudeMediaType,
+      );
+      claudeTurnsUsed += 1;
+    } catch (e) {
+      const message =
+        e instanceof Error ? e.message : "Claude API request failed.";
+      const status =
+        message === CLAUDE_OVERLOADED_USER_MESSAGE ? 503 : 502;
+      return NextResponse.json({ error: message }, { status });
+    }
 
-      let retryText: string;
+    let retryPayload: ParsedAnalyzePayload | null = claudeTextLooksLikeJson(
+      retryText,
+    )
+      ? tryExtractAnalyzePayload(retryText)
+      : null;
+
+    if (!retryPayload) {
+      let assistantRetry2: string;
       try {
-        retryText = await runClaudeTurn(criticalUser, retryB64, retryMedia);
+        assistantRetry2 = await runClaudeTurn(
+          aggressiveUser + STRICT_JSON_USER_ADDENDUM,
+          imageBase64,
+          claudeMediaType,
+        );
         claudeTurnsUsed += 1;
       } catch (e) {
         const message =
@@ -586,55 +632,37 @@ No project-specific symbol legend is on file for this project — use standard N
           message === CLAUDE_OVERLOADED_USER_MESSAGE ? 503 : 502;
         return NextResponse.json({ error: message }, { status });
       }
-
-      let retryPayload: ParsedAnalyzePayload | null = claudeTextLooksLikeJson(
-        retryText,
-      )
-        ? tryExtractAnalyzePayload(retryText)
-        : null;
-
-      if (!retryPayload) {
-        let assistantRetry2: string;
-        try {
-          assistantRetry2 = await runClaudeTurn(
-            criticalUser + STRICT_JSON_USER_ADDENDUM,
-            retryB64,
-            retryMedia,
-          );
-          claudeTurnsUsed += 1;
-        } catch (e) {
-          const message =
-            e instanceof Error ? e.message : "Claude API request failed.";
-          const status =
-            message === CLAUDE_OVERLOADED_USER_MESSAGE ? 503 : 502;
-          return NextResponse.json({ error: message }, { status });
-        }
-        if (claudeTextLooksLikeJson(assistantRetry2)) {
-          retryPayload = tryExtractAnalyzePayload(assistantRetry2);
-        }
+      if (claudeTextLooksLikeJson(assistantRetry2)) {
+        retryPayload = tryExtractAnalyzePayload(assistantRetry2);
       }
+    }
 
-      if (retryPayload) {
-        payload = retryPayload;
-        rows = materializeElectricalItemRows(projectId, pageNumber, retryPayload);
-        roomRows = materializeRoomRows(projectId, pageNumber, retryPayload);
-      }
+    if (retryPayload) {
+      payload = retryPayload;
+      rows = materializeElectricalItemRows(projectId, pageNumber, retryPayload);
+      roomRows = materializeRoomRows(projectId, pageNumber, retryPayload);
+    }
 
-      const retryImageBytes = Buffer.from(retryB64, "base64").length;
+    console.log(
+      "[analyze-page] Page",
+      pageNumber + " (aggressive retry, same image):",
+      "items found:",
+      rows.length,
+      "rooms:",
+      roomRows.length,
+      "image size:",
+      decodedBytes,
+      "attempt:",
+      claudeTurnsUsed,
+    );
+
+    if (rows.length === 0) {
+      rows = [fallbackUnclearPlanNoteRow(projectId, pageNumber)];
       console.log(
         "[analyze-page] Page",
-        pageNumber + " (retry):",
-        "items found:",
-        rows.length,
-        "rooms:",
-        roomRows.length,
-        "image size:",
-        retryImageBytes,
-        "attempt:",
-        claudeTurnsUsed,
+        pageNumber + ":",
+        "inserting fallback plan_note (still no items after retry)",
       );
-    } catch (e) {
-      console.error("[analyze-page] empty-items retry failed:", e);
     }
   }
 

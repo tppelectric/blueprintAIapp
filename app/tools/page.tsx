@@ -9,6 +9,18 @@ const tools = [
     tone: "border-sky-500/40 text-sky-100",
   },
   {
+    href: "/tools/electrical-reference",
+    title: "Electrical Reference",
+    desc: "Ampacity, conduit fill, voltage drop, cheat sheets",
+    tone: "border-emerald-500/45 text-emerald-100",
+  },
+  {
+    href: "/tools/motor-hvac-calculator",
+    title: "Motor & HVAC Calculator",
+    desc: "NEC 430 FLA, MCA/MOCP, transformers, generators",
+    tone: "border-amber-500/45 text-amber-100",
+  },
+  {
     href: "/tools/nec-checker",
     title: "NEC Checker",
     desc: "Residential checklist & NEC Q&A",
@@ -44,10 +56,12 @@ export default function ToolsHubPage() {
             <li key={t.href}>
               <Link
                 href={t.href}
-                className={`block rounded-2xl border bg-white/[0.03] p-6 transition-colors hover:bg-white/[0.06] ${t.tone}`}
+                className={`tool-surface-card block border p-6 transition-opacity hover:opacity-95 ${t.tone}`}
               >
-                <h2 className="text-lg font-semibold text-white">{t.title}</h2>
-                <p className="mt-2 text-sm text-white/55">{t.desc}</p>
+                <h2 className="text-lg font-semibold text-[var(--foreground)]">
+                  {t.title}
+                </h2>
+                <p className="tool-muted mt-2 text-sm">{t.desc}</p>
               </Link>
             </li>
           ))}

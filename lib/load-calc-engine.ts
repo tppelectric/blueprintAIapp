@@ -29,6 +29,9 @@ export type ResidentialInputs = {
   buildingType: ResidentialBuildingType;
   bedrooms: number;
   bathrooms: number;
+  /** Optional flags for service-design recommendations (not used in VA math). */
+  futureGrowthSolar?: boolean;
+  garageLoads?: boolean;
   appliances: Record<
     ResidentialApplianceKey,
     { enabled: boolean; watts?: number; tons?: number; kw?: number }

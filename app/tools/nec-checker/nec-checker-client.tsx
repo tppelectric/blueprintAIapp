@@ -236,6 +236,18 @@ export function NecCheckerClient() {
             Link to job
           </button>
           <Link
+            href="/tools/electrical-reference"
+            className="rounded-lg border border-emerald-500/45 bg-emerald-950/30 px-3 py-2 text-sm font-medium text-emerald-100 hover:bg-emerald-950/45"
+          >
+            Electrical Reference
+          </Link>
+          <Link
+            href="/tools/motor-hvac-calculator"
+            className="rounded-lg border border-amber-500/45 bg-amber-950/30 px-3 py-2 text-sm font-medium text-amber-100 hover:bg-amber-950/45"
+          >
+            Motor / HVAC
+          </Link>
+          <Link
             href="/dashboard"
             className="rounded-lg border border-white/20 px-3 py-2 text-sm font-medium text-[#E8C84A] hover:bg-white/5"
           >

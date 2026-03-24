@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import { HeaderAuthMenu } from "@/components/header-auth-menu";
+import { GlobalNavSearch } from "@/components/global-nav-search";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { TppLogoPill } from "@/components/tpp-logo-pill";
 
 export function ToolPageHeader({
@@ -12,22 +14,24 @@ export function ToolPageHeader({
   children?: ReactNode;
 }) {
   return (
-    <header className="border-b border-white/10 bg-[#071422]">
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-6 py-5">
-        <div className="flex min-w-0 items-start gap-4">
+    <header className="app-tool-header border-b">
+      <div className="mx-auto flex max-w-5xl flex-col gap-4 px-6 py-5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="flex min-w-0 flex-1 items-start gap-4">
           <TppLogoPill size="tool" />
           <div className="min-w-0 border-l border-[#E8C84A]/35 pl-4">
-            <h1 className="text-xl font-semibold tracking-tight text-white">
-              {title}
-            </h1>
+            <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
             {subtitle ? (
-              <p className="mt-1 text-sm text-[#E8C84A]/95">{subtitle}</p>
+              <p className="tool-subtitle mt-1 text-sm">{subtitle}</p>
             ) : null}
           </div>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-3">
-          {children}
-          <HeaderAuthMenu />
+        <div className="flex w-full flex-col gap-3 sm:w-auto sm:max-w-md sm:flex-1 sm:items-end">
+          <GlobalNavSearch className="w-full" />
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            {children}
+            <ThemeToggle />
+            <HeaderAuthMenu />
+          </div>
         </div>
       </div>
     </header>

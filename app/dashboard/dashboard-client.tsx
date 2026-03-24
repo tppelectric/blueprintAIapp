@@ -455,6 +455,18 @@ export function DashboardClient() {
               NEC Checker
             </Link>
             <Link
+              href="/tools/electrical-reference"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-emerald-500/45 bg-emerald-950/35 px-4 py-2.5 text-sm font-semibold text-emerald-100 transition-colors hover:border-[#E8C84A]/60 hover:bg-emerald-950/50"
+            >
+              Electrical Reference
+            </Link>
+            <Link
+              href="/tools/motor-hvac-calculator"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-amber-500/45 bg-amber-950/35 px-4 py-2.5 text-sm font-semibold text-amber-100 transition-colors hover:border-[#E8C84A]/60 hover:bg-amber-950/50"
+            >
+              Motor / HVAC
+            </Link>
+            <Link
               href="/tools/wifi-analyzer"
               className="inline-flex shrink-0 items-center justify-center rounded-lg border border-[#E8C84A]/50 bg-[#E8C84A]/10 px-4 py-2.5 text-sm font-semibold text-[#E8C84A] transition-colors hover:border-[#E8C84A] hover:bg-[#E8C84A]/25"
             >

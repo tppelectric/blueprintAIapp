@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { HeaderAuthMenu } from "@/components/header-auth-menu";
+import { GlobalNavSearch } from "@/components/global-nav-search";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { TppLogoPill } from "@/components/tpp-logo-pill";
 import { TPP_COMPANY_FULL, TPP_TAGLINE } from "@/lib/tpp-branding";
 
@@ -12,11 +14,6 @@ type NavKey =
   | "tools"
   | "upload";
 
-const activeNav =
-  "border-b-2 border-[#E8C84A] pb-0.5 font-semibold text-[#E8C84A]";
-const idleNav =
-  "border-b-2 border-transparent pb-0.5 text-white/75 transition-colors hover:border-[#E8C84A]/55 hover:text-[#E8C84A]";
-
 export function WideAppHeader({
   active,
   showTppSubtitle,
@@ -27,7 +24,7 @@ export function WideAppHeader({
   extraLinks?: ReactNode;
 }) {
   return (
-    <header className="border-b border-white/10 bg-[#071422]/80 backdrop-blur-md">
+    <header className="app-header-wide border-b backdrop-blur-md">
       <div className="mx-auto flex min-h-16 max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-3 sm:px-8">
         <Link
           href="/"
@@ -35,7 +32,7 @@ export function WideAppHeader({
         >
           <TppLogoPill size="header" />
           <div className="min-w-0 text-left">
-            <span className="block truncate text-lg font-semibold tracking-tight text-white">
+            <span className="app-header-title block truncate text-lg font-semibold tracking-tight">
               Blueprint AI
             </span>
             {showTppSubtitle ? (
@@ -43,61 +40,65 @@ export function WideAppHeader({
                 {TPP_COMPANY_FULL}
               </span>
             ) : (
-              <span className="mt-0.5 hidden text-xs text-white/55 sm:block">
+              <span className="app-header-sub mt-0.5 hidden text-xs sm:block">
                 {TPP_TAGLINE}
               </span>
             )}
           </div>
         </Link>
-        <nav
-          className="flex flex-wrap items-center gap-4 text-sm font-medium sm:gap-6"
-          aria-label="Primary"
-        >
-          {active === "home" ? (
-            <span className={activeNav}>Home</span>
-          ) : (
-            <Link href="/" className={idleNav}>
-              Home
-            </Link>
-          )}
-          {active === "dashboard" ? (
-            <span className={activeNav}>Dashboard</span>
-          ) : (
-            <Link href="/dashboard" className={idleNav}>
-              Dashboard
-            </Link>
-          )}
-          {active === "jobs" ? (
-            <span className={activeNav}>Jobs</span>
-          ) : (
-            <Link href="/jobs" className={idleNav}>
-              Jobs
-            </Link>
-          )}
-          {active === "customers" ? (
-            <span className={activeNav}>Customers</span>
-          ) : (
-            <Link href="/customers" className={idleNav}>
-              Customers
-            </Link>
-          )}
-          {active === "tools" ? (
-            <span className={activeNav}>Tools</span>
-          ) : (
-            <Link href="/tools" className={idleNav}>
-              Tools
-            </Link>
-          )}
-          {active === "upload" ? (
-            <span className={activeNav}>Upload</span>
-          ) : (
-            <Link href="/upload" className={idleNav}>
-              Upload
-            </Link>
-          )}
-          {extraLinks}
-          <HeaderAuthMenu />
-        </nav>
+        <div className="flex w-full flex-col gap-3 sm:w-auto sm:max-w-none sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+          <GlobalNavSearch className="order-first w-full sm:order-none sm:mx-2 sm:w-64 lg:w-80" />
+          <nav
+            className="flex flex-wrap items-center gap-4 text-sm font-medium sm:gap-5"
+            aria-label="Primary"
+          >
+            {active === "home" ? (
+              <span className="app-nav-link-active">Home</span>
+            ) : (
+              <Link href="/" className="app-nav-link-idle">
+                Home
+              </Link>
+            )}
+            {active === "dashboard" ? (
+              <span className="app-nav-link-active">Dashboard</span>
+            ) : (
+              <Link href="/dashboard" className="app-nav-link-idle">
+                Dashboard
+              </Link>
+            )}
+            {active === "jobs" ? (
+              <span className="app-nav-link-active">Jobs</span>
+            ) : (
+              <Link href="/jobs" className="app-nav-link-idle">
+                Jobs
+              </Link>
+            )}
+            {active === "customers" ? (
+              <span className="app-nav-link-active">Customers</span>
+            ) : (
+              <Link href="/customers" className="app-nav-link-idle">
+                Customers
+              </Link>
+            )}
+            {active === "tools" ? (
+              <span className="app-nav-link-active">Tools</span>
+            ) : (
+              <Link href="/tools" className="app-nav-link-idle">
+                Tools
+              </Link>
+            )}
+            {active === "upload" ? (
+              <span className="app-nav-link-active">Upload</span>
+            ) : (
+              <Link href="/upload" className="app-nav-link-idle">
+                Upload
+              </Link>
+            )}
+            {extraLinks}
+            <ThemeToggle />
+            <HeaderAuthMenu />
+          </nav>
+        </div>
       </div>
     </header>
   );

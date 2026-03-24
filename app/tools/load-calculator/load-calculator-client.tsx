@@ -14,6 +14,11 @@ import {
   type ResidentialBuildingType,
   type ResidentialInputs,
 } from "@/lib/load-calc-engine";
+import {
+  buildServiceDesign,
+  type ServiceDesignInput,
+} from "@/lib/load-calc-service-design";
+import { downloadLoadCalcServicePackagePdf } from "@/lib/load-calc-service-package-pdf";
 
 const DEFAULT_APPLIANCES: ResidentialInputs["appliances"] = {
   range: { enabled: false, watts: 8000 },
@@ -67,6 +72,8 @@ export function LoadCalculatorClient() {
     cloneDefaultAppliances(),
   );
   const [existingService, setExistingService] = useState<ServiceAmps>(200);
+  const [futureGrowthSolar, setFutureGrowthSolar] = useState(false);
+  const [garageLoads, setGarageLoads] = useState(false);
 
   const [occ, setOcc] = useState<CommercialOccupancy>("office");
   const [cSq, setCSq] = useState<number | "">(5000);
@@ -92,6 +99,8 @@ export function LoadCalculatorClient() {
       buildingType,
       bedrooms,
       bathrooms,
+      futureGrowthSolar,
+      garageLoads,
       appliances,
     }),
     [
@@ -100,6 +109,8 @@ export function LoadCalculatorClient() {
       buildingType,
       bedrooms,
       bathrooms,
+      futureGrowthSolar,
+      garageLoads,
       appliances,
     ],
   );
@@ -135,6 +146,39 @@ export function LoadCalculatorClient() {
       ? resResults.recommendedServiceAmps
       : comResults.recommendedServiceAmps;
 
+  const serviceDesignInput: ServiceDesignInput = useMemo(
+    () => ({
+      recommendedAmps: recommended,
+      tab,
+      totalVa:
+        tab === "residential" ? resResults.totalVa : comResults.totalVa,
+      requiredAmps:
+        tab === "residential"
+          ? resResults.requiredAmps
+          : comResults.requiredAmps,
+      appliances: tab === "residential" ? appliances : undefined,
+      futureGrowthSolar:
+        tab === "residential" ? futureGrowthSolar : undefined,
+      garageLoads: tab === "residential" ? garageLoads : undefined,
+    }),
+    [
+      recommended,
+      tab,
+      resResults.totalVa,
+      resResults.requiredAmps,
+      comResults.totalVa,
+      comResults.requiredAmps,
+      appliances,
+      futureGrowthSolar,
+      garageLoads,
+    ],
+  );
+
+  const serviceDesign = useMemo(
+    () => buildServiceDesign(serviceDesignInput),
+    [serviceDesignInput],
+  );
+
   const performReset = useCallback(() => {
     setShowResults(false);
     setConfirmClearOpen(false);
@@ -152,6 +196,8 @@ export function LoadCalculatorClient() {
     setCEquip(0);
     setCHvac(0);
     setCOther(0);
+    setFutureGrowthSolar(false);
+    setGarageLoads(false);
     setSaveMsg(null);
   }, []);
 
@@ -192,7 +238,7 @@ export function LoadCalculatorClient() {
     }
   }, []);
 
-  const saveCalc = async () => {
+  const saveCalc = async (): Promise<boolean> => {
     setSaveMsg(null);
     try {
       const sb = createBrowserClient();
@@ -216,11 +262,18 @@ export function LoadCalculatorClient() {
       if (data?.id) setSavedLoadCalcId(String(data.id));
       setSaveMsg("Saved.");
       void refreshSaved();
+      return true;
     } catch (e) {
       setSaveMsg(
         e instanceof Error ? e.message : "Could not save (run Supabase SQL?).",
       );
+      return false;
     }
+  };
+
+  const saveToJob = async () => {
+    const ok = await saveCalc();
+    if (ok) setJobLinkOpen(true);
   };
 
   const loadRow = (row: SavedRow) => {
@@ -246,6 +299,8 @@ export function LoadCalculatorClient() {
           ...(inp.appliances as ResidentialInputs["appliances"]),
         });
       }
+      setFutureGrowthSolar(Boolean(inp.futureGrowthSolar));
+      setGarageLoads(Boolean(inp.garageLoads));
     } else if (inp.tab === "commercial") {
       setTab("commercial");
       setProjectName(String(inp.projectName ?? row.project_name));
@@ -294,6 +349,13 @@ export function LoadCalculatorClient() {
         subtitle="NEC Article 220 — 2023 Edition"
       >
         <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void saveToJob()}
+            className="rounded-lg border border-emerald-500/45 bg-emerald-950/35 px-3 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-950/50"
+          >
+            Save to job
+          </button>
           <button
             type="button"
             onClick={() => setJobLinkOpen(true)}
@@ -400,6 +462,26 @@ export function LoadCalculatorClient() {
                     onChange={(e) => setBathrooms(Number(e.target.value))}
                     className="mt-1 w-full rounded-lg border border-white/15 bg-[#0a1628] px-3 py-2 text-white"
                   />
+                </label>
+              </div>
+              <div className="mt-6 flex flex-col gap-3 border-t border-white/10 pt-4">
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-white/80">
+                  <input
+                    type="checkbox"
+                    checked={futureGrowthSolar}
+                    onChange={(e) => setFutureGrowthSolar(e.target.checked)}
+                    className="accent-sky-500"
+                  />
+                  Plan for future solar / PV growth
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-white/80">
+                  <input
+                    type="checkbox"
+                    checked={garageLoads}
+                    onChange={(e) => setGarageLoads(e.target.checked)}
+                    className="accent-sky-500"
+                  />
+                  Garage / detached building loads (subpanel recommendation)
                 </label>
               </div>
             </section>
@@ -668,6 +750,124 @@ export function LoadCalculatorClient() {
                   : `${existingAmps}A Service — UNDERSIZED — ${recommended}A Required`}
               </div>
             )}
+
+            <div className="mt-8 rounded-2xl border border-[#E8C84A]/35 bg-[#0a1628]/80 p-6">
+              <h3 className="text-base font-semibold text-[#E8C84A]">
+                Service entrance recommendations
+              </h3>
+              <p className="mt-1 text-xs text-white/50">
+                Illustrative schedule — NEC Table 310.12, 250.66, Ch. 9 (conduit).
+              </p>
+              <div className="mt-4 space-y-4 text-sm text-white/85">
+                <div>
+                  <h4 className="font-semibold text-white">Service conductors</h4>
+                  <ul className="mt-1 list-inside list-disc space-y-1 text-white/75">
+                    <li>Phase: {serviceDesign.serviceEntrance.phaseConductors}</li>
+                    <li>Neutral: {serviceDesign.serviceEntrance.neutralConductor}</li>
+                    <li>
+                      GEC: {serviceDesign.serviceEntrance.gec} (
+                      {serviceDesign.serviceEntrance.gecNec})
+                    </li>
+                    <li>Conduit: {serviceDesign.serviceEntrance.conduit}</li>
+                  </ul>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-white">Meter socket</h4>
+                  <p className="text-white/75">
+                    Minimum: {serviceDesign.meterSocket.minimumRating} ·{" "}
+                    {serviceDesign.meterSocket.recommended} ({serviceDesign.meterSocket.nec})
+                  </p>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-white">Main disconnect</h4>
+                  <p className="text-white/75">
+                    {serviceDesign.mainDisconnect.minimumBreaker} ·{" "}
+                    {serviceDesign.mainDisconnect.recommendedPanel} (
+                    {serviceDesign.mainDisconnect.nec})
+                  </p>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-white">Panel sizing</h4>
+                  <p className="text-white/75">
+                    Est. circuits: {serviceDesign.panel.estimatedCircuits} · Spaces:{" "}
+                    {serviceDesign.panel.recommendedSpaces} · {serviceDesign.panel.suggestion}{" "}
+                    ({serviceDesign.panel.nec})
+                  </p>
+                </div>
+                {serviceDesign.evL1 ? (
+                  <div>
+                    <h4 className="font-semibold text-white">EV — Level 1</h4>
+                    <ul className="list-inside list-disc text-white/75">
+                      {serviceDesign.evL1.lines.map((l) => (
+                        <li key={l}>{l}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {serviceDesign.evL2 ? (
+                  <div>
+                    <h4 className="font-semibold text-white">EV — Level 2</h4>
+                    <ul className="list-inside list-disc text-white/75">
+                      {serviceDesign.evL2.lines.map((l) => (
+                        <li key={l}>{l}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {serviceDesign.subpanel ? (
+                  <div>
+                    <h4 className="font-semibold text-white">Subpanel</h4>
+                    <p className="text-white/75">{serviceDesign.subpanel.recommended}</p>
+                    <p className="text-white/75">{serviceDesign.subpanel.feederWire}</p>
+                    <p className="text-white/75">
+                      {serviceDesign.subpanel.feederConduit} · Breaker:{" "}
+                      {serviceDesign.subpanel.feederBreaker} ({serviceDesign.subpanel.nec})
+                    </p>
+                  </div>
+                ) : null}
+                {serviceDesign.generator ? (
+                  <div>
+                    <h4 className="font-semibold text-white">Generator</h4>
+                    <p className="text-white/75">
+                      Minimum ~{serviceDesign.generator.minKw} kW · Recommended ~{" "}
+                      {serviceDesign.generator.recommendedKw} kW · Transfer switch:{" "}
+                      {serviceDesign.generator.transferSwitchAmps} A class (
+                      {serviceDesign.generator.nec})
+                    </p>
+                  </div>
+                ) : null}
+                {serviceDesign.solarReady ? (
+                  <div>
+                    <h4 className="font-semibold text-white">Solar-ready</h4>
+                    <ul className="list-inside list-disc text-white/75">
+                      {serviceDesign.solarReady.map((l) => (
+                        <li key={l}>{l}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                <p className="text-xs text-amber-200/80">{serviceDesign.disclaimer}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  void downloadLoadCalcServicePackagePdf({
+                    projectName,
+                    tab,
+                    inputs: serviceDesignInput,
+                    results:
+                      tab === "residential" ? resResults : comResults,
+                    breakdown:
+                      tab === "residential"
+                        ? resResults.breakdown
+                        : comResults.breakdown,
+                  })
+                }
+                className="mt-4 rounded-lg border border-[#E8C84A]/50 bg-[#E8C84A]/15 px-4 py-2 text-sm font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/25"
+              >
+                Export service design package (PDF)
+              </button>
+            </div>
           </section>
         ) : (
           <p className="mt-8 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-6 text-center text-sm text-white/55">

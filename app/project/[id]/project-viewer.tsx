@@ -680,8 +680,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const [roomScanHistory, setRoomScanHistory] = useState<
     ProjectRoomScanListItem[]
   >([]);
-  const [roomScanBannerDismissed, setRoomScanBannerDismissed] =
-    useState(false);
   const [roomScanAutosave, setRoomScanAutosave] = useState(true);
   const [roomScanDialogPage, setRoomScanDialogPage] = useState(1);
   const [selectedRoomScanId, setSelectedRoomScanId] = useState<string | null>(
@@ -728,7 +726,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     scanProgressOpenRef.current = false;
     setScanCompleteMessage(null);
     setResumeSnapshot(null);
-    setRoomScanBannerDismissed(false);
     setRoomScanHistory([]);
     setSelectedRoomScanId(null);
     setRoomScanSavedAtLabel(null);
@@ -757,6 +754,10 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   useEffect(() => {
     void reloadRoomScanHistory();
   }, [reloadRoomScanHistory]);
+
+  useEffect(() => {
+    if (roomScanOpen) void reloadRoomScanHistory();
+  }, [roomScanOpen, reloadRoomScanHistory]);
 
   const handleSelectHistoryScan = useCallback(
     (id: string) => {
@@ -2331,7 +2332,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       setRoomScanAutosave(true);
       setSelectedRoomScanId(null);
       setRoomScanSavedAtLabel(null);
-      setRoomScanBannerDismissed(false);
       setRoomScanOpen(true);
     } catch (e) {
       window.alert(
@@ -3983,40 +3983,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                 </span>
               </div>
 
-              {!roomScanBannerDismissed && roomScanHistory.length > 0 ? (
-                <div className="mb-3 w-full rounded-xl border border-teal-500/35 bg-teal-950/25 px-4 py-3 text-sm text-teal-50/95">
-                  <p className="font-semibold text-teal-100">
-                    Room scan from{" "}
-                    {formatRoomScanBannerDate(roomScanHistory[0]!.created_at)}{" "}
-                    available
-                  </p>
-                  <p className="mt-1 text-teal-100/85">
-                    {roomScanHistory[0]!.room_count} rooms ·{" "}
-                    {(roomScanHistory[0]!.total_sqft ?? 0).toLocaleString()} sq ft
-                    total
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => openLatestSavedRoomScan()}
-                      className="rounded-lg border border-teal-400/50 bg-teal-600/30 px-3 py-1.5 text-xs font-semibold text-teal-50 hover:bg-teal-600/45"
-                    >
-                      View Results
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRoomScanBannerDismissed(true);
-                        setRoomScanOpen(false);
-                      }}
-                      className="rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/15"
-                    >
-                      New Scan
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-
               <div className="flex w-full flex-wrap items-center justify-center gap-2 sm:w-auto">
                 <button
                   type="button"
@@ -4243,6 +4209,44 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                 </button>
               </div>
             </div>
+
+            {roomScanHistory.length > 0 ? (
+              <div className="shrink-0 w-full border-b border-teal-500/35 bg-teal-950/25 px-3 py-3 text-sm text-teal-50/95 sm:px-4">
+                <div className="mx-auto flex max-w-[1200px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                  <p className="min-w-0 font-medium leading-snug text-teal-100">
+                    <span aria-hidden>📐 </span>
+                    Room scan from{" "}
+                    {formatRoomScanBannerDate(roomScanHistory[0]!.created_at)} —{" "}
+                    {roomScanHistory[0]!.room_count} rooms |{" "}
+                    {(roomScanHistory[0]!.total_sqft ?? 0).toLocaleString()} sq
+                    ft
+                  </p>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openLatestSavedRoomScan()}
+                      className="rounded-lg border border-teal-400/50 bg-teal-600/30 px-3 py-1.5 text-xs font-semibold text-teal-50 hover:bg-teal-600/45"
+                    >
+                      View
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void runRoomScanCurrentPage()}
+                      disabled={
+                        analyzeBusy ||
+                        legendBusy ||
+                        symbolToolboxBusy ||
+                        roomScanBusy ||
+                        blockPageNav
+                      }
+                      className="rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {roomScanBusy ? "Scanning…" : "Rescan"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             {analyzeError && (
               <div className="border-b border-red-500/30 bg-red-950/40 px-4 py-2 text-center text-sm text-red-100">

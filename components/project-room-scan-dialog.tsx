@@ -312,9 +312,7 @@ export function ProjectRoomScanDialog({
                 </span>
               ) : null}
             </h2>
-            {historyScans.length > 1 &&
-            onSelectHistoryScan &&
-            !autosaveEnabled ? (
+            {historyScans.length > 1 && onSelectHistoryScan ? (
               <label className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/60">
                 <span>Scan history</span>
                 <select

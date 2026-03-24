@@ -13,9 +13,15 @@ import type {
 export type { PDFDocumentProxy, PDFPageProxy, RenderTask };
 
 /** Must match `package.json` pdfjs-dist version and worker CDN below. */
-const PDFJS_DIST_VERSION = "4.4.168";
+export const PDFJS_DIST_VERSION = "4.4.168";
 
 const WORKER_SRC = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_DIST_VERSION}/pdf.worker.min.mjs`;
+
+/**
+ * npm package layout (cmaps / standard_fonts). Used with getDocument() so PDF.js
+ * does not hit app-relative URLs (which return HTML and break loading).
+ */
+export const PDFJS_NPM_CDN_BASE = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_DIST_VERSION}/`;
 
 type PdfjsLegacyModule = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
 

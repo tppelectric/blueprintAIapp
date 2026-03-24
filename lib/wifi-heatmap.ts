@@ -219,12 +219,22 @@ export function drawWifiHeatMap(
       ctx.lineTo(cw, t * ch);
       ctx.stroke();
     }
-    ctx.fillStyle = "rgba(148,163,184,0.5)";
+    ctx.fillStyle = "rgba(148,163,184,0.55)";
     ctx.font = "14px system-ui,sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("No floor plan — grid layout", cw / 2, ch / 2 - 8);
-    ctx.font = "12px system-ui,sans-serif";
-    ctx.fillText("Run Calculate to show coverage model", cw / 2, ch / 2 + 12);
+    if (markers.length === 0) {
+      ctx.fillText("No floor plan — grid layout", cw / 2, ch / 2 - 8);
+      ctx.font = "12px system-ui,sans-serif";
+      ctx.fillText("Run Calculate to show coverage model", cw / 2, ch / 2 + 12);
+    } else {
+      ctx.fillText("No floor plan image — modeled coverage", cw / 2, ch / 2 - 6);
+      ctx.font = "12px system-ui,sans-serif";
+      ctx.fillText(
+        `${markers.length} AP marker${markers.length === 1 ? "" : "s"} · drag to adjust`,
+        cw / 2,
+        ch / 2 + 14,
+      );
+    }
   }
 
   const span = Math.max(80, Math.sqrt(buildingSpanFt) * 1.25);

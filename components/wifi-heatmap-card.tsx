@@ -1,6 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
+const useIsoLayoutEffect =
+  typeof document !== "undefined" ? useLayoutEffect : useEffect;
 import type { WifiAnalyzerInputs, WifiAnalyzerResults } from "@/lib/wifi-analyzer-engine";
 import {
   averageIndoorCoverageRadiusFt,
@@ -40,6 +50,7 @@ export function WifiHeatMapCard({
   const wrapRef = useRef<HTMLDivElement>(null);
   const [markers, setMarkers] = useState<HeatMapMarker[]>([]);
   const [img, setImg] = useState<HTMLImageElement | null>(null);
+  const [heatMapInitError, setHeatMapInitError] = useState<string | null>(null);
   const dragRef = useRef<{ id: string } | null>(null);
   const movedRef = useRef(false);
 
@@ -50,18 +61,31 @@ export function WifiHeatMapCard({
     }
     const el = new Image();
     el.crossOrigin = "anonymous";
+    el.onerror = () => setImg(null);
     el.onload = () => setImg(el);
     el.src = blueprintDataUrl;
   }, [blueprintDataUrl]);
 
   useEffect(() => {
-    setMarkers(
-      suggestWifiHeatMapMarkers(
-        inputs,
-        results,
-        Boolean(blueprintDataUrl),
-      ),
-    );
+    setHeatMapInitError(null);
+    try {
+      const rows = results?.roomRows;
+      if (!Array.isArray(rows)) {
+        setMarkers([]);
+        return;
+      }
+      setMarkers(
+        suggestWifiHeatMapMarkers(
+          inputs,
+          results,
+          Boolean(blueprintDataUrl),
+        ),
+      );
+    } catch (e) {
+      console.error("[WifiHeatMapCard] marker init failed:", e);
+      setMarkers([]);
+      setHeatMapInitError("Could not build heat map layout from results.");
+    }
   }, [calcGeneration, inputs, results, blueprintDataUrl]);
 
   const radiusFt = useMemo(
@@ -82,8 +106,9 @@ export function WifiHeatMapCard({
       2,
       typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1,
     );
-    const rw = wrap.clientWidth;
-    const rh = Math.round((rw * 3) / 4);
+    const measured = Math.floor(wrap.getBoundingClientRect().width);
+    const rw = Math.max(320, measured || wrap.clientWidth || 320);
+    const rh = Math.max(240, Math.round((rw * 3) / 4));
     canvas.width = Math.floor(rw * dpr);
     canvas.height = Math.floor(rh * dpr);
     canvas.style.width = `${rw}px`;
@@ -91,16 +116,25 @@ export function WifiHeatMapCard({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawWifiHeatMap(ctx, rw, rh, img, markers, radiusFt, buildingSpanFt);
+    try {
+      drawWifiHeatMap(ctx, rw, rh, img, markers, radiusFt, buildingSpanFt);
+    } catch (e) {
+      console.error("[WifiHeatMapCard] draw failed:", e);
+    }
   }, [img, markers, radiusFt, buildingSpanFt]);
 
-  useEffect(() => {
+  useIsoLayoutEffect(() => {
     redraw();
   }, [redraw]);
 
   useEffect(() => {
-    const ro = new ResizeObserver(() => redraw());
-    if (wrapRef.current) ro.observe(wrapRef.current);
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const ro = new ResizeObserver(() => {
+      requestAnimationFrame(() => redraw());
+    });
+    ro.observe(wrap);
+    requestAnimationFrame(() => redraw());
     return () => ro.disconnect();
   }, [redraw]);
 
@@ -230,7 +264,13 @@ export function WifiHeatMapCard({
             ft nominal radius). Blue = indoor AP, green ring = outdoor. Dashed
             ring = nominal coverage edge. Drag markers; double-click removes;
             single-click empty canvas adds indoor AP. Export adds TPP watermark.
+            {!blueprintDataUrl
+              ? " Without a PDF, a dark grid shows estimated AP positions."
+              : null}
           </p>
+          {heatMapInitError ? (
+            <p className="mt-2 text-xs text-amber-200/90">{heatMapInitError}</p>
+          ) : null}
         </div>
         <button
           type="button"
@@ -240,7 +280,11 @@ export function WifiHeatMapCard({
           Export heat map (PNG)
         </button>
       </div>
-      <div ref={wrapRef} className="mt-4 w-full">
+      <div
+        ref={wrapRef}
+        className="mt-4 w-full min-h-[240px] min-w-0"
+        style={{ minHeight: 240 }}
+      >
         <canvas
           ref={canvasRef}
           className="w-full cursor-crosshair rounded-lg border border-white/10 bg-[#0a1628]"

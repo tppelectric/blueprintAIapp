@@ -6,7 +6,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ToolPageHeader } from "@/components/tool-page-header";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { WifiHeatMapCard } from "@/components/wifi-heatmap-card";
-import { loadPdfDocumentFromArrayBuffer } from "@/lib/wifi-blueprint-preview";
+import {
+  loadPdfDocumentFromArrayBuffer,
+  readPdfFileAsArrayBuffer,
+  WIFI_PDF_LOAD_ERROR,
+} from "@/lib/wifi-blueprint-preview";
 import {
   computeWifiPlan,
   scoreRoom,
@@ -320,6 +324,7 @@ export function WifiAnalyzerClient() {
   const [blueprintDataUrl, setBlueprintDataUrl] = useState<string | null>(null);
   const [pdfUploadProgress, setPdfUploadProgress] = useState(0);
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
   const [calcGeneration, setCalcGeneration] = useState(0);
 
   const resultsAnchorRef = useRef<HTMLDivElement>(null);
@@ -355,13 +360,29 @@ export function WifiAnalyzerClient() {
     if (!pdfArrayBuffer || selectedPdfPage < 1) return;
     let cancelled = false;
     setPdfBusy(true);
-    (async () => {
+    void (async () => {
       try {
         const doc = await loadPdfDocumentFromArrayBuffer(pdfArrayBuffer);
-        const url = await doc.renderPageToDataUrl(selectedPdfPage, 1600);
-        if (!cancelled) setBlueprintDataUrl(url);
-      } catch {
-        if (!cancelled) setBlueprintDataUrl(null);
+        try {
+          if (cancelled) return;
+          const url = await doc.renderPageToDataUrl(selectedPdfPage, 1600);
+          if (!cancelled) {
+            setBlueprintDataUrl(url);
+            setPdfError(null);
+          }
+        } finally {
+          doc.destroy();
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setBlueprintDataUrl(null);
+          const msg = e instanceof Error ? e.message : WIFI_PDF_LOAD_ERROR;
+          setPdfError(
+            /^Could not render page \d+$/.test(msg)
+              ? msg
+              : WIFI_PDF_LOAD_ERROR,
+          );
+        }
       } finally {
         if (!cancelled) setPdfBusy(false);
       }
@@ -371,14 +392,27 @@ export function WifiAnalyzerClient() {
     };
   }, [pdfArrayBuffer, selectedPdfPage]);
 
+  const pdfFailureMessage = (e: unknown): string => {
+    const msg = e instanceof Error ? e.message : WIFI_PDF_LOAD_ERROR;
+    return /^Could not render page \d+$/.test(msg)
+      ? msg
+      : WIFI_PDF_LOAD_ERROR;
+  };
+
   const onPdfFile = async (file: File | undefined) => {
-    if (!file || file.type !== "application/pdf") return;
+    if (!file) return;
+    const looksPdf =
+      file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+    if (!looksPdf) return;
     setPdfBusy(true);
+    setPdfError(null);
     setPdfUploadProgress(5);
+    let doc: Awaited<ReturnType<typeof loadPdfDocumentFromArrayBuffer>> | null =
+      null;
     try {
-      const buf = await file.arrayBuffer();
+      const buf = await readPdfFileAsArrayBuffer(file);
       setPdfArrayBuffer(buf);
-      const doc = await loadPdfDocumentFromArrayBuffer(buf);
+      doc = await loadPdfDocumentFromArrayBuffer(buf);
       const n = doc.numPages;
       setPdfPageCount(n);
       setSelectedPdfPage(1);
@@ -390,13 +424,16 @@ export function WifiAnalyzerClient() {
       }
       setPdfThumbnails(thumbs);
       setPdfUploadProgress(100);
+      setPdfError(null);
     } catch (e) {
       console.error(e);
+      setPdfError(pdfFailureMessage(e));
       setPdfArrayBuffer(null);
       setPdfPageCount(0);
       setPdfThumbnails([]);
       setBlueprintDataUrl(null);
     } finally {
+      doc?.destroy();
       setPdfBusy(false);
       window.setTimeout(() => setPdfUploadProgress(0), 700);
     }
@@ -408,6 +445,7 @@ export function WifiAnalyzerClient() {
     setPdfThumbnails([]);
     setBlueprintDataUrl(null);
     setSelectedPdfPage(1);
+    setPdfError(null);
   };
 
   const calculatedSqFtFromRooms = useMemo(
@@ -651,6 +689,8 @@ export function WifiAnalyzerClient() {
     setPropCopyMsg(null);
     setProposalOpen(true);
   };
+
+  const showResults = results != null;
 
   return (
     <div className="min-h-screen bg-[#0a1628] text-white">
@@ -940,6 +980,11 @@ export function WifiAnalyzerClient() {
               PDFs stay in your browser for heat map overlay — nothing is
               uploaded to storage.
             </p>
+            {pdfError ? (
+              <p className="rounded-lg border border-red-500/40 bg-red-950/35 px-3 py-2 text-sm text-red-200/95">
+                {pdfError}
+              </p>
+            ) : null}
             <label
               className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#E8C84A]/40 bg-[#0a1628]/60 px-4 py-10 text-center transition hover:border-[#E8C84A]/70 hover:bg-[#0a1628]"
               onDragOver={(e) => {
@@ -1337,7 +1382,7 @@ export function WifiAnalyzerClient() {
           ) : null}
         </div>
 
-        {results ? (
+        {showResults && results ? (
           <div
             ref={resultsAnchorRef}
             className="mt-10 space-y-8 scroll-mt-24"
@@ -1384,6 +1429,13 @@ export function WifiAnalyzerClient() {
               <p className="text-sm text-white/80">{saveMsg}</p>
             ) : null}
 
+            <WifiHeatMapCard
+              inputs={inputs}
+              results={results}
+              blueprintDataUrl={blueprintDataUrl}
+              calcGeneration={calcGeneration}
+            />
+
             <section className="rounded-2xl border border-emerald-500/30 bg-emerald-950/25 p-6">
               <h2 className="text-lg font-semibold text-emerald-100">
                 Coverage summary
@@ -1415,13 +1467,6 @@ export function WifiAnalyzerClient() {
                 </li>
               </ul>
             </section>
-
-            <WifiHeatMapCard
-              inputs={inputs}
-              results={results}
-              blueprintDataUrl={blueprintDataUrl}
-              calcGeneration={calcGeneration}
-            />
 
             <section className="rounded-2xl border border-white/12 bg-white/[0.04] p-6">
               <h2 className="border-l-4 border-[#E8C84A] pl-3 text-lg font-semibold">

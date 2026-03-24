@@ -1,7 +1,9 @@
 import type {
+  PlanningPriority,
   VendorChoice,
   WifiAnalyzerInputs,
   WifiAnalyzerResults,
+  WifiRoomInput,
 } from "@/lib/wifi-analyzer-engine";
 
 const RULE_SHORT = "━━━━━━━━━━━━━━━━━━━━━━━━━━━";
@@ -99,8 +101,109 @@ function formatDateLong(): string {
   });
 }
 
+function planningPriorityLabel(p: PlanningPriority): string {
+  switch (p) {
+    case "best_value":
+      return "Best value";
+    case "best_performance":
+      return "Best performance";
+    case "future_proof":
+      return "Future-proof";
+    case "lowest_cost":
+      return "Lowest cost";
+    default:
+      return p;
+  }
+}
+
+function roomInputById(
+  inputs: WifiAnalyzerInputs,
+  id: string,
+): WifiRoomInput | undefined {
+  return inputs.rooms?.find((x) => x.id === id);
+}
+
+function indoorApIndexFromServedBy(s: string): number | null {
+  const m = s.match(/Indoor AP (\d+) of/);
+  return m ? Number(m[1]) : null;
+}
+
+function outdoorApIndexFromServedBy(s: string): number | null {
+  const m = s.match(/Outdoor AP (\d+) of/);
+  return m ? Number(m[1]) : null;
+}
+
+function primaryRoomForIndoorAp(
+  r: WifiAnalyzerResults,
+  apNum: number,
+): { name: string; id: string } | null {
+  const row = r.roomRows.find(
+    (x) =>
+      x.complete &&
+      !x.outdoor &&
+      indoorApIndexFromServedBy(x.servedByAp) === apNum,
+  );
+  return row ? { name: row.name, id: row.id } : null;
+}
+
+function primaryRoomForOutdoorAp(
+  r: WifiAnalyzerResults,
+  apNum: number,
+): { name: string; id: string } | null {
+  const row = r.roomRows.find(
+    (x) =>
+      x.complete &&
+      x.outdoor &&
+      outdoorApIndexFromServedBy(x.servedByAp) === apNum,
+  );
+  return row ? { name: row.name, id: row.id } : null;
+}
+
+function mountHeightLine(
+  roomId: string | undefined,
+  inputs: WifiAnalyzerInputs,
+): string {
+  const room = roomId ? roomInputById(inputs, roomId) : undefined;
+  if (!room) {
+    return "  Height: Ceiling mount or 7 ft wall — confirm with owner/GC";
+  }
+  const h = room.ceilingHeight;
+  if (h === "higher" || h === "12") {
+    return "  Height: Ceiling mount (high/vaulted — ladder safety / lift plan)";
+  }
+  if (h === "10") {
+    return "  Height: Ceiling mount preferred (10 ft ceiling); wall mount if approved";
+  }
+  return "  Height: Ceiling mount preferred; 7 ft wall mount alternate if approved";
+}
+
+function vendorControllerNote(v: VendorChoice): string {
+  switch (v) {
+    case "ubiquiti":
+    case "none":
+      return "UniFi (app.ui.com or local controller)";
+    case "cisco_meraki":
+      return "Meraki Dashboard (cloud)";
+    case "tp_link":
+      return "TP-Link Omada controller (cloud or hardware)";
+    case "ruckus":
+      return "Ruckus management (SmartZone / RUCKUS One per deployment)";
+    case "access_networks":
+      return "Access Networks / integrated controller per line card";
+    default:
+      return "Vendor management portal";
+  }
+}
+
+function perRoomCableLf(r: WifiAnalyzerResults): number {
+  return Math.max(
+    25,
+    Math.round(r.cat6FootageLf / Math.max(1, r.cat6Drops)),
+  );
+}
+
 /**
- * Technician field work order (Unicode checkboxes for screen/print).
+ * Technician field work order (Unicode ☐ for screen/print; PDF draws boxes).
  */
 export function buildWorkOrderText(
   inputs: WifiAnalyzerInputs,
@@ -109,96 +212,274 @@ export function buildWorkOrderText(
 ): string {
   const eq = r.equipment;
   const cat6Bring = Math.ceil(r.cat6FootageLf * 1.2);
+  const vendorName = vendorDisplayName(inputs.vendor);
+  const hrs = r.laborHours.totalLaborHours;
+  const targetCompletion =
+    hrs <= 8
+      ? "Same day"
+      : `${Math.max(2, Math.ceil(hrs / 8))} days (estimated multi-day)`;
+  const clientLine = inputs.clientName?.trim()
+    ? inputs.clientName.trim()
+    : "_______________________________";
+  const patch3 = Math.max(1, Math.ceil(r.patchCables / 2));
+  const patch1 = Math.max(1, Math.floor(r.patchCables / 2));
 
-  let cableRuns = r.roomRows
-    .filter((row) => row.complete)
-    .map((row) => {
-      const est = Math.max(
-        25,
-        Math.round(r.cat6FootageLf / Math.max(1, r.cat6Drops)),
-      );
-      return `${row.name} (fl ${row.floor}) — ~${est} LF est. homerun`;
-    });
+  const sortedRooms = [...r.roomRows].sort(
+    (a, b) => a.floor - b.floor || a.name.localeCompare(b.name),
+  );
 
-  if (cableRuns.length === 0) {
-    cableRuns = ["(Add complete rooms in planner for per-room cable list.)"];
-  }
+  const lines: string[] = [];
 
-  const lines: string[] = [
+  lines.push(
     RULE_SHORT,
     "TPP ELECTRICAL CONTRACTORS INC.",
-    "FIELD WORK ORDER — Wi-Fi Installation",
+    "EST. 1982 — Licensed Electrical Contractor",
+    "FIELD WORK ORDER — Wi-Fi Network Installation",
     RULE_SHORT,
     "",
     `Work Order #: ${workOrderNumber}`,
     `Date: ${formatDateLong()}`,
     `Project: ${inputs.projectName || "—"}`,
-    "Technician: ________________",
-    "Helper: ____________________",
+    `Client: ${clientLine}`,
+    `Priority: ${planningPriorityLabel(inputs.planningPriority)}`,
     "",
-    "MATERIALS ON TRUCK:",
-    "Check off before leaving shop:",
-    `${CB}${r.recommendedAps} Wireless APs — ${indoorApModelSummary(r)}`,
+    "CREW ASSIGNMENT:",
+    "Lead Technician: _______________________",
+    "Helper/Apprentice: _____________________",
+    `Estimated Hours: ${hrs} hours`,
+    `Target Completion: ${targetCompletion}`,
+    "",
+    "PROJECT OVERVIEW:",
+    `Install complete Wi-Fi network system for ${inputs.buildingType.replace(/_/g, " ")} — ${r.totalRooms} rooms — ${r.totalCoverageSqFt} sq ft (complete-room footprint).`,
+    `${r.indoorAps} indoor APs + ${r.outdoorAps} outdoor APs (${r.recommendedAps} total).`,
+    `Vendor: ${vendorName}`,
+    `Internet Speed: ${inputs.internetSpeedMbps} Mbps`,
+    "",
+    "PRE-JOB CHECKLIST — COMPLETE BEFORE LEAVING SHOP:",
+    "",
+    "TOOLS REQUIRED:",
+    `${CB}Power drill with bits (3/4\" spade, 1/4\" bits)`,
+    `${CB}Fish tape (25ft minimum)`,
+    `${CB}Cable staples and staple gun`,
+    `${CB}Network cable tester`,
+    `${CB}Laptop/tablet for configuration`,
+    `${CB}Label maker or cable labels`,
+    `${CB}Voltage tester`,
+    `${CB}Level`,
+    `${CB}Measuring tape`,
+    `${CB}Low voltage mounting tool`,
+    "",
+    "MATERIALS TO LOAD ON TRUCK:",
+    `${CB}${r.indoorAps} Wireless Access Points — ${indoorApModelSummary(r)}`,
     ...(r.outdoorAps > 0 && eq.outdoorApModel
-      ? [`${CB}${r.outdoorAps} Outdoor APs — ${eq.outdoorApModel}`]
+      ? [`${CB}${r.outdoorAps} Outdoor Access Points — ${eq.outdoorApModel}`]
       : []),
-    `${CB}PoE Switch — ${eq.switchNote}`,
-    `${CB}Network Gateway — ${r.gatewayRecommendation}`,
-    `${CB}${cat6Bring} LF CAT6 Cable (bring extra 20%)`,
+    `${CB}1 PoE Network Switch — ${eq.switchNote}`,
+    `${CB}1 Network Gateway — ${r.gatewayRecommendation}`,
+    `${CB}${cat6Bring} LF CAT6 Cable (${r.cat6FootageLf} LF planned + 20% extra)`,
     `${CB}${r.lvBrackets} Low Voltage Brackets`,
     `${CB}${r.rj45Jacks} RJ45 Keystone Jacks`,
-    `${CB}${r.patchCables} Patch Cables`,
-    `${CB}Laptop for configuration`,
-    `${CB}Network tester`,
-    `${CB}Fish tape / drill bits`,
-    `${CB}Cable staples / straps`,
+    `${CB}${patch3} Patch Cables (3ft)`,
+    `${CB}${patch1} Patch Cables (1ft)`,
+    `${CB}Spare RJ45 connectors`,
+    `${CB}Cable ties and velcro straps`,
+    `${CB}Mounting screws and anchors`,
     "",
-    "INSTALLATION CHECKLIST:",
+    "CONFIRM WITH OWNER/GC BEFORE STARTING:",
+    `${CB}Internet modem/router location confirmed`,
+    `${CB}Network closet/switch location confirmed`,
+    `${CB}Confirm OK to drill through walls/ceilings`,
+    `${CB}Confirm cable routing path approved`,
+    `${CB}Get network name (SSID) from owner:`,
+    "  SSID: ________________________________",
+    "  Password: ____________________________",
+    "  Guest SSID (if needed): _______________",
+    "  Guest Password: ______________________",
+    "",
+    "ROOM BY ROOM INSTALLATION PLAN:",
+  );
+
+  const completeRooms = sortedRooms.filter((row) => row.complete);
+  if (completeRooms.length === 0) {
+    lines.push(
+      "[No complete rooms in planner — add room names and dimensions.]",
+      "",
+    );
+  } else {
+    for (const row of completeRooms) {
+      const lf = perRoomCableLf(r);
+      const apServing =
+        row.servedByAp !== "—" ? row.servedByAp : "Assign on site";
+      lines.push(
+        `Room: ${row.name} | Floor ${row.floor} | ${row.areaSqFt} sq ft`,
+        `Zone: ${row.zoneType} | Served by: ${apServing}`,
+        `Cable run: Approx ${lf} LF from switch location`,
+        `${CB}Run CAT6 cable to this location`,
+        `${CB}Install low voltage bracket`,
+        `${CB}Leave 3ft service loop`,
+        `${CB}Label cable: ${row.name}`,
+        "",
+      );
+    }
+  }
+
+  lines.push(
     "ROUGH-IN PHASE:",
-    `${CB}Confirm AP locations with owner/GC`,
-    `${CB}Mark cable routes on plans`,
-    `${CB}Run CAT6 to each AP location:`,
-    ...cableRuns.map((x) => `  ${CB}${x}`),
-    `${CB}Leave 3ft service loop at each location`,
-    `${CB}Label each cable at both ends`,
-    `${CB}Install low voltage brackets`,
+    `${CB}Walk entire building with owner/GC`,
+    `${CB}Mark all AP locations on wall/ceiling`,
+    `${CB}Identify and mark cable routes`,
+    `${CB}Locate all obstacles (HVAC, structure)`,
+    `${CB}Begin cable runs — start farthest point first`,
+    `${CB}Pull all CAT6 runs to switch location`,
+    `${CB}Label every cable at BOTH ends`,
+    `${CB}Install all low voltage brackets`,
+    `${CB}Document any deviations from plan`,
+    `${CB}Photo document all cable runs before closing`,
     "",
     "TRIM-OUT PHASE:",
-    `${CB}Mount each AP per manufacturer specs`,
-    `${CB}Terminate CAT6 at keystone jacks`,
+  );
+
+  for (let i = 1; i <= r.indoorAps; i++) {
+    const pr = primaryRoomForIndoorAp(r, i);
+    const label = pr?.name ?? `Indoor location ${i} (confirm on site)`;
+    const rid = pr?.id;
+    lines.push(
+      `${CB}Mount indoor AP #${i} — ${label}`,
+      mountHeightLine(rid, inputs),
+      `  ${CB}Terminate CAT6 at keystone`,
+      `  ${CB}Mount bracket and AP`,
+      `  ${CB}Confirm LED status light`,
+    );
+  }
+  for (let i = 1; i <= r.outdoorAps; i++) {
+    const pr = primaryRoomForOutdoorAp(r, i);
+    const label = pr?.name ?? `Outdoor zone ${i}`;
+    lines.push(
+      `${CB}Mount outdoor AP #${i} — ${label}`,
+      `  ${CB}Weatherproof cable entry and grounding per manufacturer`,
+      `  ${CB}Terminate and mount per outdoor spec`,
+      `  ${CB}Confirm LED status light`,
+    );
+  }
+
+  if (r.indoorAps === 0 && r.outdoorAps === 0) {
+    lines.push(
+      `${CB}No APs in current plan — verify planner inputs before field work`,
+    );
+  }
+
+  lines.push(
     `${CB}Install PoE switch in network location`,
-    `${CB}Install gateway`,
-    `${CB}Connect all runs to switch`,
+    `  ${CB}Mount securely (rack or wall mount)`,
+    `  ${CB}Label each port with room name`,
+    `  ${CB}Connect all CAT6 runs to switch`,
+    `${CB}Install network gateway`,
+    `  ${CB}Connect to modem/router`,
+    `  ${CB}Connect to PoE switch`,
+    `  ${CB}Confirm power and link lights`,
     "",
     "CONFIGURATION PHASE:",
-    `${CB}Adopt gateway to UniFi controller (or vendor equivalent)`,
-    `${CB}Adopt all APs`,
+    `${CB}Connect laptop to local network`,
+    ...(inputs.vendor === "ubiquiti" || inputs.vendor === "none"
+      ? [
+          `${CB}Access UniFi Network Application (app.ui.com or local controller)`,
+          `${CB}Adopt network gateway`,
+          `  ${CB}Confirm internet connectivity (WAN / speed test)`,
+        ]
+      : [
+          `${CB}Access ${vendorControllerNote(inputs.vendor)}`,
+          `${CB}Adopt / register gateway per ${vendorName} procedure`,
+          `  ${CB}Confirm internet connectivity`,
+        ]),
+  );
+
+  for (let i = 1; i <= r.indoorAps; i++) {
+    const pr = primaryRoomForIndoorAp(r, i);
+    const label = pr?.name ?? `location ${i}`;
+    lines.push(
+      `  ${CB}Indoor AP #${i} — ${label} — adopted, firmware current`,
+    );
+  }
+  for (let i = 1; i <= r.outdoorAps; i++) {
+    const pr = primaryRoomForOutdoorAp(r, i);
+    const label = pr?.name ?? `outdoor ${i}`;
+    lines.push(
+      `  ${CB}Outdoor AP #${i} — ${label} — adopted, firmware current`,
+    );
+  }
+
+  lines.push(
     `${CB}Create wireless network:`,
-    "  SSID: _____________________",
-    "  Password: _________________",
-    `${CB}Configure guest network if required:`,
-    "  SSID: _____________________",
-    "  Password: _________________",
-    `${CB}Configure VLANs if required`,
-    `${CB}Set channel widths and TX power`,
-    `${CB}Run site survey after config`,
+    `  ${CB}SSID configured: ____________________`,
+    `  ${CB}WPA3 security enabled (where supported)`,
+    `  ${CB}Band steering enabled (2.4 / 5 / 6 GHz as applicable)`,
+    `${CB}Create guest network (if required):`,
+    `  ${CB}Guest SSID configured: ______________`,
+    `  ${CB}Client isolation enabled`,
+    `${CB}Configure VLANs (if required)`,
+    `${CB}Set minimum data rates`,
+    `${CB}Adjust TX power per site survey`,
+    `${CB}Enable roaming settings (802.11r) where supported`,
     "",
     "TESTING PHASE:",
-    `${CB}Walk every room and verify signal`,
-    `${CB}Test speed in each zone`,
-    `${CB}Verify all devices connect`,
-    `${CB}Document any dead zones`,
+    `${CB}Walk test — connect phone to network`,
+    `${CB}Test in every room on plan:`,
+  );
+
+  for (const row of completeRooms) {
+    lines.push(
+      `  ${CB}${row.name} — signal: _____ dBm / bars: _____ Mbps: _____`,
+    );
+  }
+  if (completeRooms.length === 0) {
+    lines.push(`  ${CB}________________ — signal: _____ Mbps: _____`);
+  }
+
+  lines.push(
+    `${CB}Test speed at furthest point from primary AP`,
+    `${CB}Test roaming between APs (walk between rooms; confirm handoff)`,
+    `${CB}Connect 3+ devices simultaneously`,
+    `${CB}Test guest network separately (if installed)`,
+    `${CB}Run cable test on all drops`,
+    `${CB}Document any problem areas`,
     "",
-    "SIGN OFF:",
-    "Technician: _____________ Date: _______",
-    "Owner/GC: ______________ Date: _______",
-    "Notes: _________________________________",
+    "DOCUMENTATION:",
+    `${CB}Photo: each AP mounted location`,
+    `${CB}Photo: switch with labeled cables`,
+    `${CB}Photo: gateway installation`,
+    `${CB}Note any deviations from original plan`,
+    `${CB}Record final speed test results:`,
+    "  Best location: _______ Mbps",
+    "  Worst location: ______ Mbps",
+    `${CB}Record network credentials in job file`,
+    "",
+    "OWNER WALKTHROUGH:",
+    `${CB}Show owner how to connect devices`,
+    `${CB}Explain guest network (if installed)`,
+    `${CB}Show how to check network status (app / portal)`,
+    `${CB}Leave network credentials card`,
+    `${CB}Answer all questions`,
+    `${CB}Collect signed completion sign-off`,
+    "",
+    "COMPLETION SIGN-OFF:",
+    "Installation complete and tested: Yes / No",
+    "Notes: ____________________________________",
+    "___________________________________________",
+    "",
+    "Lead Technician: ____________ Date: _______",
+    "Print Name: ___________________________",
+    "",
+    "Owner/GC Acceptance:",
+    "Signature: ______________ Date: _______",
+    "Print Name: ___________________________",
+    "Title: ________________________________",
     "",
     RULE_SHORT,
     "TPP Electrical Contractors Inc.",
+    "Licensed Electrical Contractor — Est. 1982",
     "blueprint-a-iapp.vercel.app",
     RULE_SHORT,
-  ];
+  );
 
   return lines.join("\n");
 }

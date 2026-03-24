@@ -58,6 +58,29 @@ export type BuildingType =
   | "office"
   | "warehouse";
 
+export type ConstructionType =
+  | "new_construction"
+  | "renovation"
+  | "addition"
+  | "commercial_ti"
+  | "other";
+
+export type BuildingAge =
+  | "pre_1980"
+  | "1980_2000"
+  | "2000_2015"
+  | "2015_plus";
+
+export type StoriesCount = 1 | 2 | 3 | 4;
+
+export type YesNoChoice = "yes" | "no";
+
+export type BuildingShape =
+  | "simple_rectangle"
+  | "l_shaped"
+  | "complex"
+  | "multiple_buildings";
+
 export type WifiRoomInput = {
   id: string;
   name: string;
@@ -76,6 +99,14 @@ export type WifiAnalyzerInputs = {
   /** Client / homeowner name for proposals and records. */
   clientName: string;
   buildingType: BuildingType;
+  /** If undefined/empty, engine uses sum of complete room areas. */
+  totalBuildingSqFt: number | undefined;
+  constructionType: ConstructionType;
+  buildingAge: BuildingAge;
+  stories: StoriesCount;
+  basement: YesNoChoice;
+  atticAccess: YesNoChoice;
+  buildingShape: BuildingShape;
   rooms: WifiRoomInput[];
   planningPriority: PlanningPriority;
   internetSpeedMbps: number;
@@ -289,19 +320,26 @@ function incompleteReason(r: WifiRoomInput): string {
   return "Incomplete";
 }
 
+/** Sum of complete room footprints (indoor + outdoor). */
+export function sumCompleteRoomsTotalSqFt(rooms: WifiRoomInput[]): number {
+  return rooms
+    .filter(isRoomComplete)
+    .reduce((s, r) => s + r.lengthFt * r.widthFt, 0);
+}
+
 /** Whole-home AP count (not one AP per room). */
 export function planAPs(
   rooms: WifiRoomInput[],
   priority: PlanningPriority,
+  options?: { indoorAreaScale?: number },
 ): { indoorAps: number; outdoorAps: number; planNotes: string[] } {
   const complete = rooms.filter(isRoomComplete);
   const indoorRooms = complete.filter((r) => !r.outdoor);
   const outdoorRooms = complete.filter((r) => r.outdoor);
 
-  const indoorArea = indoorRooms.reduce(
-    (s, r) => s + r.lengthFt * r.widthFt,
-    0,
-  );
+  const scale = options?.indoorAreaScale ?? 1;
+  const indoorArea =
+    indoorRooms.reduce((s, r) => s + r.lengthFt * r.widthFt, 0) * scale;
   const totalDevices = complete.reduce(
     (s, r) => s + Math.max(0, r.expectedDevices),
     0,
@@ -520,6 +558,8 @@ export type WifiAnalyzerResults = {
   indoorAps: number;
   outdoorAps: number;
   coveragePerApSqFt: number;
+  /** Building total sq ft used in assumptions (manual or summed from rooms). */
+  buildingUsedSqFt: number;
   totalCoverageSqFt: number;
   effectiveSqFtPerAp: number;
   totalIndoorSqFt: number;
@@ -635,17 +675,44 @@ export function computeWifiPlan(inputs: WifiAnalyzerInputs): WifiAnalyzerResults
     (s, r) => s + r.lengthFt * r.widthFt,
     0,
   );
+  const summedBuildingSqFt = sumCompleteRoomsTotalSqFt(rooms);
+  const buildingUsedSqFt =
+    inputs.totalBuildingSqFt !== undefined &&
+    inputs.totalBuildingSqFt > 0 &&
+    Number.isFinite(inputs.totalBuildingSqFt)
+      ? Math.round(inputs.totalBuildingSqFt)
+      : summedBuildingSqFt;
   const totalDevices = completeList.reduce(
     (s, r) => s + Math.max(0, r.expectedDevices),
     0,
   );
 
-  const { indoorAps: baseIndoor, outdoorAps, planNotes } = planAPs(
-    rooms,
-    inputs.planningPriority,
-  );
+  const pre1980 = inputs.buildingAge === "pre_1980";
+  const indoorAreaScale = pre1980 ? 1.15 : 1;
+
+  const { indoorAps: baseIndoor, outdoorAps: baseOutdoor, planNotes: baseNotes } =
+    planAPs(rooms, inputs.planningPriority, { indoorAreaScale });
+  const planNotes = [...baseNotes];
+  if (pre1980) {
+    planNotes.push(
+      "Pre-1980 building: planning assumes heavier wall attenuation (plaster-era typical); AP count biased upward (~15% effective area).",
+    );
+  }
+
   let indoorAps = applyCoverageGoalToIndoor(baseIndoor, inputs.coverageGoal);
+  let outdoorAps = baseOutdoor;
   if (indoorRooms.length === 0) indoorAps = 0;
+
+  if (
+    (inputs.buildingShape === "complex" ||
+      inputs.buildingShape === "multiple_buildings") &&
+    indoorRooms.length > 0
+  ) {
+    indoorAps += 1;
+    planNotes.push(
+      "Complex layout may require additional AP after site survey.",
+    );
+  }
 
   const roomRows = assignServedByAp(roomRowsBase, indoorAps, outdoorAps);
 
@@ -684,8 +751,20 @@ export function computeWifiPlan(inputs: WifiAnalyzerInputs): WifiAnalyzerResults
     180,
     Math.max(35, Math.round(Math.sqrt(Math.max(1, perFloorAvg)) * 1.15 + 20)),
   );
-  const cat6Drops = indoorAps + (outdoorAps > 0 ? outdoorAps : 0);
-  const cat6FootageLf = Math.round(indoorAps * avgRunFt + outdoorAps * 55);
+  let cat6Drops = indoorAps + (outdoorAps > 0 ? outdoorAps : 0);
+  let cat6FootageLf = Math.round(indoorAps * avgRunFt + outdoorAps * 55);
+
+  if (inputs.basement === "yes") {
+    planNotes.push("Consider AP in basement for coverage.");
+    cat6Drops += 1;
+    cat6FootageLf += Math.round(Math.min(120, avgRunFt * 0.85 + 25));
+  }
+
+  if (inputs.atticAccess === "yes") {
+    planNotes.push("Use attic for cable routing where possible.");
+    cat6FootageLf = Math.round(cat6FootageLf * 0.85);
+  }
+
   const lvBrackets = indoorAps;
   const rj45Jacks = cat6Drops;
 
@@ -709,6 +788,10 @@ export function computeWifiPlan(inputs: WifiAnalyzerInputs): WifiAnalyzerResults
 
   const coveragePerApSqFt =
     indoorAps > 0 ? Math.round(totalIndoorSqFt / indoorAps) : 0;
+  const effectiveSqFtPerAp =
+    indoorAps > 0
+      ? Math.round((totalIndoorSqFt / indoorAps) * (pre1980 ? 0.85 : 1))
+      : 0;
   const totalCoverageSqFt = completeList.reduce(
     (s, r) => s + r.lengthFt * r.widthFt,
     0,
@@ -717,7 +800,7 @@ export function computeWifiPlan(inputs: WifiAnalyzerInputs): WifiAnalyzerResults
   const clientBit = inputs.clientName?.trim()
     ? `Client ${inputs.clientName.trim()} · `
     : "";
-  const assumptionsLine = `${clientBit}Rooms: ${completeRooms}/${totalRooms} complete · Indoor ${totalIndoorSqFt} sq ft · Devices ${totalDevices} · Priority ${inputs.planningPriority.replace(/_/g, " ")} · Coverage goal ${inputs.coverageGoal.replace(/_/g, " ")} · Internet ${inputs.internetSpeedMbps} Mbps`;
+  const assumptionsLine = `${clientBit}Building total (used): ${buildingUsedSqFt} sq ft · Rooms: ${completeRooms}/${totalRooms} complete · Indoor ${totalIndoorSqFt} sq ft · Devices ${totalDevices} · Age ${inputs.buildingAge.replace(/_/g, " ")} · Stories ${inputs.stories}${inputs.stories === 4 ? "+" : ""} · Priority ${inputs.planningPriority.replace(/_/g, " ")} · Coverage goal ${inputs.coverageGoal.replace(/_/g, " ")} · Internet ${inputs.internetSpeedMbps} Mbps`;
 
   const laborHours = computeLaborHours(cat6Drops, recommendedAps);
 
@@ -726,8 +809,9 @@ export function computeWifiPlan(inputs: WifiAnalyzerInputs): WifiAnalyzerResults
     indoorAps,
     outdoorAps,
     coveragePerApSqFt,
+    buildingUsedSqFt,
     totalCoverageSqFt,
-    effectiveSqFtPerAp: coveragePerApSqFt,
+    effectiveSqFtPerAp,
     totalIndoorSqFt,
     totalDevices,
     totalRooms,

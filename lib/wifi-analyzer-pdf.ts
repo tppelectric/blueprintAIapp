@@ -260,17 +260,12 @@ function addWorkOrderPdfLines(
   lineHeight: number,
 ): number {
   let y = startY;
-  const box = 8;
-  const spaceW = 3.2;
+  const box = 9;
+  const spaceW = 3.15;
 
   for (const raw of lines) {
-    if (y > pageH - 80) {
-      doc.addPage();
-      y = margin;
-    }
-
     if (raw.trim() === "") {
-      y += lineHeight * 0.45;
+      y += lineHeight * 0.5;
       continue;
     }
 
@@ -281,16 +276,20 @@ function addWorkOrderPdfLines(
 
     if (isCheckbox) {
       const label = trimmedLeft.slice(CHECKBOX_CHAR.length).trim();
-      doc.setDrawColor(40, 40, 40);
-      doc.setLineWidth(0.6);
-      doc.rect(xBase, y - box + 2.5, box, box);
+      doc.setDrawColor(32, 32, 32);
+      doc.setLineWidth(0.75);
+      if (y > pageH - 88) {
+        doc.addPage();
+        y = margin;
+      }
+      doc.rect(xBase, y - box + 3, box, box);
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
-      doc.setTextColor(25, 25, 25);
-      const textW = margin + maxW - xBase - box - 8;
-      const parts = doc.splitTextToSize(label, Math.max(120, textW));
+      doc.setFontSize(10);
+      doc.setTextColor(28, 28, 28);
+      const textW = margin + maxW - xBase - box - 10;
+      const parts = doc.splitTextToSize(label, Math.max(100, textW));
       for (let i = 0; i < parts.length; i++) {
-        if (y > pageH - 80) {
+        if (y > pageH - 88) {
           doc.addPage();
           y = margin;
         }
@@ -300,30 +299,63 @@ function addWorkOrderPdfLines(
       continue;
     }
 
+    if (y > pageH - 88) {
+      doc.addPage();
+      y = margin;
+    }
+
     const t = raw.trim();
     const isRule = t.includes("━");
-    const isHeader =
-      t.length > 4 &&
-      t.length < 72 &&
-      t === t.toUpperCase() &&
-      /^[A-Z0-9\s—\-&:]+$/.test(t) &&
-      (t.endsWith(":") || t.includes("WORK ORDER") || t.includes("FIELD"));
+    const hasUnderscoreFill = /_{3,}/.test(t);
+    const isDocTitle =
+      t.includes("FIELD WORK ORDER") && t.includes("Wi-Fi");
+    const isCompany = t === "TPP ELECTRICAL CONTRACTORS INC.";
+    const isEstSubtitle =
+      t.includes("EST. 1982") && t.includes("Licensed Electrical Contractor");
+    const isSection =
+      !hasUnderscoreFill &&
+      t.length > 6 &&
+      t.length < 92 &&
+      /^[A-Z0-9][A-Z0-9\s—\-/&:]+:$/.test(t);
 
-    doc.setTextColor(25, 25, 25);
+    doc.setTextColor(30, 30, 30);
     if (isRule) {
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(8);
-    } else if (isHeader) {
+      doc.setFontSize(7.5);
+    } else if (isDocTitle) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12.5);
+      y += 3;
+    } else if (isCompany) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11.5);
+    } else if (isEstSubtitle) {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9.5);
+    } else if (isSection) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10.5);
+      y += 5;
+    } else if (t.startsWith("[")) {
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(9);
+      doc.setTextColor(75, 75, 75);
+    } else if (
+      t.startsWith("Room:") ||
+      t.startsWith("Zone:") ||
+      t.startsWith("Cable run:")
+    ) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9.5);
+      doc.setTextColor(38, 38, 38);
     } else {
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
+      doc.setFontSize(10);
     }
 
     const split = doc.splitTextToSize(raw.trim(), maxW - (xBase - margin));
     for (const part of split) {
-      if (y > pageH - 80) {
+      if (y > pageH - 88) {
         doc.addPage();
         y = margin;
       }
@@ -433,7 +465,7 @@ export async function downloadWifiWorkOrderPdf(
     maxW,
     pageH,
     y,
-    12,
+    13,
   );
 
   drawTppFieldDocFooter(doc, margin, pageH);

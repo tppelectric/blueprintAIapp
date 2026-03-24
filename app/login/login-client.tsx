@@ -37,6 +37,7 @@ export function LoginClient() {
       const sleep = (ms: number) =>
         new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+      let leaveBusyUntilNavigate = false;
       try {
         const sb = createBrowserClient();
         console.log("Sign in attempt:", trimmedEmail);
@@ -93,7 +94,7 @@ export function LoginClient() {
         router.refresh();
         await sleep(500);
         router.push(safe);
-        router.refresh();
+        leaveBusyUntilNavigate = true;
       } catch (ex) {
         const msg =
           ex instanceof Error ? ex.message : "Sign-in failed unexpectedly.";
@@ -101,7 +102,9 @@ export function LoginClient() {
         setError(msg);
       } finally {
         setStatusHint(null);
-        setBusy(false);
+        if (!leaveBusyUntilNavigate) {
+          setBusy(false);
+        }
       }
     },
     [email, password, nextPath, router],

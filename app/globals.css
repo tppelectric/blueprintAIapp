@@ -16,7 +16,7 @@
 [data-theme="light"] {
   --background: #f0f4f8;
   --surface-card: #ffffff;
-  --surface-elevated: #ffffff;
+  --surface-elevated: #f8fafc;
   --foreground: #0a1628;
   --foreground-muted: #4a5568;
   --border: #e2e8f0;
@@ -179,6 +179,38 @@ body {
 }
 [data-theme="light"] .dash-surface {
   box-shadow: 0 1px 3px rgba(10, 22, 40, 0.08);
+}
+
+.dash-open-project-btn {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--surface-elevated);
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--foreground);
+  transition:
+    border-color 0.15s,
+    background-color 0.15s,
+    color 0.15s;
+}
+.dash-open-project-btn:hover {
+  border-color: rgba(232, 200, 74, 0.35);
+}
+[data-theme="light"] .dash-open-project-btn {
+  background: #f0f4f8;
+}
+[data-theme="dark"] .dash-open-project-btn {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+[data-theme="dark"] .dash-open-project-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .dash-muted {

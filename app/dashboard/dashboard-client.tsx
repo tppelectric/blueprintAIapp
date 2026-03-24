@@ -442,8 +442,8 @@ export function DashboardClient() {
           </div>
         ) : null}
 
-        <div className="flex w-full min-w-0 flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0 shrink-0 lg:max-w-[min(100%,28rem)]">
+        <div className="flex w-full min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+          <div className="min-w-0 shrink-0 sm:max-w-[min(100%,28rem)]">
             <h1 className="border-l-4 border-[#E8C84A] pl-4 text-3xl font-semibold tracking-tight text-[var(--foreground)] sm:text-4xl">
               My Projects
             </h1>
@@ -457,7 +457,7 @@ export function DashboardClient() {
               </p>
             ) : null}
           </div>
-          <div className="flex min-w-0 flex-1 flex-wrap items-center justify-start gap-2 lg:justify-end">
+          <div className="flex min-w-0 w-full flex-1 flex-wrap items-center justify-end gap-2 sm:w-auto sm:justify-end">
             <Link href="/jobs" className="dash-header-btn shrink-0">
               Jobs
             </Link>
@@ -646,7 +646,7 @@ export function DashboardClient() {
                           </button>
                         </div>
                       ) : (
-                        <h2 className="text-lg font-semibold leading-snug text-white">
+                        <h2 className="text-lg font-semibold leading-snug text-[var(--foreground)]">
                           {cardTitle(p)}
                         </h2>
                       )}
@@ -681,28 +681,28 @@ export function DashboardClient() {
                       </span>
                     </div>
                   </div>
-                  <dl className="mt-4 space-y-2 text-sm text-white/65">
+                  <dl className="dash-muted mt-4 space-y-2 text-sm">
                     <div className="flex justify-between gap-4">
                       <dt>Sheets</dt>
-                      <dd className="text-right text-white/85">
+                      <dd className="text-right text-[var(--foreground)]">
                         {sheetCountLabel(p)}
                       </dd>
                     </div>
                     <div className="flex justify-between gap-4">
                       <dt>Total pages</dt>
-                      <dd className="text-right tabular-nums text-white/85">
+                      <dd className="text-right tabular-nums text-[var(--foreground)]">
                         {totalPagesLabel(p)}
                       </dd>
                     </div>
                     <div className="flex justify-between gap-4">
                       <dt>Uploaded</dt>
-                      <dd className="text-right text-white/85">
+                      <dd className="text-right text-[var(--foreground)]">
                         {formatUploadDate(p.created_at)}
                       </dd>
                     </div>
                     <div className="flex justify-between gap-4">
                       <dt>Size</dt>
-                      <dd className="text-right tabular-nums text-white/85">
+                      <dd className="text-right tabular-nums text-[var(--foreground)]">
                         {formatFileSize(p.file_size)}
                       </dd>
                     </div>
@@ -710,7 +710,7 @@ export function DashboardClient() {
                   <div className="mt-6 flex flex-1 flex-col justify-end">
                     <Link
                       href={`/project/${p.id}`}
-                      className="inline-flex w-full items-center justify-center rounded-lg border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/15"
+                      className="dash-open-project-btn"
                     >
                       Open Project
                     </Link>

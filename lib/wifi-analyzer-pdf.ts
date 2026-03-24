@@ -1,7 +1,10 @@
 import { jsPDF } from "jspdf";
 import { drawTppPdfLetterhead, fetchTppLogoDataUrl } from "@/lib/tpp-pdf-header";
 import type { WifiAnalyzerInputs, WifiAnalyzerResults } from "@/lib/wifi-analyzer-engine";
-import { buildWorkScopeText } from "@/lib/wifi-work-scope";
+import {
+  buildClientProposalText,
+  buildWorkOrderText,
+} from "@/lib/wifi-field-documents";
 
 const FOOTER_PRIMARY = "Prepared by Blueprint AI";
 const FOOTER_SECONDARY = "blueprint-a-iapp.vercel.app";
@@ -60,6 +63,10 @@ export async function downloadWifiAnalysisPdf(
   doc.setTextColor(60, 60, 60);
   doc.text(`Project: ${inputs.projectName || "—"}`, margin, y);
   y += 14;
+  if (inputs.clientName?.trim()) {
+    doc.text(`Client: ${inputs.clientName.trim()}`, margin, y);
+    y += 14;
+  }
   doc.text(
     `Internet: ${inputs.internetSpeedMbps} Mbps · Priority: ${inputs.planningPriority.replace(/_/g, " ")}`,
     margin,
@@ -236,12 +243,177 @@ export async function downloadWifiAnalysisPdf(
   doc.save(`wifi-analyzer-${safe}.pdf`);
 }
 
-/** Full scope-of-work PDF with TPP letterhead. */
-export async function downloadWifiWorkScopePdf(
+const CHECKBOX_CHAR = "\u2610";
+
+function leadingSpaceCount(line: string): number {
+  const m = line.match(/^(\s*)/);
+  return m ? m[1].length : 0;
+}
+
+function addWorkOrderPdfLines(
+  doc: jsPDF,
+  lines: string[],
+  margin: number,
+  maxW: number,
+  pageH: number,
+  startY: number,
+  lineHeight: number,
+): number {
+  let y = startY;
+  const box = 8;
+  const spaceW = 3.2;
+
+  for (const raw of lines) {
+    if (y > pageH - 80) {
+      doc.addPage();
+      y = margin;
+    }
+
+    if (raw.trim() === "") {
+      y += lineHeight * 0.45;
+      continue;
+    }
+
+    const leadSpaces = leadingSpaceCount(raw);
+    const xBase = margin + leadSpaces * spaceW;
+    const trimmedLeft = raw.trimStart();
+    const isCheckbox = trimmedLeft.startsWith(CHECKBOX_CHAR);
+
+    if (isCheckbox) {
+      const label = trimmedLeft.slice(CHECKBOX_CHAR.length).trim();
+      doc.setDrawColor(40, 40, 40);
+      doc.setLineWidth(0.6);
+      doc.rect(xBase, y - box + 2.5, box, box);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(25, 25, 25);
+      const textW = margin + maxW - xBase - box - 8;
+      const parts = doc.splitTextToSize(label, Math.max(120, textW));
+      for (let i = 0; i < parts.length; i++) {
+        if (y > pageH - 80) {
+          doc.addPage();
+          y = margin;
+        }
+        doc.text(parts[i], xBase + box + 5, y);
+        y += lineHeight;
+      }
+      continue;
+    }
+
+    const t = raw.trim();
+    const isRule = t.includes("━");
+    const isHeader =
+      t.length > 4 &&
+      t.length < 72 &&
+      t === t.toUpperCase() &&
+      /^[A-Z0-9\s—\-&:]+$/.test(t) &&
+      (t.endsWith(":") || t.includes("WORK ORDER") || t.includes("FIELD"));
+
+    doc.setTextColor(25, 25, 25);
+    if (isRule) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+    } else if (isHeader) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9.5);
+    } else {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+    }
+
+    const split = doc.splitTextToSize(raw.trim(), maxW - (xBase - margin));
+    for (const part of split) {
+      if (y > pageH - 80) {
+        doc.addPage();
+        y = margin;
+      }
+      doc.text(part, xBase, y);
+      y += lineHeight;
+    }
+  }
+
+  return y;
+}
+
+function addProposalPdfLines(
+  doc: jsPDF,
+  lines: string[],
+  margin: number,
+  maxW: number,
+  pageH: number,
+  startY: number,
+  lineHeight: number,
+): number {
+  let y = startY;
+
+  for (const raw of lines) {
+    if (raw.trim() === "") {
+      y += lineHeight * 0.5;
+      continue;
+    }
+
+    if (y > pageH - 88) {
+      doc.addPage();
+      y = margin;
+    }
+
+    const t = raw.trim();
+    const isRule = t.includes("━");
+    const isDocTitle =
+      t.includes("Proposal") && t.includes("Wi-Fi") && !t.startsWith("Proposal #");
+    const isSection =
+      /^[A-Z][A-Z\s/&',+0-9-]+:$/.test(t) && t.length < 64 && !t.startsWith("DATE");
+
+    doc.setTextColor(30, 30, 30);
+    if (isRule) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.5);
+    } else if (isDocTitle || t === "EST. 1982") {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(isDocTitle ? 13 : 10);
+    } else if (isSection) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10.5);
+      y += 4;
+    } else if (t.startsWith("[")) {
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(8.5);
+      doc.setTextColor(70, 70, 70);
+    } else {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+    }
+
+    const split = doc.splitTextToSize(raw.trim(), maxW);
+    for (const part of split) {
+      if (y > pageH - 88) {
+        doc.addPage();
+        y = margin;
+      }
+      doc.text(part, margin, y);
+      y += lineHeight;
+    }
+  }
+
+  return y;
+}
+
+function drawTppFieldDocFooter(doc: jsPDF, margin: number, pageH: number) {
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(90, 90, 90);
+  doc.text("TPP Electrical Contractors Inc.", margin, pageH - 52);
+  doc.text("Licensed Electrical Contractor · EST. 1982", margin, pageH - 40);
+  doc.text("blueprint-a-iapp.vercel.app", margin, pageH - 28);
+}
+
+/** Field work order PDF — drawn checkboxes + TPP letterhead. */
+export async function downloadWifiWorkOrderPdf(
   inputs: WifiAnalyzerInputs,
   results: WifiAnalyzerResults,
+  workOrderNumber: string,
 ): Promise<void> {
-  const body = buildWorkScopeText(inputs, results);
+  const body = buildWorkOrderText(inputs, results, workOrderNumber);
   const logo = await fetchTppLogoDataUrl();
   const doc = new jsPDF({ unit: "pt", format: "letter" });
   const pageW = doc.internal.pageSize.getWidth();
@@ -254,29 +426,61 @@ export async function downloadWifiWorkScopePdf(
     pageWidth: pageW,
   });
 
-  doc.setFont("courier", "normal");
-  doc.setFontSize(9);
-  doc.setTextColor(25, 25, 25);
-  y = addParagraphs(
+  y = addWorkOrderPdfLines(
     doc,
     body.split("\n"),
     margin,
     maxW,
     pageH,
     y,
-    11,
+    12,
   );
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7);
-  doc.setTextColor(100, 100, 100);
-  doc.text(FOOTER_PRIMARY, margin, pageH - 36);
-  doc.text(FOOTER_SECONDARY, margin, pageH - 26);
+  drawTppFieldDocFooter(doc, margin, pageH);
 
   const safe =
-    (inputs.projectName || "wifi-scope")
+    (inputs.projectName || "wifi-wo")
       .replace(/[^\w\- ]+/g, "")
       .trim()
-      .replace(/\s+/g, "-") || "wifi-scope";
-  doc.save(`wifi-work-scope-${safe}.pdf`);
+      .replace(/\s+/g, "-") || "wifi-wo";
+  doc.save(`wifi-work-order-${safe}.pdf`);
+}
+
+/** Client proposal PDF — TPP letterhead, clean typography. */
+export async function downloadWifiClientProposalPdf(
+  inputs: WifiAnalyzerInputs,
+  results: WifiAnalyzerResults,
+  proposalNumber: string,
+): Promise<void> {
+  const body = buildClientProposalText(inputs, results, proposalNumber);
+  const logo = await fetchTppLogoDataUrl();
+  const doc = new jsPDF({ unit: "pt", format: "letter" });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 48;
+  const maxW = pageW - margin * 2;
+
+  let y = drawTppPdfLetterhead(doc, margin, margin + 8, logo, {
+    logoWidthPt: 52,
+    pageWidth: pageW,
+  });
+
+  y = addProposalPdfLines(
+    doc,
+    body.split("\n"),
+    margin,
+    maxW,
+    pageH,
+    y,
+    13,
+  );
+
+  drawTppFieldDocFooter(doc, margin, pageH);
+
+  const safe =
+    (inputs.projectName || "wifi-proposal")
+      .replace(/[^\w\- ]+/g, "")
+      .trim()
+      .replace(/\s+/g, "-") || "wifi-proposal";
+  doc.save(`wifi-client-proposal-${safe}.pdf`);
 }

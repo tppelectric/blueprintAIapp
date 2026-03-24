@@ -73,6 +73,8 @@ export type WifiRoomInput = {
 
 export type WifiAnalyzerInputs = {
   projectName: string;
+  /** Client / homeowner name for proposals and records. */
+  clientName: string;
   buildingType: BuildingType;
   rooms: WifiRoomInput[];
   planningPriority: PlanningPriority;
@@ -551,6 +553,9 @@ function buildSummaryText(
   const lines: string[] = [
     "TPP Electrical Contractors Inc. — Wi-Fi plan summary",
     `Project: ${inputs.projectName}`,
+    ...(inputs.clientName?.trim()
+      ? [`Client: ${inputs.clientName.trim()}`]
+      : []),
     `Building: ${inputs.buildingType}`,
     `Internet: ${inputs.internetSpeedMbps} Mbps`,
     `Planning priority: ${inputs.planningPriority.replace(/_/g, " ")}`,
@@ -709,7 +714,10 @@ export function computeWifiPlan(inputs: WifiAnalyzerInputs): WifiAnalyzerResults
     0,
   );
 
-  const assumptionsLine = `Rooms: ${completeRooms}/${totalRooms} complete · Indoor ${totalIndoorSqFt} sq ft · Devices ${totalDevices} · Priority ${inputs.planningPriority.replace(/_/g, " ")} · Coverage goal ${inputs.coverageGoal.replace(/_/g, " ")} · Internet ${inputs.internetSpeedMbps} Mbps`;
+  const clientBit = inputs.clientName?.trim()
+    ? `Client ${inputs.clientName.trim()} · `
+    : "";
+  const assumptionsLine = `${clientBit}Rooms: ${completeRooms}/${totalRooms} complete · Indoor ${totalIndoorSqFt} sq ft · Devices ${totalDevices} · Priority ${inputs.planningPriority.replace(/_/g, " ")} · Coverage goal ${inputs.coverageGoal.replace(/_/g, " ")} · Internet ${inputs.internetSpeedMbps} Mbps`;
 
   const laborHours = computeLaborHours(cat6Drops, recommendedAps);
 

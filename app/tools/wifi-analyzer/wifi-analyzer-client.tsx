@@ -23,9 +23,14 @@ import {
 } from "@/lib/wifi-analyzer-engine";
 import {
   downloadWifiAnalysisPdf,
-  downloadWifiWorkScopePdf,
+  downloadWifiClientProposalPdf,
+  downloadWifiWorkOrderPdf,
 } from "@/lib/wifi-analyzer-pdf";
-import { buildWorkScopeText } from "@/lib/wifi-work-scope";
+import {
+  buildClientProposalText,
+  buildWorkOrderText,
+  generateWifiDocumentNumber,
+} from "@/lib/wifi-field-documents";
 
 function newId() {
   return typeof crypto !== "undefined" && crypto.randomUUID
@@ -113,6 +118,7 @@ function buildCsv(inputs: WifiAnalyzerInputs, r: WifiAnalyzerResults): string {
   const lines: string[] = [
     "TPP Electrical Contractors Inc. — Wi-Fi takeoff export",
     `Project,${csvCell(inputs.projectName)}`,
+    `Client,${csvCell(inputs.clientName || "")}`,
     `Building_type,${csvCell(inputs.buildingType)}`,
     `Internet_Mbps,${inputs.internetSpeedMbps}`,
     `Planning_priority,${csvCell(inputs.planningPriority)}`,
@@ -245,6 +251,7 @@ function printWorkScopePlainText(text: string) {
 
 export function WifiAnalyzerClient() {
   const [projectName, setProjectName] = useState("");
+  const [clientName, setClientName] = useState("");
   const [buildingType, setBuildingType] =
     useState<BuildingType>("residential");
   const [rooms, setRooms] = useState<WifiRoomInput[]>(exampleRooms);
@@ -263,9 +270,14 @@ export function WifiAnalyzerClient() {
   const [copyMsg, setCopyMsg] = useState<string | null>(null);
   const [calculating, setCalculating] = useState(false);
   const [calcError, setCalcError] = useState<string | null>(null);
-  const [scopeModalOpen, setScopeModalOpen] = useState(false);
-  const [scopePdfBusy, setScopePdfBusy] = useState(false);
-  const [scopeCopyMsg, setScopeCopyMsg] = useState<string | null>(null);
+  const [workOrderOpen, setWorkOrderOpen] = useState(false);
+  const [proposalOpen, setProposalOpen] = useState(false);
+  const [workOrderNumber, setWorkOrderNumber] = useState("");
+  const [proposalNumber, setProposalNumber] = useState("");
+  const [woPdfBusy, setWoPdfBusy] = useState(false);
+  const [propPdfBusy, setPropPdfBusy] = useState(false);
+  const [woCopyMsg, setWoCopyMsg] = useState<string | null>(null);
+  const [propCopyMsg, setPropCopyMsg] = useState<string | null>(null);
 
   const [blueprintProjects, setBlueprintProjects] = useState<
     BlueprintProjectOption[]
@@ -305,6 +317,7 @@ export function WifiAnalyzerClient() {
   const inputs: WifiAnalyzerInputs = useMemo(
     () => ({
       projectName: projectName.trim() || "Untitled",
+      clientName: clientName.trim(),
       buildingType,
       rooms,
       planningPriority,
@@ -316,6 +329,7 @@ export function WifiAnalyzerClient() {
     }),
     [
       projectName,
+      clientName,
       buildingType,
       rooms,
       planningPriority,
@@ -327,10 +341,15 @@ export function WifiAnalyzerClient() {
     ],
   );
 
-  const workScopeText = useMemo(() => {
-    if (!results) return "";
-    return buildWorkScopeText(inputs, results);
-  }, [inputs, results]);
+  const workOrderText = useMemo(() => {
+    if (!results || !workOrderNumber) return "";
+    return buildWorkOrderText(inputs, results, workOrderNumber);
+  }, [inputs, results, workOrderNumber]);
+
+  const proposalText = useMemo(() => {
+    if (!results || !proposalNumber) return "";
+    return buildClientProposalText(inputs, results, proposalNumber);
+  }, [inputs, results, proposalNumber]);
 
   const updateRoom = (id: string, patch: Partial<WifiRoomInput>) => {
     setRooms((prev) =>
@@ -454,25 +473,60 @@ export function WifiAnalyzerClient() {
     }
   };
 
-  const copyWorkScope = async () => {
-    if (!workScopeText) return;
+  const copyWorkOrder = async () => {
+    if (!workOrderText) return;
     try {
-      await navigator.clipboard.writeText(workScopeText);
-      setScopeCopyMsg("Copied to clipboard.");
-      window.setTimeout(() => setScopeCopyMsg(null), 2500);
+      await navigator.clipboard.writeText(workOrderText);
+      setWoCopyMsg("Copied to clipboard.");
+      window.setTimeout(() => setWoCopyMsg(null), 2500);
     } catch {
-      setScopeCopyMsg("Could not copy.");
+      setWoCopyMsg("Could not copy.");
     }
   };
 
-  const exportWorkScopePdf = async () => {
-    if (!results) return;
-    setScopePdfBusy(true);
+  const copyProposal = async () => {
+    if (!proposalText) return;
     try {
-      await downloadWifiWorkScopePdf(inputs, results);
-    } finally {
-      setScopePdfBusy(false);
+      await navigator.clipboard.writeText(proposalText);
+      setPropCopyMsg("Copied to clipboard.");
+      window.setTimeout(() => setPropCopyMsg(null), 2500);
+    } catch {
+      setPropCopyMsg("Could not copy.");
     }
+  };
+
+  const exportWorkOrderPdf = async () => {
+    if (!results || !workOrderNumber) return;
+    setWoPdfBusy(true);
+    try {
+      await downloadWifiWorkOrderPdf(inputs, results, workOrderNumber);
+    } finally {
+      setWoPdfBusy(false);
+    }
+  };
+
+  const exportProposalPdf = async () => {
+    if (!results || !proposalNumber) return;
+    setPropPdfBusy(true);
+    try {
+      await downloadWifiClientProposalPdf(inputs, results, proposalNumber);
+    } finally {
+      setPropPdfBusy(false);
+    }
+  };
+
+  const openWorkOrderModal = () => {
+    if (!results) return;
+    setWorkOrderNumber(generateWifiDocumentNumber("WO"));
+    setWoCopyMsg(null);
+    setWorkOrderOpen(true);
+  };
+
+  const openProposalModal = () => {
+    if (!results) return;
+    setProposalNumber(generateWifiDocumentNumber("PROP"));
+    setPropCopyMsg(null);
+    setProposalOpen(true);
   };
 
   return (
@@ -500,6 +554,15 @@ export function WifiAnalyzerClient() {
                 onChange={(e) => setProjectName(e.target.value)}
                 className="mt-1 w-full rounded-lg border border-white/15 bg-[#0a1628] px-3 py-2 text-white"
                 placeholder="e.g. Smith residence — Wi-Fi upgrade"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="text-white/70">Client name (for proposals)</span>
+              <input
+                value={clientName}
+                onChange={(e) => setClientName(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-white/15 bg-[#0a1628] px-3 py-2 text-white"
+                placeholder="e.g. Jane Smith"
               />
             </label>
             <label className="block text-sm">
@@ -959,10 +1022,17 @@ export function WifiAnalyzerClient() {
               </button>
               <button
                 type="button"
-                onClick={() => setScopeModalOpen(true)}
+                onClick={openWorkOrderModal}
+                className="rounded-lg border border-amber-500/45 bg-amber-500/15 px-4 py-2.5 text-sm font-semibold text-amber-100 hover:bg-amber-500/25"
+              >
+                Work order
+              </button>
+              <button
+                type="button"
+                onClick={openProposalModal}
                 className="rounded-lg border border-violet-400/40 bg-violet-500/15 px-4 py-2.5 text-sm font-semibold text-violet-100 hover:bg-violet-500/25"
               >
-                Create work scope
+                Client proposal
               </button>
             </div>
             {saveMsg ? (
@@ -1193,24 +1263,24 @@ export function WifiAnalyzerClient() {
           </div>
         ) : null}
 
-        {scopeModalOpen && results ? (
+        {workOrderOpen && results && workOrderNumber ? (
           <div
             className="fixed inset-0 z-50 flex items-end justify-center bg-black/65 p-4 sm:items-center"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="wifi-scope-title"
+            aria-labelledby="wifi-wo-title"
           >
             <div className="max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-2xl border border-white/15 bg-[#0a1628] shadow-xl">
               <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
                 <h2
-                  id="wifi-scope-title"
+                  id="wifi-wo-title"
                   className="text-base font-semibold text-white"
                 >
-                  Work scope document
+                  Field work order — {workOrderNumber}
                 </h2>
                 <button
                   type="button"
-                  onClick={() => setScopeModalOpen(false)}
+                  onClick={() => setWorkOrderOpen(false)}
                   className="rounded-lg px-2 py-1 text-sm text-white/70 hover:bg-white/10 hover:text-white"
                 >
                   Close
@@ -1218,36 +1288,97 @@ export function WifiAnalyzerClient() {
               </div>
               <div className="max-h-[55vh] overflow-y-auto px-4 py-3">
                 <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-white/88">
-                  {workScopeText}
+                  {workOrderText}
                 </pre>
               </div>
               <div className="flex flex-wrap gap-2 border-t border-white/10 px-4 py-3">
                 <button
                   type="button"
-                  onClick={() => void copyWorkScope()}
+                  onClick={() => void copyWorkOrder()}
                   className="rounded-lg border border-[#E8C84A]/50 bg-[#E8C84A]/15 px-3 py-2 text-sm font-semibold text-[#E8C84A]"
                 >
                   Copy to clipboard
                 </button>
                 <button
                   type="button"
-                  onClick={() => printWorkScopePlainText(workScopeText)}
+                  onClick={() => printWorkScopePlainText(workOrderText)}
                   className="rounded-lg border border-white/20 bg-white/5 px-3 py-2 text-sm font-semibold text-white"
                 >
                   Print
                 </button>
                 <button
                   type="button"
-                  disabled={scopePdfBusy}
-                  onClick={() => void exportWorkScopePdf()}
-                  className="rounded-lg border border-violet-400/40 bg-violet-500/15 px-3 py-2 text-sm font-semibold text-violet-100 disabled:opacity-50"
+                  disabled={woPdfBusy}
+                  onClick={() => void exportWorkOrderPdf()}
+                  className="rounded-lg border border-amber-500/45 bg-amber-500/15 px-3 py-2 text-sm font-semibold text-amber-100 disabled:opacity-50"
                 >
-                  {scopePdfBusy ? "PDF…" : "Export scope PDF"}
+                  {woPdfBusy ? "PDF…" : "Export PDF"}
                 </button>
               </div>
-              {scopeCopyMsg ? (
+              {woCopyMsg ? (
                 <p className="px-4 pb-3 text-xs text-emerald-300/90">
-                  {scopeCopyMsg}
+                  {woCopyMsg}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {proposalOpen && results && proposalNumber ? (
+          <div
+            className="fixed inset-0 z-50 flex items-end justify-center bg-black/65 p-4 sm:items-center"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wifi-prop-title"
+          >
+            <div className="max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-2xl border border-white/15 bg-[#0a1628] shadow-xl">
+              <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                <h2
+                  id="wifi-prop-title"
+                  className="text-base font-semibold text-white"
+                >
+                  Client proposal — {proposalNumber}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setProposalOpen(false)}
+                  className="rounded-lg px-2 py-1 text-sm text-white/70 hover:bg-white/10 hover:text-white"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="max-h-[55vh] overflow-y-auto px-4 py-3">
+                <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-white/88">
+                  {proposalText}
+                </pre>
+              </div>
+              <div className="flex flex-wrap gap-2 border-t border-white/10 px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => void copyProposal()}
+                  className="rounded-lg border border-[#E8C84A]/50 bg-[#E8C84A]/15 px-3 py-2 text-sm font-semibold text-[#E8C84A]"
+                >
+                  Copy to clipboard
+                </button>
+                <button
+                  type="button"
+                  onClick={() => printWorkScopePlainText(proposalText)}
+                  className="rounded-lg border border-white/20 bg-white/5 px-3 py-2 text-sm font-semibold text-white"
+                >
+                  Print
+                </button>
+                <button
+                  type="button"
+                  disabled={propPdfBusy}
+                  onClick={() => void exportProposalPdf()}
+                  className="rounded-lg border border-violet-400/40 bg-violet-500/15 px-3 py-2 text-sm font-semibold text-violet-100 disabled:opacity-50"
+                >
+                  {propPdfBusy ? "PDF…" : "Export PDF"}
+                </button>
+              </div>
+              {propCopyMsg ? (
+                <p className="px-4 pb-3 text-xs text-emerald-300/90">
+                  {propCopyMsg}
                 </p>
               ) : null}
             </div>

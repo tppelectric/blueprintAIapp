@@ -325,6 +325,11 @@ export function buildWorkOrderText(
 
   lines.push(
     "ROUGH-IN PHASE:",
+    ...(inputs.atticAccess === "yes"
+      ? [
+          "  Note: Use attic for cable routing where possible (when accessible and approved).",
+        ]
+      : []),
     `${CB}Walk entire building with owner/GC`,
     `${CB}Mark all AP locations on wall/ceiling`,
     `${CB}Identify and mark cable routes`,

@@ -611,9 +611,12 @@ function buildSummaryText(
     ),
     "",
     "COVERAGE",
-    `Indoor sq ft: ${r.totalIndoorSqFt} · Devices (summed): ${r.totalDevices}`,
+    `Building total (used): ${r.buildingUsedSqFt} sq ft · Indoor sq ft: ${r.totalIndoorSqFt} · Devices (summed): ${r.totalDevices}`,
     `APs: ${r.indoorAps} indoor + ${r.outdoorAps} outdoor (${r.recommendedAps} total)`,
-    `Avg indoor sq ft / indoor AP: ~${r.coveragePerApSqFt}`,
+    `Avg indoor sq ft / indoor AP: ~${r.coveragePerApSqFt}` +
+      (inputs.buildingAge === "pre_1980"
+        ? ` · Age-adjusted effective ~${r.effectiveSqFtPerAp} sq ft / AP`
+        : ""),
     "",
     "GATEWAY",
     r.gatewayRecommendation,

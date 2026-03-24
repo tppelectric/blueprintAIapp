@@ -5,21 +5,29 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ToolPageHeader } from "@/components/tool-page-header";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { WifiHeatMapCard } from "@/components/wifi-heatmap-card";
+import { loadPdfDocumentFromArrayBuffer } from "@/lib/wifi-blueprint-preview";
 import {
   computeWifiPlan,
   scoreRoom,
+  sumCompleteRoomsTotalSqFt,
   type BudgetTier,
+  type BuildingAge,
+  type BuildingShape,
   type BuildingType,
   type CeilingHeight,
+  type ConstructionType,
   type CoverageGoal,
-  type PoeChoice,
   type PlanningPriority,
+  type PoeChoice,
   type RoomTypeOption,
   type RoomWallMaterial,
+  type StoriesCount,
   type VendorChoice,
   type WifiAnalyzerInputs,
   type WifiAnalyzerResults,
   type WifiRoomInput,
+  type YesNoChoice,
 } from "@/lib/wifi-analyzer-engine";
 import {
   downloadWifiAnalysisPdf,
@@ -120,6 +128,13 @@ function buildCsv(inputs: WifiAnalyzerInputs, r: WifiAnalyzerResults): string {
     `Project,${csvCell(inputs.projectName)}`,
     `Client,${csvCell(inputs.clientName || "")}`,
     `Building_type,${csvCell(inputs.buildingType)}`,
+    `Total_building_sq_ft,${inputs.totalBuildingSqFt ?? ""}`,
+    `Construction_type,${csvCell(inputs.constructionType)}`,
+    `Building_age,${csvCell(inputs.buildingAge)}`,
+    `Stories,${inputs.stories}`,
+    `Basement,${csvCell(inputs.basement)}`,
+    `Attic_access_cabling,${csvCell(inputs.atticAccess)}`,
+    `Building_shape,${csvCell(inputs.buildingShape)}`,
     `Internet_Mbps,${inputs.internetSpeedMbps}`,
     `Planning_priority,${csvCell(inputs.planningPriority)}`,
     `Coverage_goal,${csvCell(inputs.coverageGoal)}`,
@@ -128,6 +143,7 @@ function buildCsv(inputs: WifiAnalyzerInputs, r: WifiAnalyzerResults): string {
     `Rooms_total,${r.totalRooms}`,
     `Rooms_complete,${r.completeRooms}`,
     `Rooms_incomplete,${r.incompleteRooms}`,
+    `Building_used_sq_ft,${r.buildingUsedSqFt ?? ""}`,
     "",
     "ROOM_INPUTS",
     [
@@ -285,6 +301,27 @@ export function WifiAnalyzerClient() {
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [linkedProjectId, setLinkedProjectId] = useState<string>("");
 
+  const [totalBuildingSqFtInput, setTotalBuildingSqFtInput] = useState("");
+  const [constructionType, setConstructionType] =
+    useState<ConstructionType>("renovation");
+  const [buildingAge, setBuildingAge] = useState<BuildingAge>("2000_2015");
+  const [stories, setStories] = useState<StoriesCount>(2);
+  const [basement, setBasement] = useState<YesNoChoice>("no");
+  const [atticAccess, setAtticAccess] = useState<YesNoChoice>("no");
+  const [buildingShape, setBuildingShape] =
+    useState<BuildingShape>("simple_rectangle");
+
+  const [pdfArrayBuffer, setPdfArrayBuffer] = useState<ArrayBuffer | null>(
+    null,
+  );
+  const [pdfPageCount, setPdfPageCount] = useState(0);
+  const [pdfThumbnails, setPdfThumbnails] = useState<string[]>([]);
+  const [selectedPdfPage, setSelectedPdfPage] = useState(1);
+  const [blueprintDataUrl, setBlueprintDataUrl] = useState<string | null>(null);
+  const [pdfUploadProgress, setPdfUploadProgress] = useState(0);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [calcGeneration, setCalcGeneration] = useState(0);
+
   const resultsAnchorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -314,11 +351,89 @@ export function WifiAnalyzerClient() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!pdfArrayBuffer || selectedPdfPage < 1) return;
+    let cancelled = false;
+    setPdfBusy(true);
+    (async () => {
+      try {
+        const doc = await loadPdfDocumentFromArrayBuffer(pdfArrayBuffer);
+        const url = await doc.renderPageToDataUrl(selectedPdfPage, 1600);
+        if (!cancelled) setBlueprintDataUrl(url);
+      } catch {
+        if (!cancelled) setBlueprintDataUrl(null);
+      } finally {
+        if (!cancelled) setPdfBusy(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pdfArrayBuffer, selectedPdfPage]);
+
+  const onPdfFile = async (file: File | undefined) => {
+    if (!file || file.type !== "application/pdf") return;
+    setPdfBusy(true);
+    setPdfUploadProgress(5);
+    try {
+      const buf = await file.arrayBuffer();
+      setPdfArrayBuffer(buf);
+      const doc = await loadPdfDocumentFromArrayBuffer(buf);
+      const n = doc.numPages;
+      setPdfPageCount(n);
+      setSelectedPdfPage(1);
+      const maxThumb = Math.min(n, 12);
+      const thumbs: string[] = [];
+      for (let i = 1; i <= maxThumb; i++) {
+        thumbs.push(await doc.renderPageToDataUrl(i, 140));
+        setPdfUploadProgress(10 + Math.round((i / maxThumb) * 85));
+      }
+      setPdfThumbnails(thumbs);
+      setPdfUploadProgress(100);
+    } catch (e) {
+      console.error(e);
+      setPdfArrayBuffer(null);
+      setPdfPageCount(0);
+      setPdfThumbnails([]);
+      setBlueprintDataUrl(null);
+    } finally {
+      setPdfBusy(false);
+      window.setTimeout(() => setPdfUploadProgress(0), 700);
+    }
+  };
+
+  const clearBlueprint = () => {
+    setPdfArrayBuffer(null);
+    setPdfPageCount(0);
+    setPdfThumbnails([]);
+    setBlueprintDataUrl(null);
+    setSelectedPdfPage(1);
+  };
+
+  const calculatedSqFtFromRooms = useMemo(
+    () => sumCompleteRoomsTotalSqFt(rooms),
+    [rooms],
+  );
+
+  const totalBuildingSqFtParsed = useMemo(() => {
+    const t = totalBuildingSqFtInput.trim();
+    if (!t) return undefined;
+    const n = Number(t);
+    return n > 0 && Number.isFinite(n) ? Math.round(n) : undefined;
+  }, [totalBuildingSqFtInput]);
+
   const inputs: WifiAnalyzerInputs = useMemo(
     () => ({
       projectName: projectName.trim() || "Untitled",
       clientName: clientName.trim(),
       buildingType,
+      totalBuildingSqFt: totalBuildingSqFtParsed,
+      constructionType,
+      buildingAge,
+      stories,
+      basement,
+      atticAccess,
+      buildingShape,
       rooms,
       planningPriority,
       internetSpeedMbps: Math.max(1, internetSpeedMbps || 1),
@@ -331,6 +446,13 @@ export function WifiAnalyzerClient() {
       projectName,
       clientName,
       buildingType,
+      totalBuildingSqFtParsed,
+      constructionType,
+      buildingAge,
+      stories,
+      basement,
+      atticAccess,
+      buildingShape,
       rooms,
       planningPriority,
       internetSpeedMbps,
@@ -390,6 +512,7 @@ export function WifiAnalyzerClient() {
       try {
         const next = computeWifiPlan(inputs);
         setResults(next);
+        setCalcGeneration((g) => g + 1);
       } catch (e) {
         console.error(e);
         setCalcError(
@@ -693,6 +816,228 @@ export function WifiAnalyzerClient() {
                 ))}
               </div>
             </div>
+          </section>
+
+          <section className="space-y-4">
+            <SectionTitle>Building information</SectionTitle>
+            <p className="text-xs text-white/50">
+              Used with the planning engine for AP count, cable estimates, and
+              field notes. Total sq ft can be left blank to use the sum of
+              complete rooms.
+            </p>
+            <label className="block text-sm">
+              <span className="text-white/70">
+                Total building square footage (optional)
+              </span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={totalBuildingSqFtInput}
+                onChange={(e) => setTotalBuildingSqFtInput(e.target.value)}
+                placeholder={
+                  calculatedSqFtFromRooms > 0
+                    ? `Auto from rooms: ${calculatedSqFtFromRooms} sq ft`
+                    : "Enter total or complete rooms below"
+                }
+                className="mt-1 w-full rounded-lg border border-white/15 bg-[#0a1628] px-3 py-2 text-white placeholder:text-white/35"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="text-white/70">Construction type</span>
+              <select
+                value={constructionType}
+                onChange={(e) =>
+                  setConstructionType(e.target.value as ConstructionType)
+                }
+                className="mt-1 w-full rounded-lg border border-white/15 bg-[#0a1628] px-3 py-2 text-white"
+              >
+                <option value="new_construction">New construction</option>
+                <option value="renovation">Renovation</option>
+                <option value="addition">Addition</option>
+                <option value="commercial_ti">Commercial tenant improvement</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="text-white/70">Building age (wall / RF model)</span>
+              <select
+                value={buildingAge}
+                onChange={(e) =>
+                  setBuildingAge(e.target.value as BuildingAge)
+                }
+                className="mt-1 w-full rounded-lg border border-white/15 bg-[#0a1628] px-3 py-2 text-white"
+              >
+                <option value="pre_1980">Pre-1980 (plaster-era bias)</option>
+                <option value="1980_2000">1980–2000</option>
+                <option value="2000_2015">2000–2015</option>
+                <option value="2015_plus">2015+</option>
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="text-white/70">Number of stories</span>
+              <select
+                value={stories}
+                onChange={(e) =>
+                  setStories(Number(e.target.value) as StoriesCount)
+                }
+                className="mt-1 w-full rounded-lg border border-white/15 bg-[#0a1628] px-3 py-2 text-white"
+              >
+                <option value={1}>1</option>
+                <option value={2}>2</option>
+                <option value={3}>3</option>
+                <option value={4}>4+</option>
+              </select>
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm">
+                <span className="text-white/70">Basement</span>
+                <select
+                  value={basement}
+                  onChange={(e) =>
+                    setBasement(e.target.value as YesNoChoice)
+                  }
+                  className="mt-1 w-full rounded-lg border border-white/15 bg-[#0a1628] px-3 py-2 text-white"
+                >
+                  <option value="no">No</option>
+                  <option value="yes">Yes</option>
+                </select>
+              </label>
+              <label className="block text-sm">
+                <span className="text-white/70">Attic access for cabling</span>
+                <select
+                  value={atticAccess}
+                  onChange={(e) =>
+                    setAtticAccess(e.target.value as YesNoChoice)
+                  }
+                  className="mt-1 w-full rounded-lg border border-white/15 bg-[#0a1628] px-3 py-2 text-white"
+                >
+                  <option value="no">No</option>
+                  <option value="yes">Yes</option>
+                </select>
+              </label>
+            </div>
+            <label className="block text-sm">
+              <span className="text-white/70">Building shape</span>
+              <select
+                value={buildingShape}
+                onChange={(e) =>
+                  setBuildingShape(e.target.value as BuildingShape)
+                }
+                className="mt-1 w-full rounded-lg border border-white/15 bg-[#0a1628] px-3 py-2 text-white"
+              >
+                <option value="simple_rectangle">Simple rectangle</option>
+                <option value="l_shaped">L-shaped</option>
+                <option value="complex">Complex</option>
+                <option value="multiple_buildings">Multiple buildings</option>
+              </select>
+            </label>
+          </section>
+
+          <section className="space-y-4">
+            <SectionTitle>Blueprint upload (optional)</SectionTitle>
+            <p className="text-xs text-white/50">
+              PDFs stay in your browser for heat map overlay — nothing is
+              uploaded to storage.
+            </p>
+            <label
+              className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#E8C84A]/40 bg-[#0a1628]/60 px-4 py-10 text-center transition hover:border-[#E8C84A]/70 hover:bg-[#0a1628]"
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const f = e.dataTransfer.files?.[0];
+                void onPdfFile(f);
+              }}
+            >
+              <input
+                type="file"
+                accept="application/pdf"
+                className="hidden"
+                disabled={pdfBusy}
+                onChange={(e) => void onPdfFile(e.target.files?.[0])}
+              />
+              <span className="text-sm font-semibold text-[#E8C84A]">
+                Upload floor plan PDF for heat map overlay
+              </span>
+              <span className="mt-2 text-xs text-white/55">
+                Drag and drop or click to select · PDF only
+              </span>
+            </label>
+            {pdfUploadProgress > 0 && pdfUploadProgress < 100 ? (
+              <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full bg-[#E8C84A] transition-all duration-300"
+                  style={{ width: `${pdfUploadProgress}%` }}
+                />
+              </div>
+            ) : null}
+            {pdfPageCount > 0 ? (
+              <div className="rounded-lg border border-white/10 bg-[#0a1628]/50 p-4">
+                <p className="text-sm text-white/85">
+                  Floor plan uploaded — {pdfPageCount} page
+                  {pdfPageCount === 1 ? "" : "s"} detected
+                  {pdfBusy ? " (rendering…)" : ""}
+                </p>
+                <p className="mt-2 text-xs text-white/55">
+                  Select page for heat map background
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {pdfThumbnails.map((src, idx) => {
+                    const page = idx + 1;
+                    return (
+                      <button
+                        key={page}
+                        type="button"
+                        onClick={() => setSelectedPdfPage(page)}
+                        className={`overflow-hidden rounded border-2 ${
+                          selectedPdfPage === page
+                            ? "border-[#E8C84A]"
+                            : "border-transparent"
+                        }`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={src}
+                          alt={`Page ${page}`}
+                          className="h-20 w-auto max-w-[72px] object-cover"
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+                {pdfPageCount > pdfThumbnails.length ? (
+                  <label className="mt-3 block text-xs text-white/60">
+                    Page # (1–{pdfPageCount})
+                    <input
+                      type="number"
+                      min={1}
+                      max={pdfPageCount}
+                      value={selectedPdfPage}
+                      onChange={(e) =>
+                        setSelectedPdfPage(
+                          Math.min(
+                            pdfPageCount,
+                            Math.max(1, Number(e.target.value) || 1),
+                          ),
+                        )
+                      }
+                      className="ml-2 w-20 rounded border border-white/15 bg-[#0a1628] px-2 py-1 text-white"
+                    />
+                  </label>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={clearBlueprint}
+                  className="mt-3 text-xs font-medium text-red-300/90 hover:text-red-200"
+                >
+                  Remove PDF
+                </button>
+              </div>
+            ) : null}
           </section>
 
           <section className="space-y-4">
@@ -1050,6 +1395,12 @@ export function WifiAnalyzerClient() {
                   incomplete)
                 </li>
                 <li>Total indoor sq ft: {results.totalIndoorSqFt}</li>
+                {results.buildingUsedSqFt != null ? (
+                  <li>
+                    Building sq ft used for planning:{" "}
+                    {results.buildingUsedSqFt}
+                  </li>
+                ) : null}
                 <li>Total devices (summed): {results.totalDevices}</li>
                 <li>
                   Recommended APs:{" "}
@@ -1064,6 +1415,13 @@ export function WifiAnalyzerClient() {
                 </li>
               </ul>
             </section>
+
+            <WifiHeatMapCard
+              inputs={inputs}
+              results={results}
+              blueprintDataUrl={blueprintDataUrl}
+              calcGeneration={calcGeneration}
+            />
 
             <section className="rounded-2xl border border-white/12 bg-white/[0.04] p-6">
               <h2 className="border-l-4 border-[#E8C84A] pl-3 text-lg font-semibold">

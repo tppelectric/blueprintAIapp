@@ -63,6 +63,17 @@ export type AvCeilingType =
 
 export type AvCeilingHeight = "8" | "9" | "10" | "12" | "14" | "higher";
 
+/** Outdoor/exterior speaker strategy when "This is an outdoor/exterior space" is checked. */
+export type AvOutdoorSpeakerType =
+  | "rock_landscape"
+  | "satellite"
+  | "bollard"
+  | "pendant_hanging"
+  | "surface_mount_weatherproof"
+  | "subwoofer_satellite_system"
+  | "in_ground_subwoofer"
+  | "custom_other";
+
 export type AvAcousticTreatment =
   | "none"
   | "some_soft"
@@ -125,6 +136,10 @@ export type AvRoomInput = {
   widthFt: number;
   roomType: AvRoomType;
   primaryUse: AvPrimaryUse;
+  /** User-marked outdoor/exterior space — drives outdoor speaker rules and UI. */
+  outdoorSpace: boolean;
+  /** Used when `outdoorSpace` is true (coverage + labeling). */
+  outdoorSpeakerType: AvOutdoorSpeakerType;
   ceilingType: AvCeilingType;
   ceilingHeight: AvCeilingHeight;
   acousticTreatment: AvAcousticTreatment;
@@ -160,6 +175,8 @@ export type AvRoomPlanRow = {
   speakerWireNote: string;
   videoWireNote: string;
   zone: string;
+  /** Checkbox "outdoor/exterior space" — show 🌿 in UI tables. */
+  isOutdoorExterior: boolean;
 };
 
 export type AvTierEstimate = {
@@ -171,6 +188,20 @@ export type AvTierEstimate = {
   ampNote: string;
   costRange: string;
   popular?: boolean;
+  /** Outdoor/exterior line when any room uses the outdoor checkbox. */
+  outdoorSpeakersNote?: string;
+};
+
+export type AvOutdoorMaterialsRollup = {
+  rockLandscapePairs: number;
+  outdoorSatellitePairs: number;
+  bollards: number;
+  pendants: number;
+  surfaceMountWeatherproofPairs: number;
+  subSatelliteSystems: number;
+  inGroundSubwoofers: number;
+  customOtherSpeakers: number;
+  weatherproofVolumeControls: number;
 };
 
 export type AvMaterialsRollup = {
@@ -178,6 +209,9 @@ export type AvMaterialsRollup = {
   speakers65: number;
   speakers8: number;
   outdoorPairs: number;
+  /** Patio/pool/outdoor room type without exterior checkbox — generic pair count. */
+  legacyOutdoorPairs: number;
+  outdoorDetail: AvOutdoorMaterialsRollup;
   displays: { inches: number; qty: number }[];
   projectorQty: number;
   speakerWire16Lf: number;
@@ -205,6 +239,8 @@ export type AvResults = {
   materials: AvMaterialsRollup;
   amplificationNote: string;
   summaryLines: string[];
+  /** Any room with `outdoorSpace` checked — drives outdoor tier copy in UI. */
+  hasOutdoorExteriorRooms: boolean;
 };
 
 function roomSqFt(r: AvRoomInput): number {
@@ -297,11 +333,110 @@ function displayTvVsProjector(
   return "Projector recommended";
 }
 
+/** Speaker count + label when `outdoorSpace` is checked. */
+export function outdoorSpeakerQtyAndLabel(
+  sqFt: number,
+  t: AvOutdoorSpeakerType,
+): { qty: number; label: string } {
+  const sq = Math.max(1, sqFt);
+  switch (t) {
+    case "rock_landscape": {
+      const pairs = Math.max(1, Math.ceil(sq / 400));
+      return {
+        qty: pairs * 2,
+        label: `Outdoor — Rock/Landscape (${pairs} pr @ 400 sq ft)`,
+      };
+    }
+    case "satellite": {
+      const pairs = Math.max(1, Math.ceil(sq / 300));
+      return {
+        qty: pairs * 2,
+        label: `Outdoor — Satellite (${pairs} pr @ 300 sq ft)`,
+      };
+    }
+    case "bollard": {
+      const n = Math.max(1, Math.ceil(sq / 200));
+      return { qty: n, label: `Outdoor — Bollard (${n} @ 200 sq ft)` };
+    }
+    case "pendant_hanging": {
+      const n = Math.max(1, Math.ceil(sq / 250));
+      return { qty: n, label: `Outdoor — Pendant/hanging (${n} @ 250 sq ft)` };
+    }
+    case "surface_mount_weatherproof": {
+      const pairs = Math.max(1, Math.ceil(sq / 350));
+      return {
+        qty: pairs * 2,
+        label: `Outdoor — Surface mount weatherproof (${pairs} pr @ 350 sq ft)`,
+      };
+    }
+    case "subwoofer_satellite_system": {
+      const systems = Math.max(1, Math.ceil(sq / 600));
+      return {
+        qty: systems * 6,
+        label: `Outdoor — Sub + satellite (${systems} sys @ 600 sq ft)`,
+      };
+    }
+    case "in_ground_subwoofer": {
+      const zones = Math.max(1, Math.ceil(sq / 500));
+      return {
+        qty: zones * 2,
+        label: `Outdoor — In-ground sub (${zones} zone @ 500 sq ft)`,
+      };
+    }
+    case "custom_other":
+    default: {
+      const pairs = Math.max(1, Math.ceil(sq / 300));
+      return {
+        qty: pairs * 2,
+        label: "Outdoor — Custom/other (est.)",
+      };
+    }
+  }
+}
+
+function addOutdoorRoomToMaterialsDetail(
+  d: AvOutdoorMaterialsRollup,
+  t: AvOutdoorSpeakerType,
+  sqFt: number,
+): void {
+  const sq = Math.max(1, sqFt);
+  switch (t) {
+    case "rock_landscape":
+      d.rockLandscapePairs += Math.max(1, Math.ceil(sq / 400));
+      break;
+    case "satellite":
+      d.outdoorSatellitePairs += Math.max(1, Math.ceil(sq / 300));
+      break;
+    case "bollard":
+      d.bollards += Math.max(1, Math.ceil(sq / 200));
+      break;
+    case "pendant_hanging":
+      d.pendants += Math.max(1, Math.ceil(sq / 250));
+      break;
+    case "surface_mount_weatherproof":
+      d.surfaceMountWeatherproofPairs += Math.max(1, Math.ceil(sq / 350));
+      break;
+    case "subwoofer_satellite_system":
+      d.subSatelliteSystems += Math.max(1, Math.ceil(sq / 600));
+      break;
+    case "in_ground_subwoofer":
+      d.inGroundSubwoofers += Math.max(1, Math.ceil(sq / 500));
+      break;
+    case "custom_other":
+      d.customOtherSpeakers += Math.max(2, Math.ceil(sq / 300) * 2);
+      break;
+  }
+  d.weatherproofVolumeControls += 1;
+}
+
 function speakerQtyForRoom(
   r: AvRoomInput,
   sq: number,
   building: AvBuildingType,
 ): number {
+  if (r.outdoorSpace) {
+    return outdoorSpeakerQtyAndLabel(sq, r.outdoorSpeakerType).qty;
+  }
   if (isTheaterish(r.roomType, r.primaryUse)) return 8;
   if (isOutdoorish(r.roomType)) {
     const n = Math.ceil(sq / 250);
@@ -319,6 +454,16 @@ function speakerQtyForRoom(
   if (sq < 120) return 2;
   if (sq < 350) return 4;
   return 6;
+}
+
+function speakerSizeNoteForRoom(r: AvRoomInput, sq: number): string {
+  if (r.outdoorSpace) {
+    return outdoorSpeakerQtyAndLabel(sq, r.outdoorSpeakerType).label;
+  }
+  if (isOutdoorish(r.roomType)) {
+    return "Outdoor/patio (legacy) — check “exterior space” for outdoor BOM";
+  }
+  return speakerSizeForSqFt(sq);
 }
 
 function estSpeakerRunFt(r: AvRoomInput): number {
@@ -363,6 +508,8 @@ function ampZonesFromRooms(rows: AvRoomPlanRow[]): number {
 }
 
 export function computeAvPlan(inputs: AvAvInputs): AvResults {
+  const hasOutdoorExteriorRooms = inputs.rooms.some((r) => r.outdoorSpace);
+
   const roomRows: AvRoomPlanRow[] = [];
   let totalSpeakers = 0;
   let roomsWithAudio = 0;
@@ -373,6 +520,18 @@ export function computeAvPlan(inputs: AvAvInputs): AvResults {
   let sp14 = 0;
   let sp12 = 0;
   let outdoorPairs = 0;
+  let legacyOutdoorPairs = 0;
+  const outdoorDetail: AvOutdoorMaterialsRollup = {
+    rockLandscapePairs: 0,
+    outdoorSatellitePairs: 0,
+    bollards: 0,
+    pendants: 0,
+    surfaceMountWeatherproofPairs: 0,
+    subSatelliteSystems: 0,
+    inGroundSubwoofers: 0,
+    customOtherSpeakers: 0,
+    weatherproofVolumeControls: 0,
+  };
   const displayList: { inches: number; qty: number }[] = [];
   let projectorRecs = 0;
   let hdmiLf = 0;
@@ -383,7 +542,7 @@ export function computeAvPlan(inputs: AvAvInputs): AvResults {
   for (const r of inputs.rooms) {
     const sq = roomSqFt(r);
     const qty = speakerQtyForRoom(r, sq, inputs.buildingType);
-    const sizeNote = speakerSizeForSqFt(sq);
+    const sizeNote = speakerSizeNoteForRoom(r, sq);
     zoneCounter += 1;
     const zone = `Z${zoneCounter}`;
 
@@ -415,7 +574,15 @@ export function computeAvPlan(inputs: AvAvInputs): AvResults {
 
     if (qty > 0) roomsWithAudio += 1;
     totalSpeakers += qty;
-    if (isOutdoorish(r.roomType)) outdoorPairs += Math.max(1, Math.ceil(qty / 2));
+    if (r.outdoorSpace) {
+      addOutdoorRoomToMaterialsDetail(outdoorDetail, r.outdoorSpeakerType, sq);
+      const p = Math.max(1, Math.ceil(qty / 2));
+      outdoorPairs += p;
+    } else if (isOutdoorish(r.roomType)) {
+      const p = Math.max(1, Math.ceil(qty / 2));
+      outdoorPairs += p;
+      legacyOutdoorPairs += p;
+    }
 
     roomRows.push({
       roomId: r.id,
@@ -429,6 +596,7 @@ export function computeAvPlan(inputs: AvAvInputs): AvResults {
       speakerWireNote: spWire.note,
       videoWireNote: videoWireNote(r.displayNeeded, runFt),
       zone,
+      isOutdoorExterior: r.outdoorSpace,
     });
   }
 
@@ -447,6 +615,13 @@ export function computeAvPlan(inputs: AvAvInputs): AvResults {
           ? "Autonomic / rack multi-zone"
           : "Commercial QSC or Crown distributed";
 
+  const outdoorGood =
+    "Outdoor: Polk Audio Atrium or similar — basic weatherproof surface mount.";
+  const outdoorBetter =
+    "Outdoor: Sonance or Klipsch outdoor — rock landscape option.";
+  const outdoorBest =
+    "Outdoor: Origin Acoustics or James Loudspeaker — in-ground sub system.";
+
   const tiers: AvTierEstimate[] = [
     {
       id: "good",
@@ -457,6 +632,7 @@ export function computeAvPlan(inputs: AvAvInputs): AvResults {
       distributionNote: "Sonos Era 100 / Era 300 + Sonos Amp + Port (as needed)",
       ampNote: "Sonos Amp (~$699) or AV receiver",
       costRange: "$8k – $25k installed (typical resi, varies)",
+      outdoorSpeakersNote: hasOutdoorExteriorRooms ? outdoorGood : undefined,
     },
     {
       id: "better",
@@ -468,6 +644,7 @@ export function computeAvPlan(inputs: AvAvInputs): AvResults {
       ampNote: "Sonance SA series / Sonos Amp stacks",
       costRange: "$25k – $75k installed (typical)",
       popular: true,
+      outdoorSpeakersNote: hasOutdoorExteriorRooms ? outdoorBetter : undefined,
     },
     {
       id: "best",
@@ -479,6 +656,7 @@ export function computeAvPlan(inputs: AvAvInputs): AvResults {
       distributionNote: "Control4 or Savant video matrix + DSP",
       ampNote: "Triad / QSC AD-C6T (~$299) / Bose FreeSpace DS 40F (~$299) as spec",
       costRange: "$75k – $200k+ installed (typical)",
+      outdoorSpeakersNote: hasOutdoorExteriorRooms ? outdoorBest : undefined,
     },
   ];
 
@@ -486,6 +664,8 @@ export function computeAvPlan(inputs: AvAvInputs): AvResults {
   let c65 = 0;
   let c8 = 0;
   for (const row of roomRows) {
+    if (row.isOutdoorExterior || row.speakerSizeNote.startsWith("Outdoor"))
+      continue;
     const q = row.speakerQty;
     if (row.speakerSizeNote.includes("5.25")) c525 += q;
     else if (row.speakerSizeNote.includes("6.5")) c65 += q;
@@ -498,6 +678,8 @@ export function computeAvPlan(inputs: AvAvInputs): AvResults {
     speakers65: c65,
     speakers8: c8,
     outdoorPairs,
+    legacyOutdoorPairs,
+    outdoorDetail,
     displays: displayList,
     projectorQty: projectorRecs,
     speakerWire16Lf: Math.round(sp16),
@@ -534,5 +716,6 @@ export function computeAvPlan(inputs: AvAvInputs): AvResults {
     materials,
     amplificationNote: ampNote,
     summaryLines,
+    hasOutdoorExteriorRooms,
   };
 }

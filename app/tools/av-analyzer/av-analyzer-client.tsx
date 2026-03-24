@@ -23,6 +23,7 @@ import {
   type AvPrimaryFocus,
   type AvPrimaryUse,
   type AvAcousticTreatment,
+  type AvOutdoorSpeakerType,
   type AvRoomInput,
   type AvRoomType,
   type AvVideoBrand,
@@ -58,6 +59,8 @@ function exRoom(p: Partial<AvRoomInput> & Pick<AvRoomInput, "name">): AvRoomInpu
     widthFt: 14,
     roomType: "living_room",
     primaryUse: "multi_purpose",
+    outdoorSpace: false,
+    outdoorSpeakerType: "rock_landscape",
     ceilingType: "standard_flat",
     ceilingHeight: "9",
     acousticTreatment: "some_soft",
@@ -86,6 +89,8 @@ function exampleRooms(): AvRoomInput[] {
       widthFt: 10,
       displayNeeded: false,
       ambientLight: "outdoor",
+      outdoorSpace: true,
+      outdoorSpeakerType: "rock_landscape",
     }),
   ];
 }
@@ -575,44 +580,113 @@ export function AvAnalyzerClient() {
                         <option value="multi_purpose">Multi-purpose</option>
                       </select>
                     </label>
-                    <label className="text-sm">
-                      <span className="text-white/60">Ceiling type</span>
-                      <select
-                        value={r.ceilingType}
-                        onChange={(e) =>
+                    <label className="flex cursor-pointer items-start gap-2 text-sm sm:col-span-2">
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={r.outdoorSpace}
+                        onChange={(e) => {
+                          const v = e.target.checked;
                           patchRoom(r.id, {
-                            ceilingType: e.target.value as AvCeilingType,
-                          })
-                        }
-                        className={sel}
-                      >
-                        <option value="standard_flat">Standard flat</option>
-                        <option value="vaulted">Vaulted</option>
-                        <option value="cathedral">Cathedral</option>
-                        <option value="coffered">Coffered</option>
-                        <option value="exposed_beam">Exposed beam</option>
-                        <option value="drop_ceiling">Drop ceiling</option>
-                      </select>
+                            outdoorSpace: v,
+                            ...(v ? { ambientLight: "outdoor" as AvAmbientLight } : {}),
+                          });
+                        }}
+                      />
+                      <span className="text-white/80">
+                        This is an outdoor/exterior space
+                      </span>
                     </label>
-                    <label className="text-sm">
-                      <span className="text-white/60">Ceiling height</span>
-                      <select
-                        value={r.ceilingHeight}
-                        onChange={(e) =>
-                          patchRoom(r.id, {
-                            ceilingHeight: e.target.value as AvCeilingHeight,
-                          })
-                        }
-                        className={sel}
-                      >
-                        <option value="8">8&apos;</option>
-                        <option value="9">9&apos;</option>
-                        <option value="10">10&apos;</option>
-                        <option value="12">12&apos;</option>
-                        <option value="14">14&apos;</option>
-                        <option value="higher">Higher</option>
-                      </select>
-                    </label>
+                    {r.outdoorSpace ? (
+                      <label className="text-sm sm:col-span-2">
+                        <span className="text-white/60">Outdoor speaker type</span>
+                        <select
+                          value={r.outdoorSpeakerType}
+                          onChange={(e) =>
+                            patchRoom(r.id, {
+                              outdoorSpeakerType: e.target.value as AvOutdoorSpeakerType,
+                            })
+                          }
+                          className={sel}
+                        >
+                          <option value="rock_landscape">
+                            Rock/Landscape speakers
+                          </option>
+                          <option value="satellite">Satellite speakers</option>
+                          <option value="bollard">Bollard speakers</option>
+                          <option value="pendant_hanging">
+                            Pendant/Hanging speakers
+                          </option>
+                          <option value="surface_mount_weatherproof">
+                            Surface mount weatherproof
+                          </option>
+                          <option value="subwoofer_satellite_system">
+                            Subwoofer + satellite system
+                          </option>
+                          <option value="in_ground_subwoofer">
+                            In-ground subwoofer
+                          </option>
+                          <option value="custom_other">Custom/other</option>
+                        </select>
+                      </label>
+                    ) : null}
+                    {r.outdoorSpace ? (
+                      <>
+                        <div className="text-sm">
+                          <span className="text-white/60">Ceiling type</span>
+                          <div className="mt-1 rounded border border-white/10 bg-[#0a1628]/40 px-2 py-2 text-white/45">
+                            N/A - Outdoor
+                          </div>
+                        </div>
+                        <div className="text-sm">
+                          <span className="text-white/60">Ceiling height</span>
+                          <div className="mt-1 rounded border border-white/10 bg-[#0a1628]/40 px-2 py-2 text-white/45">
+                            N/A - Outdoor
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <label className="text-sm">
+                          <span className="text-white/60">Ceiling type</span>
+                          <select
+                            value={r.ceilingType}
+                            onChange={(e) =>
+                              patchRoom(r.id, {
+                                ceilingType: e.target.value as AvCeilingType,
+                              })
+                            }
+                            className={sel}
+                          >
+                            <option value="standard_flat">Standard flat</option>
+                            <option value="vaulted">Vaulted</option>
+                            <option value="cathedral">Cathedral</option>
+                            <option value="coffered">Coffered</option>
+                            <option value="exposed_beam">Exposed beam</option>
+                            <option value="drop_ceiling">Drop ceiling</option>
+                          </select>
+                        </label>
+                        <label className="text-sm">
+                          <span className="text-white/60">Ceiling height</span>
+                          <select
+                            value={r.ceilingHeight}
+                            onChange={(e) =>
+                              patchRoom(r.id, {
+                                ceilingHeight: e.target.value as AvCeilingHeight,
+                              })
+                            }
+                            className={sel}
+                          >
+                            <option value="8">8&apos;</option>
+                            <option value="9">9&apos;</option>
+                            <option value="10">10&apos;</option>
+                            <option value="12">12&apos;</option>
+                            <option value="14">14&apos;</option>
+                            <option value="higher">Higher</option>
+                          </select>
+                        </label>
+                      </>
+                    )}
                     <label className="text-sm sm:col-span-2">
                       <span className="text-white/60">Acoustic treatment</span>
                       <select
@@ -813,6 +887,12 @@ export function AvAnalyzerClient() {
                       ) : null}
                       <h3 className="font-semibold text-white">{t.label}</h3>
                       <p className="mt-2 text-xs text-white/70">{t.speakersNote}</p>
+                      {results.hasOutdoorExteriorRooms &&
+                      t.outdoorSpeakersNote ? (
+                        <p className="mt-2 text-xs font-medium text-emerald-200/90">
+                          {t.outdoorSpeakersNote}
+                        </p>
+                      ) : null}
                       <p className="mt-1 text-xs text-white/70">{t.displaysNote}</p>
                       <p className="mt-1 text-xs text-white/70">{t.distributionNote}</p>
                       <p className="mt-1 text-xs text-white/70">{t.ampNote}</p>
@@ -843,7 +923,14 @@ export function AvAnalyzerClient() {
                           key={row.roomId}
                           className="border-t border-white/10 odd:bg-white/[0.02]"
                         >
-                          <td className="px-2 py-2">{row.roomName}</td>
+                          <td className="px-2 py-2">
+                            {row.isOutdoorExterior ? (
+                              <span title="Outdoor / exterior space">
+                                🌿{" "}
+                              </span>
+                            ) : null}
+                            {row.roomName}
+                          </td>
                           <td className="px-2 py-2">
                             {row.speakerQty} · {row.speakerSizeNote}
                           </td>
@@ -871,7 +958,25 @@ export function AvAnalyzerClient() {
                     {results.materials.speakers525} / {results.materials.speakers65} /{" "}
                     {results.materials.speakers8}
                   </li>
-                  <li>Outdoor pairs: {results.materials.outdoorPairs}</li>
+                  <li>Outdoor pairs (total equiv.): {results.materials.outdoorPairs}</li>
+                  {results.materials.legacyOutdoorPairs > 0 ? (
+                    <li>
+                      Legacy patio/pool pairs: {results.materials.legacyOutdoorPairs}
+                    </li>
+                  ) : null}
+                  {results.hasOutdoorExteriorRooms ? (
+                    <li className="text-white/65">
+                      Exterior BOM: rock pr {results.materials.outdoorDetail.rockLandscapePairs}, sat pr{" "}
+                      {results.materials.outdoorDetail.outdoorSatellitePairs}, bollard{" "}
+                      {results.materials.outdoorDetail.bollards}, pendant{" "}
+                      {results.materials.outdoorDetail.pendants}, surface pr{" "}
+                      {results.materials.outdoorDetail.surfaceMountWeatherproofPairs}, sub+sat sys{" "}
+                      {results.materials.outdoorDetail.subSatelliteSystems}, in-ground sub{" "}
+                      {results.materials.outdoorDetail.inGroundSubwoofers}, custom spk{" "}
+                      {results.materials.outdoorDetail.customOtherSpeakers}, WP vol{" "}
+                      {results.materials.outdoorDetail.weatherproofVolumeControls}
+                    </li>
+                  ) : null}
                   <li>
                     Speaker wire LF — 16/2: {results.materials.speakerWire16Lf}, 14/2:{" "}
                     {results.materials.speakerWire14Lf}, 12/2:{" "}

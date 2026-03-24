@@ -72,6 +72,11 @@ type PageThumbScanStatus = "ok" | "warn" | "error" | "spin" | "wait";
 
 const RESUME_STORAGE_KEY = "blueprint-scan-resume-v1";
 
+const LS_VIEWER_THUMB = "blueprint-viewer-thumb-sidebar-v1";
+const LS_VIEWER_RESULTS = "blueprint-viewer-results-sidebar-v1";
+const THUMB_SIDEBAR = { min: 180, max: 400, def: 220 } as const;
+const RESULTS_SIDEBAR = { min: 280, max: 600, def: 380 } as const;
+
 type ResumePayload = {
   projectId: string;
   nextPage: number;
@@ -540,6 +545,20 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const [jobLinkOpen, setJobLinkOpen] = useState(false);
   const [mobileThumbsOpen, setMobileThumbsOpen] = useState(false);
   const [mobileResultsOpen, setMobileResultsOpen] = useState(false);
+
+  const [thumbCollapsedDesktop, setThumbCollapsedDesktop] = useState(false);
+  const [thumbWidthPx, setThumbWidthPx] = useState<number>(THUMB_SIDEBAR.def);
+  const [resultsCollapsedDesktop, setResultsCollapsedDesktop] = useState(false);
+  const [resultsWidthPx, setResultsWidthPx] = useState<number>(
+    RESULTS_SIDEBAR.def,
+  );
+  const thumbResizeDragRef = useRef<{ startX: number; startW: number } | null>(
+    null,
+  );
+  const resultsResizeDragRef = useRef<{ startX: number; startW: number } | null>(
+    null,
+  );
+  const [viewerDesktopLayout, setViewerDesktopLayout] = useState(false);
 
   const [scanModeDialogOpen, setScanModeDialogOpen] = useState(false);
   const [scanModeDialogTarget, setScanModeDialogTarget] = useState<
@@ -2209,14 +2228,163 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1024px)");
     const onChange = () => {
+      setViewerDesktopLayout(mq.matches);
       if (mq.matches) {
         setMobileThumbsOpen(false);
         setMobileResultsOpen(false);
       }
     };
+    onChange();
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const tw = JSON.parse(localStorage.getItem(LS_VIEWER_THUMB) || "{}");
+      const rw = JSON.parse(localStorage.getItem(LS_VIEWER_RESULTS) || "{}");
+      const wThumb = Math.min(
+        THUMB_SIDEBAR.max,
+        Math.max(THUMB_SIDEBAR.min, Number(tw.width) || THUMB_SIDEBAR.def),
+      );
+      const wRes = Math.min(
+        RESULTS_SIDEBAR.max,
+        Math.max(RESULTS_SIDEBAR.min, Number(rw.width) || RESULTS_SIDEBAR.def),
+      );
+      setThumbWidthPx(wThumb);
+      setResultsWidthPx(wRes);
+      const mobile = window.matchMedia("(max-width: 1023px)").matches;
+      if (mobile) {
+        setThumbCollapsedDesktop(true);
+        setResultsCollapsedDesktop(true);
+      } else {
+        setThumbCollapsedDesktop(Boolean(tw.collapsed));
+        setResultsCollapsedDesktop(Boolean(rw.collapsed));
+      }
+    } catch {
+      if (window.matchMedia("(max-width: 1023px)").matches) {
+        setThumbCollapsedDesktop(true);
+        setResultsCollapsedDesktop(true);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const onMq = () => {
+      if (mq.matches) {
+        setThumbCollapsedDesktop(true);
+        setResultsCollapsedDesktop(true);
+      } else {
+        try {
+          const tw = JSON.parse(localStorage.getItem(LS_VIEWER_THUMB) || "{}");
+          const rw = JSON.parse(
+            localStorage.getItem(LS_VIEWER_RESULTS) || "{}",
+          );
+          setThumbCollapsedDesktop(Boolean(tw.collapsed));
+          setResultsCollapsedDesktop(Boolean(rw.collapsed));
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+    mq.addEventListener("change", onMq);
+    return () => mq.removeEventListener("change", onMq);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.matchMedia("(max-width: 1023px)").matches) return;
+    localStorage.setItem(
+      LS_VIEWER_THUMB,
+      JSON.stringify({ collapsed: thumbCollapsedDesktop, width: thumbWidthPx }),
+    );
+  }, [thumbCollapsedDesktop, thumbWidthPx]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.matchMedia("(max-width: 1023px)").matches) return;
+    localStorage.setItem(
+      LS_VIEWER_RESULTS,
+      JSON.stringify({
+        collapsed: resultsCollapsedDesktop,
+        width: resultsWidthPx,
+      }),
+    );
+  }, [resultsCollapsedDesktop, resultsWidthPx]);
+
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t) return;
+      const tag = t.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "[") {
+        e.preventDefault();
+        setThumbCollapsedDesktop((c) => !c);
+      }
+      if (e.key === "]") {
+        e.preventDefault();
+        setResultsCollapsedDesktop((c) => !c);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const onThumbResizePointerDown = useCallback(
+    (e: MouseEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      thumbResizeDragRef.current = { startX: e.clientX, startW: thumbWidthPx };
+      const onMove = (ev: globalThis.MouseEvent) => {
+        const d = thumbResizeDragRef.current;
+        if (!d) return;
+        const dx = ev.clientX - d.startX;
+        const nw = Math.min(
+          THUMB_SIDEBAR.max,
+          Math.max(THUMB_SIDEBAR.min, d.startW + dx),
+        );
+        setThumbWidthPx(nw);
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        thumbResizeDragRef.current = null;
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [thumbWidthPx],
+  );
+
+  const onResultsResizePointerDown = useCallback(
+    (e: MouseEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      resultsResizeDragRef.current = {
+        startX: e.clientX,
+        startW: resultsWidthPx,
+      };
+      const onMove = (ev: globalThis.MouseEvent) => {
+        const d = resultsResizeDragRef.current;
+        if (!d) return;
+        const dx = ev.clientX - d.startX;
+        const nw = Math.min(
+          RESULTS_SIDEBAR.max,
+          Math.max(RESULTS_SIDEBAR.min, d.startW - dx),
+        );
+        setResultsWidthPx(nw);
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        resultsResizeDragRef.current = null;
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [resultsWidthPx],
+  );
 
   const performPageReset = useCallback(async () => {
     setAnalyzeError(null);
@@ -3214,6 +3382,34 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   symbolCaptureRef.current = symbolCaptureState;
   symbolMatchStateRef.current = symbolMatchState;
 
+  const pageThumbnailItems = useMemo(() => {
+    if (!pdfDocs?.length || numPages < 1) return null;
+    return Array.from({ length: numPages }, (_, i) => i + 1).map((n) => {
+      const mapped = globalPageToLocal(n, pdfDocs);
+      if (!mapped) return null;
+      return (
+        <PageThumbnail
+          key={n}
+          pdfDoc={mapped.doc}
+          pageNumber={mapped.localPage}
+          globalPageLabel={n}
+          selected={n === currentPage}
+          onSelect={() => {
+            setCurrentPage(n);
+            if (
+              typeof window !== "undefined" &&
+              window.matchMedia("(max-width: 1023px)").matches
+            ) {
+              setMobileThumbsOpen(false);
+            }
+          }}
+          disabled={blockPageNav}
+          scanStatus={thumbByPage[n]}
+        />
+      );
+    });
+  }, [pdfDocs, numPages, currentPage, blockPageNav, thumbByPage]);
+
   if (projectLoading) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#0a1628] px-6">
@@ -3408,42 +3604,68 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
               onClick={() => setMobileThumbsOpen(false)}
             />
           ) : null}
+          {thumbCollapsedDesktop ? (
+            <div className="hidden shrink-0 flex-col border-r border-white/10 bg-[#071422]/90 transition-all duration-300 ease-in-out lg:flex">
+              <button
+                type="button"
+                title="Expand thumbnails"
+                aria-label="Expand thumbnails"
+                onClick={() => setThumbCollapsedDesktop(false)}
+                className="flex h-11 w-9 shrink-0 items-center justify-center text-sm text-white/85 hover:bg-white/10"
+              >
+                ▶
+              </button>
+            </div>
+          ) : (
+            <div
+              className="relative hidden shrink-0 flex-col border-r border-white/10 bg-[#071422]/60 transition-all duration-300 ease-in-out lg:flex"
+              style={
+                viewerDesktopLayout && !thumbCollapsedDesktop
+                  ? {
+                      width: thumbWidthPx,
+                      flexShrink: 0,
+                    }
+                  : undefined
+              }
+            >
+              <div className="flex shrink-0 items-center justify-end border-b border-white/10 px-1 py-2">
+                <button
+                  type="button"
+                  title="Collapse thumbnails"
+                  aria-label="Collapse thumbnails"
+                  onClick={() => setThumbCollapsedDesktop(true)}
+                  className="rounded px-2 py-1 text-sm text-white/80 hover:bg-white/10"
+                >
+                  ◀
+                </button>
+              </div>
+              <aside
+                className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-2 pb-4"
+                aria-label="Page thumbnails"
+              >
+                {pageThumbnailItems}
+              </aside>
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize thumbnails panel"
+                className="absolute right-0 top-0 z-10 h-full w-2 cursor-col-resize hover:bg-white/15 active:bg-white/25"
+                onMouseDown={onThumbResizePointerDown}
+              />
+            </div>
+          )}
           <aside
             className={[
               "shrink-0 gap-2 border-white/10 bg-[#071422]/60",
               "flex flex-col overflow-y-auto overflow-x-hidden",
-              "border-b px-3 py-3 lg:w-[16.5rem] lg:border-b-0 lg:border-r lg:px-2 lg:py-4",
+              "border-b px-3 py-3 lg:hidden",
               mobileThumbsOpen
                 ? "fixed bottom-0 left-0 top-0 z-[55] flex w-[min(88vw,18rem)] border-r p-2 shadow-2xl max-lg:flex"
                 : "max-lg:hidden",
-              "lg:flex",
             ].join(" ")}
             aria-label="Page thumbnails"
           >
-            {Array.from({ length: numPages }, (_, i) => i + 1).map((n) => {
-              const mapped = globalPageToLocal(n, pdfDocs);
-              if (!mapped) return null;
-              return (
-                <PageThumbnail
-                  key={n}
-                  pdfDoc={mapped.doc}
-                  pageNumber={mapped.localPage}
-                  globalPageLabel={n}
-                  selected={n === currentPage}
-                  onSelect={() => {
-                    setCurrentPage(n);
-                    if (
-                      typeof window !== "undefined" &&
-                      window.matchMedia("(max-width: 1023px)").matches
-                    ) {
-                      setMobileThumbsOpen(false);
-                    }
-                  }}
-                  disabled={blockPageNav}
-                  scanStatus={thumbByPage[n]}
-                />
-              );
-            })}
+            {pageThumbnailItems}
           </aside>
 
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
@@ -3794,6 +4016,48 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                   title="Reset to default (fit width)"
                 >
                   Reset zoom
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setThumbCollapsedDesktop(true);
+                    setResultsCollapsedDesktop(true);
+                  }}
+                  className="rounded-lg border border-teal-500/35 bg-teal-950/35 px-2 py-2 text-xs font-semibold text-teal-100 hover:bg-teal-950/50"
+                  title="Collapse thumbnails and results for maximum blueprint space"
+                >
+                  Focus mode
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setThumbCollapsedDesktop(false);
+                    setResultsCollapsedDesktop(false);
+                    setThumbWidthPx(THUMB_SIDEBAR.def);
+                    setResultsWidthPx(RESULTS_SIDEBAR.def);
+                    try {
+                      localStorage.setItem(
+                        LS_VIEWER_THUMB,
+                        JSON.stringify({
+                          collapsed: false,
+                          width: THUMB_SIDEBAR.def,
+                        }),
+                      );
+                      localStorage.setItem(
+                        LS_VIEWER_RESULTS,
+                        JSON.stringify({
+                          collapsed: false,
+                          width: RESULTS_SIDEBAR.def,
+                        }),
+                      );
+                    } catch {
+                      /* ignore */
+                    }
+                  }}
+                  className="rounded-lg border border-white/20 bg-white/10 px-2 py-2 text-xs font-semibold text-white/90 hover:bg-white/15"
+                  title="Expand both sidebars and restore default widths (220px / 380px)"
+                >
+                  Reset layout
                 </button>
                 <button
                   type="button"
@@ -4322,16 +4586,59 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
               </div>
               <div
                 className={[
-                  "flex min-h-0 min-w-0 flex-1 flex-col border-t border-white/10",
-                  "lg:relative lg:max-w-md lg:border-l lg:border-t-0 xl:max-w-lg",
+                  "relative flex min-h-0 min-w-0 flex-1 flex-col border-t border-white/10",
+                  "lg:relative lg:border-l lg:border-t-0",
                   "max-lg:fixed max-lg:bottom-0 max-lg:left-0 max-lg:right-0 max-lg:z-[45]",
                   "max-lg:rounded-t-2xl max-lg:border max-lg:border-white/12 max-lg:bg-[#0a1628]",
                   "max-lg:shadow-[0_-12px_40px_rgba(0,0,0,0.5)]",
+                  "transition-all duration-300 ease-in-out",
                   mobileResultsOpen
                     ? "max-lg:max-h-[min(85vh,560px)]"
                     : "max-lg:max-h-[3.25rem]",
+                  resultsCollapsedDesktop
+                    ? "lg:w-10 lg:min-w-10 lg:max-w-10 lg:overflow-hidden"
+                    : "",
                 ].join(" ")}
+                style={
+                  viewerDesktopLayout && !resultsCollapsedDesktop
+                    ? { width: resultsWidthPx, flexShrink: 0 }
+                    : undefined
+                }
               >
+                {!resultsCollapsedDesktop ? (
+                  <div
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize results panel"
+                    className="absolute left-0 top-0 z-10 hidden h-full w-2 cursor-col-resize hover:bg-white/15 active:bg-white/25 lg:block"
+                    onMouseDown={onResultsResizePointerDown}
+                  />
+                ) : null}
+                {!resultsCollapsedDesktop ? (
+                  <div className="hidden shrink-0 items-center border-b border-white/10 px-2 py-2 lg:flex">
+                    <button
+                      type="button"
+                      title="Collapse results"
+                      aria-label="Collapse results"
+                      onClick={() => setResultsCollapsedDesktop(true)}
+                      className="rounded px-2 py-1 text-sm text-white/80 hover:bg-white/10"
+                    >
+                      ▶
+                    </button>
+                  </div>
+                ) : (
+                  <div className="hidden shrink-0 items-center justify-center border-b border-white/10 py-2 lg:flex">
+                    <button
+                      type="button"
+                      title="Expand results"
+                      aria-label="Expand results"
+                      onClick={() => setResultsCollapsedDesktop(false)}
+                      className="rounded px-2 py-1 text-sm text-white/80 hover:bg-white/10"
+                    >
+                      ◀
+                    </button>
+                  </div>
+                )}
                 <button
                   type="button"
                   className="flex w-full shrink-0 items-center justify-center border-b border-white/10 py-2.5 text-sm font-semibold text-[#E8C84A] hover:bg-white/5 lg:hidden"
@@ -4342,11 +4649,12 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                     : "▲ Results & analysis"}
                 </button>
                 <div
-                  className={
+                  className={[
                     !mobileResultsOpen
                       ? "flex min-h-0 flex-1 flex-col overflow-hidden max-lg:hidden"
-                      : "flex min-h-0 flex-1 flex-col overflow-hidden"
-                  }
+                      : "flex min-h-0 flex-1 flex-col overflow-hidden",
+                    resultsCollapsedDesktop ? "lg:hidden" : "",
+                  ].join(" ")}
                 >
                 {targetResult ? (
                   <div className="max-h-[38vh] shrink-0 overflow-y-auto border-b border-fuchsia-500/35 bg-fuchsia-950/25 px-3 py-3">

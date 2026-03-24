@@ -127,6 +127,38 @@ If this page has more text than symbols:
 - Never return empty for a page with
   electrical text content
 
+DIFFICULT PAGE HANDLING:
+If symbols are small or densely packed:
+- Zoom into each quadrant mentally
+- Report items found in each area
+- Never return empty for a page with
+  visible electrical symbols
+
+If page appears to be a schedule:
+- Read every row of the schedule
+- Return each circuit as a plan_note
+- Include circuit number and description
+
+If page has non-standard symbols:
+- Describe what you see
+- Make best guess at item type
+- Flag with low confidence score
+- Never return empty
+
+If page is very dense:
+- Take multiple passes mentally
+- Report everything you can identify
+- Partial results are better than empty
+
+MINIMUM RESPONSE RULE:
+You must always return at least one item
+in electrical_items if the page contains ANY electrical content
+including text, symbols, schedules, or notes.
+If truly empty (no electrical content anywhere), return:
+{"electrical_items":[],"rooms":[]}
+and you may include an optional top-level "notes" array, e.g.
+["Page appears to have no electrical content"].
+
 COUNTING RULES - THIS IS CRITICAL:
 - Count every single symbol individually, one by one
 - Do not estimate or guess quantities
@@ -296,7 +328,7 @@ No project-specific symbol legend is on file for this project — use standard N
     const msg = await withClaudeOverloadRetries(() =>
       anthropic.messages.create({
         model: MODEL,
-        max_tokens: 16384,
+        max_tokens: 8192,
         stream: false,
         system: systemPromptUsed,
         messages: [

@@ -83,7 +83,7 @@ export async function downloadAvAnalysisPdf(
   doc.setFont("helvetica", "normal");
   const rows = results.roomRows.map(
     (r) =>
-      `${r.roomName} (fl ${r.floor}) — ${r.speakerQty} spk — ${r.displaySizeIn ? `${r.displaySizeIn}"` : "no display"} — ${r.zone}`,
+      `${r.isOutdoorExterior ? "[Outdoor] " : ""}${r.roomName} (fl ${r.floor}) — ${r.speakerQty} spk — ${r.displaySizeIn ? `${r.displaySizeIn}"` : "no display"} — ${r.zone}`,
   );
   y = addLines(doc, rows, margin, maxW, pageH, y, 12);
   y += 8;
@@ -92,13 +92,20 @@ export async function downloadAvAnalysisPdf(
   y += 14;
   doc.setFont("helvetica", "normal");
   const m = results.materials;
+  const od = m.outdoorDetail;
+  const outdoorLines = [
+    `Speakers 5.25" / 6.5" / 8": ${m.speakers525} / ${m.speakers65} / ${m.speakers8}`,
+    `Outdoor pairs (equiv.): ${m.outdoorPairs} · Legacy patio/pool pairs: ${m.legacyOutdoorPairs}`,
+    `Exterior detail — rock pr: ${od.rockLandscapePairs}, sat pr: ${od.outdoorSatellitePairs}, bollard: ${od.bollards}, pendant: ${od.pendants}, surface pr: ${od.surfaceMountWeatherproofPairs}, sub+sat: ${od.subSatelliteSystems}, in-ground sub: ${od.inGroundSubwoofers}, custom: ${od.customOtherSpeakers}, WP vol: ${od.weatherproofVolumeControls}`,
+    `Speaker wire LF — 16/2: ${m.speakerWire16Lf}, 14/2: ${m.speakerWire14Lf}, 12/2: ${m.speakerWire12Lf}`,
+  ];
   y = addLines(
     doc,
     [
-      `Speakers 5.25" / 6.5" / 8": ${m.speakers525} / ${m.speakers65} / ${m.speakers8}`,
-      `Outdoor pairs: ${m.outdoorPairs}`,
-      `Speaker wire LF — 16/2: ${m.speakerWire16Lf}, 14/2: ${m.speakerWire14Lf}, 12/2: ${m.speakerWire12Lf}`,
+      ...outdoorLines,
       `HDMI LF: ${m.hdmiLf} · Cat6: ${m.cat6Lf} · HDBaseT kits: ${m.hdbasetKits}`,
+      `LV brackets: ${m.lvBrackets} · Volume controls: ${m.volumeControls}`,
+      `AV receivers: ${m.avReceivers} · Sonos Amps: ${m.sonosAmps} · Multi-zone amps: ${m.multiZoneAmps}`,
     ],
     margin,
     maxW,

@@ -50,6 +50,13 @@ export const AV_MATERIAL_PRESETS: MaterialPreset[] = [
   { id: "sp6", label: `In-ceiling 6.5" (e.g. Origin Director D63 ~$199)`, unit: "EA", defaultUnitCost: 199 },
   { id: "sp8", label: `In-ceiling 8" (e.g. Klipsch CDT-5800-C II ~$179, Origin D83)`, unit: "EA", defaultUnitCost: 279 },
   { id: "out-pair", label: "Outdoor speaker pair", unit: "EA", defaultUnitCost: 450 },
+  { id: "out-rock-pair", label: "Rock landscape speaker pair (~$299–599)", unit: "EA", defaultUnitCost: 449 },
+  { id: "out-sat-pair", label: "Outdoor satellite speaker pair (~$199–399)", unit: "EA", defaultUnitCost: 299 },
+  { id: "out-bollard", label: "Bollard speaker (~$599–999)", unit: "EA", defaultUnitCost: 799 },
+  { id: "out-pendant", label: "Outdoor pendant speaker (~$249–499)", unit: "EA", defaultUnitCost: 374 },
+  { id: "out-sub-ig", label: "Outdoor in-ground subwoofer (~$599–999)", unit: "EA", defaultUnitCost: 799 },
+  { id: "out-surf-pair", label: "Outdoor surface mount pair (~$199–399)", unit: "EA", defaultUnitCost: 299 },
+  { id: "out-vol-wp", label: "Weatherproof volume control", unit: "EA", defaultUnitCost: 89 },
   { id: "sw16", label: "Speaker wire 16/2 CL2", unit: "LF", defaultUnitCost: 0.35 },
   { id: "sw14", label: "Speaker wire 14/2 CL2", unit: "LF", defaultUnitCost: 0.45 },
   { id: "sw12", label: "Speaker wire 12/2 CL2", unit: "LF", defaultUnitCost: 0.65 },
@@ -455,10 +462,30 @@ export function seedProjectBreakdownFromAv(r: AvResults): ProjectBreakdownState 
   };
 
   const m = r.materials;
+  const od = m.outdoorDetail;
   addM(`5.25" in-ceiling speaker`, m.speakers525, "EA", 120);
   addM(`6.5" in-ceiling speaker`, m.speakers65, "EA", 220);
   addM(`8" in-ceiling speaker`, m.speakers8, "EA", 380);
-  addM("Outdoor speaker pair", m.outdoorPairs, "EA", 450);
+  addM("Rock landscape speaker pair (~$299–599)", od.rockLandscapePairs, "EA", 449);
+  addM("Outdoor satellite speaker pair (~$199–399)", od.outdoorSatellitePairs, "EA", 299);
+  addM("Bollard speaker (~$599–999)", od.bollards, "EA", 799);
+  addM("Outdoor pendant speaker (~$249–499)", od.pendants, "EA", 374);
+  addM(
+    "Outdoor surface mount pair (~$199–399)",
+    od.surfaceMountWeatherproofPairs,
+    "EA",
+    299,
+  );
+  addM("Sub + satellite outdoor system (allowance)", od.subSatelliteSystems, "EA", 2400);
+  addM("Outdoor in-ground subwoofer (~$599–999)", od.inGroundSubwoofers, "EA", 799);
+  addM("Outdoor custom/other speakers (allowance)", od.customOtherSpeakers, "EA", 250);
+  addM("Weatherproof volume control", od.weatherproofVolumeControls, "EA", 89);
+  addM(
+    "Outdoor speaker pair (patio / pool — legacy)",
+    m.legacyOutdoorPairs,
+    "EA",
+    450,
+  );
   addM("Speaker wire 16/2 CL2", m.speakerWire16Lf, "LF", 0.35);
   addM("Speaker wire 14/2 CL2", m.speakerWire14Lf, "LF", 0.45);
   addM("Speaker wire 12/2 CL2", m.speakerWire12Lf, "LF", 0.65);

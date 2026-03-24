@@ -264,6 +264,8 @@ export function floorPlanScanToAvRooms(
       widthFt,
       roomType,
       primaryUse: outdoor ? "outdoor_entertainment_use" : "multi_purpose",
+      outdoorSpace: outdoor,
+      outdoorSpeakerType: "rock_landscape",
       ceilingType: "standard_flat",
       ceilingHeight: "9",
       acousticTreatment: "some_soft",

@@ -5,7 +5,10 @@ import {
   withClaudeOverloadRetries,
 } from "@/lib/ai-api-retries";
 import { checkAiRouteRateLimit } from "@/lib/rate-limit";
-import { safeParseAnalysis } from "@/lib/project-describer-types";
+import {
+  extractJsonObjectFromModelText,
+  safeParseAnalysis,
+} from "@/lib/project-describer-types";
 import { TPP_COMPANY_FULL } from "@/lib/tpp-branding";
 
 export const maxDuration = 120;
@@ -15,42 +18,39 @@ const MODEL = "claude-sonnet-4-6";
 const SYSTEM = `You are an expert electrical and low voltage contractor estimator with 25 years of experience.
 You work for ${TPP_COMPANY_FULL} standards: professional documentation, NEC-aware language where relevant, and clear contractor-grade assumptions.
 
-Analyze the user's free-form project description and optional trade hints.
+You must respond with ONLY valid JSON.
+No text before or after the JSON.
+No markdown code blocks.
+Start your response with { and end with }
 
-Extract and return ONLY valid JSON (no markdown fences) with this exact shape:
+Analyze this project description and optional trade hints. Infer rooms and devices from the narrative (e.g. "8 zones of audio" → rooms/areas with devices, "Lutron throughout" → systems/brands).
+
+Return exactly this JSON shape (camelCase keys):
 {
-  "project_types": ["string array — e.g. electrical, wifi, av, smarthome, low_voltage, security, lighting"],
-  "scope_size": "small" | "medium" | "large" | "commercial",
-  "budget_min_usd": number or null,
-  "budget_max_usd": number or null,
-  "budget_label": "short human summary of budget if stated, else null",
-  "rooms": [
-    {
-      "name": "room or area name",
-      "floor": integer or null (1 = main, 2 = second, 0 = basement),
-      "approximate_sq_ft": number or null,
-      "approximate_width_ft": number or null,
-      "approximate_length_ft": number or null,
-      "room_type": "living_room | bedroom | kitchen | basement | patio | office | garage | other | ..."
-    }
-  ],
-  "devices": [
-    { "category": "speakers | displays | cameras | dimmers | access_points | keypads | etc.", "quantity": number, "notes": "string or null", "room": "optional room name" }
-  ],
-  "systems": [
-    { "name": "e.g. Control4", "role": "automation | lighting | network | av", "brand": "string or null" }
-  ],
-  "special_requirements": ["string"],
-  "complexity": "low | moderate | high | very_high",
-  "room_count_estimate": number,
-  "key_items_summary": "2–4 sentences summarizing scope for a PM"
+  "projectTypes": string[],
+  "scopeSize": "small" | "medium" | "large" | "commercial",
+  "budgetRange": string,
+  "rooms": [{
+    "name": string,
+    "type": string,
+    "floor": number,
+    "sqft": number,
+    "devices": string[]
+  }],
+  "systems": string[],
+  "brands": string[],
+  "complexity": string,
+  "keyItems": string[]
 }
 
 Rules:
-- Be specific on quantities when the user states them; infer reasonable counts only when necessary and note uncertainty in notes.
-- Always err on the side of fuller coverage for professional estimates.
-- If square footage is given for the building but not per room, distribute reasonably across listed rooms or add a single "Open plan" area.
-- If no budget is stated, use null for budget fields and explain in budget_label.`;
+- Populate "rooms" with every distinct area mentioned (or reasonable inference). Use floor 1 for main level, 0 for basement, 2+ for upper stories if implied.
+- For each room, list "devices" as short strings (e.g. "in-ceiling speakers", "dimmer switches", "WiFi AP", "camera").
+- "systems" are platform names (e.g. "Control4", "WiFi", "whole home audio").
+- "brands" are manufacturer names if stated (e.g. "Lutron", "Ubiquiti", "Sonos").
+- "budgetRange" is a short human string if budget is mentioned, else "Not specified".
+- "keyItems" is 4–10 short bullets of scope highlights.
+- Be generous with detection — empty rooms[] or empty devices[] only if the description truly has no spatial or device detail.`;
 
 export async function POST(request: Request) {
   const rl = checkAiRouteRateLimit(request, "analyze-project-description");
@@ -100,11 +100,11 @@ export async function POST(request: Request) {
   const hints = Array.isArray(body.hints) ? body.hints : [];
   const projectTypes = Array.isArray(body.projectTypes) ? body.projectTypes : [];
 
-  const userBlock = `PROJECT DESCRIPTION:\n${description}\n\nOPTIONAL HINTS (checkboxes): ${hints.length ? hints.join(", ") : "none provided"}\n\nINFERRED PROJECT TYPE TAGS FROM CLIENT: ${projectTypes.length ? projectTypes.join(", ") : "none"}\n\nReturn only the JSON object.`;
+  const userBlock = `PROJECT DESCRIPTION:\n${description}\n\nOPTIONAL HINTS (checkboxes): ${hints.length ? hints.join(", ") : "none provided"}\n\nINFERRED PROJECT TYPE TAGS FROM CLIENT: ${projectTypes.length ? projectTypes.join(", ") : "none"}\n\nRespond with ONLY the JSON object as specified.`;
 
   const anthropic = new Anthropic({ apiKey });
 
-  let text: string;
+  let rawText: string;
   try {
     const msg = await withClaudeOverloadRetries(() =>
       anthropic.messages.create({
@@ -115,7 +115,7 @@ export async function POST(request: Request) {
         messages: [{ role: "user", content: userBlock }],
       }),
     );
-    text = msg.content
+    rawText = msg.content
       .map((b) => (b.type === "text" ? b.text : ""))
       .join("\n")
       .trim();
@@ -127,16 +127,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status });
   }
 
-  const parsed = safeParseAnalysis(text);
+  console.log("Claude raw response:", rawText);
+
+  const parsed = safeParseAnalysis(rawText);
   if (!parsed) {
+    const extracted = extractJsonObjectFromModelText(rawText);
+    let parseError = "Could not parse model response as JSON.";
+    if (extracted) {
+      try {
+        JSON.parse(extracted);
+        parseError =
+          "Extracted a JSON object but normalization failed (unexpected shape).";
+      } catch {
+        parseError = "Found JSON-like block but JSON.parse failed.";
+      }
+    } else {
+      parseError = "No JSON object found in the model response.";
+    }
     return NextResponse.json(
       {
-        error: "Could not parse model response.",
-        raw: text.slice(0, 2500),
+        error: parseError,
+        raw: rawText,
+        rawText,
+        extractedSnippet: extracted?.slice(0, 4000) ?? null,
       },
       { status: 422 },
     );
   }
 
-  return NextResponse.json({ analysis: parsed, rawText: text });
+  return NextResponse.json({ analysis: parsed, rawText });
 }

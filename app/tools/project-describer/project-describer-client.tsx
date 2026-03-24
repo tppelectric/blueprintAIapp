@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ToolPageHeader } from "@/components/tool-page-header";
+import { VoiceInputButton } from "@/components/voice-input-button";
 import { ProjectPackageDocModal } from "@/components/project-package-doc-modal";
 import { createBrowserClient } from "@/lib/supabase/client";
 import type { ProjectDescriberHintId } from "@/lib/project-describer-types";
@@ -62,15 +63,15 @@ export function ProjectDescriberClient() {
   const router = useRouter();
   const [description, setDescription] = useState("");
   const [hints, setHints] = useState<ProjectDescriberHintId[]>([]);
-  const [listening, setListening] = useState(false);
-  const [speechError, setSpeechError] = useState<string | null>(null);
-  const recRef = useRef<{ stop: () => void; start: () => void } | null>(null);
-
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<ProjectDescriptionAnalysis | null>(
     null,
   );
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [analyzeDebugRaw, setAnalyzeDebugRaw] = useState<string | null>(null);
+  const [analyzeExtractedSnippet, setAnalyzeExtractedSnippet] = useState<
+    string | null
+  >(null);
 
   const [pkgGenerating, setPkgGenerating] = useState(false);
   const [pkg, setPkg] = useState<GeneratedProjectPackage | null>(null);
@@ -98,71 +99,6 @@ export function ProjectDescriberClient() {
     })();
   }, []);
 
-  const startSpeech = useCallback(() => {
-    setSpeechError(null);
-    type SRConstructor = new () => {
-      continuous: boolean;
-      interimResults: boolean;
-      lang: string;
-      start: () => void;
-      stop: () => void;
-      onresult: ((ev: Event) => void) | null;
-      onerror: ((ev: Event) => void) | null;
-      onend: (() => void) | null;
-    };
-    const w = window as unknown as {
-      SpeechRecognition?: SRConstructor;
-      webkitSpeechRecognition?: SRConstructor;
-    };
-    const SR = typeof window !== "undefined" && (w.SpeechRecognition || w.webkitSpeechRecognition);
-    if (!SR) {
-      setSpeechError(
-        "Voice input is not supported in this browser. Try Chrome or Safari.",
-      );
-      return;
-    }
-    try {
-      const r = new SR();
-      r.continuous = true;
-      r.interimResults = true;
-      r.lang = "en-US";
-      r.onresult = (ev: Event) => {
-        const e = ev as unknown as {
-          resultIndex: number;
-          results: { length: number; [i: number]: { [k: number]: { transcript: string } } };
-        };
-        let chunk = "";
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          chunk += e.results[i]![0]!.transcript;
-        }
-        if (chunk) {
-          setDescription((prev) => (prev ? `${prev} ${chunk}` : chunk.trim()));
-        }
-      };
-      r.onerror = (ev: Event) => {
-        const err = (ev as unknown as { error?: string }).error;
-        setSpeechError(err || "Speech recognition error");
-        setListening(false);
-      };
-      r.onend = () => setListening(false);
-      recRef.current = r;
-      r.start();
-      setListening(true);
-    } catch {
-      setSpeechError("Could not start microphone.");
-    }
-  }, []);
-
-  const stopSpeech = useCallback(() => {
-    try {
-      recRef.current?.stop();
-    } catch {
-      /* ignore */
-    }
-    recRef.current = null;
-    setListening(false);
-  }, []);
-
   const toggleHint = (id: ProjectDescriberHintId) => {
     setHints((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
@@ -171,6 +107,8 @@ export function ProjectDescriberClient() {
 
   const runAnalyze = useCallback(async () => {
     setAnalyzeError(null);
+    setAnalyzeDebugRaw(null);
+    setAnalyzeExtractedSnippet(null);
     setAnalysis(null);
     setPkg(null);
     setAnalyzing(true);
@@ -187,8 +125,15 @@ export function ProjectDescriberClient() {
       const j = (await res.json()) as {
         analysis?: ProjectDescriptionAnalysis;
         error?: string;
+        raw?: string;
+        rawText?: string;
+        extractedSnippet?: string | null;
       };
-      if (!res.ok) throw new Error(j.error ?? "Analysis failed");
+      if (!res.ok) {
+        setAnalyzeDebugRaw(j.raw ?? j.rawText ?? null);
+        setAnalyzeExtractedSnippet(j.extractedSnippet ?? null);
+        throw new Error(j.error ?? "Analysis failed");
+      }
       if (!j.analysis) throw new Error("No analysis returned");
       setAnalysis(j.analysis);
     } catch (e) {
@@ -339,31 +284,13 @@ export function ProjectDescriberClient() {
               rows={12}
               className="min-h-[220px] w-full flex-1 resize-y rounded-xl border border-white/15 bg-[#071422] px-4 py-3 text-sm text-white placeholder:text-white/35 focus:border-[#E8C84A]/50 focus:outline-none focus:ring-1 focus:ring-[#E8C84A]/40"
             />
-            <div className="flex shrink-0 flex-col gap-2">
-              <button
-                type="button"
-                onClick={listening ? stopSpeech : startSpeech}
-                title={listening ? "Stop listening" : "Voice input"}
-                className={[
-                  "flex h-11 w-11 items-center justify-center rounded-xl border text-lg transition-colors duration-200",
-                  listening
-                    ? "border-red-400/50 bg-red-950/40 text-red-100"
-                    : "border-white/20 bg-white/10 text-white hover:bg-white/15",
-                ].join(" ")}
-                aria-label={listening ? "Stop listening" : "Start voice input"}
-              >
-                {listening ? "■" : "🎤"}
-              </button>
-            </div>
+            <VoiceInputButton
+              onAppend
+              placeholder="Voice"
+              className="shrink-0"
+              onTranscript={(t) => setDescription((prev) => prev + t)}
+            />
           </div>
-          {listening ? (
-            <p className="mt-2 text-sm font-medium text-[#E8C84A]">
-              Listening… speak clearly. Click stop when done.
-            </p>
-          ) : null}
-          {speechError ? (
-            <p className="mt-2 text-sm text-red-300">{speechError}</p>
-          ) : null}
 
           <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-white/50">
             Project type hints (optional)
@@ -396,7 +323,33 @@ export function ProjectDescriberClient() {
               : "Analyze Project"}
           </button>
           {analyzeError ? (
-            <p className="mt-3 text-sm text-red-300">{analyzeError}</p>
+            <div className="mt-3 space-y-2 rounded-lg border border-red-500/35 bg-red-950/20 p-3 text-left">
+              <p className="text-sm font-medium text-red-200">{analyzeError}</p>
+              <p className="text-xs text-white/50">
+                If this persists, check the server log for{" "}
+                <code className="text-white/70">Claude raw response</code>.
+              </p>
+              {analyzeExtractedSnippet ? (
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-amber-200/90">
+                    Extracted JSON snippet (debug)
+                  </summary>
+                  <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded border border-white/10 bg-black/40 p-2 text-white/70">
+                    {analyzeExtractedSnippet}
+                  </pre>
+                </details>
+              ) : null}
+              {analyzeDebugRaw ? (
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-amber-200/90">
+                    Raw model response (debug)
+                  </summary>
+                  <pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap break-all rounded border border-white/10 bg-black/40 p-2 text-white/70">
+                    {analyzeDebugRaw}
+                  </pre>
+                </details>
+              ) : null}
+            </div>
           ) : null}
         </section>
 

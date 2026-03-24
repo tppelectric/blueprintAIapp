@@ -4,6 +4,7 @@ import { jsPDF } from "jspdf";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LinkToJobDialog } from "@/components/link-to-job-dialog";
+import { VoiceInputButton } from "@/components/voice-input-button";
 
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -436,16 +437,26 @@ export function NecAiQuestionPanel({
       <p className="text-xs font-medium text-violet-200/85 print:text-gray-700">
         Powered by Claude AI — NEC article citations included in answers
       </p>
-      <textarea
-        value={qInput}
-        onChange={(e) => setQInput(e.target.value)}
-        rows={4}
-        placeholder={
-          "Example: Does a bathroom need a dedicated circuit? What GFCI protection is required in a kitchen? What is the minimum service size for a new single family home in NY?"
-        }
-        className="mt-4 min-h-[120px] w-full resize-y rounded-xl border-2 border-violet-400/35 bg-[#071422] px-4 py-3 text-sm leading-relaxed text-white placeholder:text-white/35 shadow-inner shadow-black/20 outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/35 print:border-gray-300 print:bg-white print:text-black md:text-base"
-        disabled={loading}
-      />
+      <div className="mt-4 flex items-stretch gap-2">
+        <textarea
+          value={qInput}
+          onChange={(e) => setQInput(e.target.value)}
+          rows={4}
+          placeholder={
+            "Example: Does a bathroom need a dedicated circuit? What GFCI protection is required in a kitchen? What is the minimum service size for a new single family home in NY?"
+          }
+          className="min-h-[120px] min-w-0 flex-1 resize-y rounded-xl border-2 border-violet-400/35 bg-[#071422] px-4 py-3 text-sm leading-relaxed text-white placeholder:text-white/35 shadow-inner shadow-black/20 outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/35 print:border-gray-300 print:bg-white print:text-black md:text-base"
+          disabled={loading}
+        />
+        <div className="flex shrink-0 flex-col justify-start pt-1">
+          <VoiceInputButton
+            onAppend
+            placeholder="Voice"
+            disabled={loading}
+            onTranscript={(t) => setQInput((prev) => prev + t)}
+          />
+        </div>
+      </div>
       <div className="mt-5 flex flex-wrap items-center gap-3">
         <button
           type="button"

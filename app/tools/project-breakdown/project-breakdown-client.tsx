@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ToolPageHeader } from "@/components/tool-page-header";
+import { VoiceInputButton } from "@/components/voice-input-button";
 import { ProjectBreakdownEditor } from "@/components/project-breakdown-editor";
 import { LinkToJobDialog } from "@/components/link-to-job-dialog";
 import {
@@ -49,6 +50,7 @@ export function ProjectBreakdownPageClient() {
           setState({
             ...base,
             ...o,
+            notes: typeof o.notes === "string" ? o.notes : base.notes,
             materials: Array.isArray(o.materials)
               ? (o.materials as PBMaterialLine[])
               : base.materials,
@@ -170,6 +172,31 @@ export function ProjectBreakdownPageClient() {
         {msg ? (
           <p className="mb-4 text-sm text-white/75">{msg}</p>
         ) : null}
+
+        <div className="mb-6 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+          <div className="flex items-start gap-3">
+            <label className="min-w-0 flex-1 text-sm text-white/70">
+              Notes
+              <textarea
+                value={state.notes}
+                onChange={(e) =>
+                  setState((s) => ({ ...s, notes: e.target.value }))
+                }
+                rows={4}
+                placeholder="Job context, exclusions, customer requests…"
+                className="mt-1 w-full resize-y rounded-lg border border-white/15 bg-[#0a1628] px-3 py-2 text-white placeholder:text-white/35"
+              />
+            </label>
+            <VoiceInputButton
+              onAppend
+              placeholder="Voice notes"
+              className="shrink-0 pt-6"
+              onTranscript={(t) =>
+                setState((s) => ({ ...s, notes: s.notes + t }))
+              }
+            />
+          </div>
+        </div>
 
         <ProjectBreakdownEditor
           variant="full"

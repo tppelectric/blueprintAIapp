@@ -8,6 +8,7 @@ export type VoiceInputButtonProps = {
   onAppend: boolean;
   placeholder?: string;
   className?: string;
+  disabled?: boolean;
 };
 
 type SpeechRec = {
@@ -56,6 +57,7 @@ export function VoiceInputButton({
   onAppend,
   placeholder = "Voice",
   className = "",
+  disabled = false,
 }: VoiceInputButtonProps) {
   const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +78,7 @@ export function VoiceInputButton({
   }, []);
 
   const start = useCallback(() => {
+    if (disabled) return;
     setError(null);
     const Ctor = getSpeechRecognitionCtor();
     if (!Ctor) {
@@ -126,24 +129,27 @@ export function VoiceInputButton({
     } catch {
       setError("Could not start microphone.");
     }
-  }, [onAppend, onTranscript]);
+  }, [disabled, onAppend, onTranscript]);
 
   const toggle = useCallback(() => {
+    if (disabled) return;
     if (listening) stop();
     else start();
-  }, [listening, start, stop]);
+  }, [disabled, listening, start, stop]);
 
   return (
     <div className={`flex flex-col items-center gap-1 ${className}`}>
       <button
         type="button"
         onClick={toggle}
+        disabled={disabled}
         title={listening ? "Stop listening" : placeholder}
         className={[
           "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-colors",
           listening
             ? "border-red-400/50 bg-red-950/40 text-red-100"
             : "border-white/20 bg-white/10 text-white hover:bg-white/15",
+          disabled ? "cursor-not-allowed opacity-40" : "",
         ].join(" ")}
         aria-label={listening ? "Stop voice input" : "Start voice input"}
         aria-pressed={listening}

@@ -160,6 +160,31 @@ If truly empty (no electrical content anywhere), return:
 and you may include an optional top-level "notes" array, e.g.
 ["Page appears to have no electrical content"].
 
+ABSOLUTE RULE - NEVER RETURN EMPTY:
+You must return at least one item for
+any page that has electrical content.
+
+For pages with ONLY schedules or tables:
+- Read every single row
+- Each row becomes one plan_note item
+- description: exactly what the row says
+- category: plan_note
+- confidence: 0.90
+
+For pages with ONLY text/notes:
+- Each paragraph or note becomes one item
+- category: plan_note
+- confidence: 0.85
+
+For pages with small or unclear symbols:
+- Describe what you think you see
+- Use confidence 0.50-0.65
+- Include it anyway
+
+The only valid reason to return empty items
+is if the page is completely blank white
+with absolutely no marks whatsoever.
+
 COUNTING RULES - THIS IS CRITICAL:
 - Count every single symbol individually, one by one
 - Do not estimate or guess quantities
@@ -331,7 +356,7 @@ No project-specific symbol legend is on file for this project — use standard N
     const msg = await withClaudeOverloadRetries(() =>
       anthropic.messages.create({
         model: MODEL,
-        max_tokens: 8192,
+        max_tokens: 16384,
         stream: false,
         system: systemPromptUsed,
         messages: [

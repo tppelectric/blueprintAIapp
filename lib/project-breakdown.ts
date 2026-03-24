@@ -226,6 +226,8 @@ export type ProjectBreakdownState = {
   wifiVendor: VendorChoice | null;
   materials: PBMaterialLine[];
   labor: PBLaborLine[];
+  /** Optional job notes (voice-friendly). */
+  notes: string;
 };
 
 export const defaultProjectBreakdownState = (): ProjectBreakdownState => ({
@@ -237,6 +239,7 @@ export const defaultProjectBreakdownState = (): ProjectBreakdownState => ({
   wifiVendor: null,
   materials: [],
   labor: [],
+  notes: "",
 });
 
 export function materialLineCost(m: PBMaterialLine): number {
@@ -467,6 +470,7 @@ export function seedProjectBreakdownFromWifi(
   }));
 
   return {
+    ...base,
     materialMarkupPct,
     technicianCount,
     laborRatePerHour,

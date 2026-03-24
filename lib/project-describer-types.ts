@@ -335,10 +335,9 @@ export function safeParseGeneratedPackage(
   text: string,
 ): GeneratedProjectPackage | null {
   try {
-    const trimmed = text.trim();
-    const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-    const payload = (fence ? fence[1] : trimmed).trim();
-    const o = JSON.parse(payload) as Record<string, unknown>;
+    const extracted = extractJsonObjectFromModelText(text);
+    if (!extracted) return null;
+    const o = JSON.parse(extracted) as Record<string, unknown>;
     const req = [
       "internalWorkScope",
       "fieldWorkOrder",

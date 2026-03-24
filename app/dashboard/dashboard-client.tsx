@@ -102,18 +102,18 @@ function ProjectBlueprintThumb({ storagePath }: { storagePath: string }) {
 
   if (failed || (!preview && storagePath)) {
     return (
-      <div className="mb-4 flex h-24 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-xs text-white/45">
+      <div className="dash-muted mb-4 flex h-24 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] text-xs">
         Blueprint
       </div>
     );
   }
   if (!preview) {
     return (
-      <div className="mb-4 h-24 animate-pulse rounded-xl border border-white/10 bg-white/[0.06]" />
+      <div className="mb-4 h-24 animate-pulse rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)]" />
     );
   }
   return (
-    <div className="mb-4 overflow-hidden rounded-xl border border-white/10 bg-[#0a1628]">
+    <div className="mb-4 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)]">
       <img
         src={preview}
         alt=""
@@ -249,14 +249,24 @@ export function DashboardClient() {
       }
       setProjects((data ?? []) as ProjectRow[]);
 
-      const { data: jData } = await supabase
-        .from("jobs")
-        .select(
-          "id,job_name,job_number,status,job_type,updated_at,customers(company_name,contact_name)",
-        )
-        .order("updated_at", { ascending: false })
-        .limit(5);
-      setRecentJobs((jData ?? []) as unknown as JobListRow[]);
+      try {
+        const { data: jData, error: jErr } = await supabase
+          .from("jobs")
+          .select(
+            "id,job_name,job_number,status,job_type,updated_at,customers(company_name,contact_name)",
+          )
+          .order("updated_at", { ascending: false })
+          .limit(5);
+        if (jErr) {
+          console.warn("[dashboard] jobs query:", jErr.message);
+          setRecentJobs([]);
+        } else {
+          setRecentJobs((jData ?? []) as unknown as JobListRow[]);
+        }
+      } catch (je) {
+        console.warn("[dashboard] jobs load failed:", je);
+        setRecentJobs([]);
+      }
     } catch (e) {
       setError(
         e instanceof Error ? e.message : "Could not load projects. Try again.",
@@ -395,26 +405,26 @@ export function DashboardClient() {
   }, [deleteTarget]);
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="dashboard-root flex min-h-screen flex-col">
       <WideAppHeader active="dashboard" showTppSubtitle />
 
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 py-10 sm:py-12">
         {flashMessage ? (
           <div
-            className="mt-6 rounded-xl border border-emerald-500/40 bg-emerald-950/40 px-4 py-3 text-sm font-medium text-emerald-100"
+            className="flash-banner-ok mt-6 rounded-xl px-4 py-3 text-sm font-medium"
             role="status"
           >
             {flashMessage}
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="border-l-4 border-[#E8C84A] pl-4 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+        <div className="flex w-full min-w-0 flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0 shrink-0 lg:max-w-[min(100%,28rem)]">
+            <h1 className="border-l-4 border-[#E8C84A] pl-4 text-3xl font-semibold tracking-tight text-[var(--foreground)] sm:text-4xl">
               My Projects
             </h1>
             {monthUsage && monthUsage.pages > 0 ? (
-              <p className="mt-2 text-sm text-white/60">
+              <p className="dash-muted mt-2 text-sm">
                 This month: {monthUsage.pages} page
                 {monthUsage.pages === 1 ? "" : "s"} analyzed —{" "}
                 <span className="font-semibold text-[#E8C84A]">
@@ -423,17 +433,11 @@ export function DashboardClient() {
               </p>
             ) : null}
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-            <Link
-              href="/jobs"
-              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:border-[#E8C84A]/55 hover:bg-white/[0.14]"
-            >
+          <div className="flex min-w-0 flex-1 flex-wrap items-center justify-start gap-2 lg:justify-end">
+            <Link href="/jobs" className="dash-header-btn shrink-0">
               Jobs
             </Link>
-            <Link
-              href="/customers"
-              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:border-[#E8C84A]/55 hover:bg-white/[0.14]"
-            >
+            <Link href="/customers" className="dash-header-btn shrink-0">
               Customers
             </Link>
             <Link
@@ -491,10 +495,10 @@ export function DashboardClient() {
             aria-busy="true"
           >
             <div
-              className="h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-white"
+              className="h-10 w-10 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--foreground)]"
               aria-hidden
             />
-            <p className="text-sm text-white/60">Loading projects…</p>
+            <p className="dash-muted text-sm">Loading projects…</p>
           </div>
         )}
 
@@ -508,9 +512,11 @@ export function DashboardClient() {
         )}
 
         {!loading && !error && recentJobs.length > 0 && (
-          <section className="mt-10 rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+          <section className="dash-surface mt-10 p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold text-white">Recent jobs</h2>
+              <h2 className="text-lg font-semibold text-[var(--foreground)]">
+                Recent jobs
+              </h2>
               <Link
                 href="/jobs"
                 className="text-sm font-medium text-[#E8C84A] hover:underline"
@@ -523,12 +529,12 @@ export function DashboardClient() {
                 <li key={j.id}>
                   <Link
                     href={`/jobs/${j.id}`}
-                    className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border border-white/8 bg-[#0a1628]/50 px-3 py-2 text-sm hover:border-[#E8C84A]/35"
+                    className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 text-sm hover:border-[#E8C84A]/35"
                   >
-                    <span className="font-medium text-white">
+                    <span className="font-medium text-[var(--foreground)]">
                       {j.job_number} · {j.job_name}
                     </span>
-                    <span className="text-xs text-white/45">
+                    <span className="dash-muted text-xs">
                       {j.status} · {j.job_type}
                     </span>
                   </Link>
@@ -539,14 +545,16 @@ export function DashboardClient() {
         )}
 
         {!loading && !error && projects.length === 0 && (
-          <div className="mt-16 rounded-2xl border border-white/10 bg-white/[0.03] px-8 py-14 text-center">
-            <p className="text-lg font-medium text-white">No projects yet</p>
-            <p className="mt-2 text-sm text-white/55">
+          <div className="dash-surface mt-16 px-8 py-14 text-center">
+            <p className="text-lg font-medium text-[var(--foreground)]">
+              No projects yet — upload your first blueprint
+            </p>
+            <p className="dash-muted mt-2 text-sm">
               Upload a blueprint PDF to create your first project.
             </p>
             <Link
               href="/upload"
-              className="mt-6 inline-flex items-center justify-center rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-[#0a1628] shadow-sm transition-colors hover:bg-white/90"
+              className="mt-6 inline-flex items-center justify-center rounded-lg bg-[#E8C84A] px-5 py-2.5 text-sm font-semibold text-[#0a1628] shadow-sm transition-colors hover:bg-[#f0d56e]"
             >
               Go to upload
             </Link>
@@ -567,7 +575,7 @@ export function DashboardClient() {
                       editShellRef.current = null;
                     }
                   }}
-                  className="flex h-full flex-col rounded-2xl border border-white/10 bg-white/[0.04] p-5 shadow-sm transition-colors hover:border-white/15"
+                  className="dash-surface flex h-full flex-col p-5 transition-colors hover:border-[#E8C84A]/25"
                 >
                   {thumbPath ? (
                     <ProjectBlueprintThumb storagePath={thumbPath} />
@@ -582,7 +590,7 @@ export function DashboardClient() {
                             onChange={(e) => setEditDraft(e.target.value)}
                             disabled={renameSaving}
                             autoFocus
-                            className="min-w-0 flex-1 rounded-lg border border-sky-500/50 bg-[#0a1628] px-2.5 py-1.5 text-lg font-semibold text-white outline-none focus:ring-2 focus:ring-sky-400/50"
+                            className="min-w-0 flex-1 rounded-lg border border-sky-500/50 bg-[var(--surface-elevated)] px-2.5 py-1.5 text-lg font-semibold text-[var(--foreground)] outline-none focus:ring-2 focus:ring-sky-400/50"
                             aria-label="Project name"
                             onKeyDown={(e) => {
                               if (e.key === "Enter") {
@@ -629,7 +637,7 @@ export function DashboardClient() {
                         <button
                           type="button"
                           onClick={() => startEdit(p)}
-                          className="rounded-lg border border-white/20 bg-white/10 p-2 text-white/85 transition-colors hover:bg-white/15"
+                          className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-2 text-[var(--foreground)] transition-colors hover:border-[#E8C84A]/35"
                           aria-label="Edit project name"
                         >
                           <PencilIcon className="h-4 w-4" />
@@ -697,14 +705,14 @@ export function DashboardClient() {
             aria-modal="true"
             aria-labelledby="delete-project-title"
           >
-            <div className="w-full max-w-md rounded-2xl border border-white/15 bg-[#0a1628] p-6 shadow-xl">
+            <div className="w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--surface-card)] p-6 shadow-xl">
               <h2
                 id="delete-project-title"
-                className="text-lg font-semibold text-white"
+                className="text-lg font-semibold text-[var(--foreground)]"
               >
                 Delete project?
               </h2>
-              <p className="mt-3 text-sm leading-relaxed text-white/75">
+              <p className="dash-muted mt-3 text-sm leading-relaxed">
                 Are you sure you want to delete this project? This will
                 permanently delete all sheets, analysis results, and detected
                 rooms. This cannot be undone.
@@ -714,7 +722,7 @@ export function DashboardClient() {
                   type="button"
                   disabled={deleting}
                   onClick={() => setDeleteTarget(null)}
-                  className="rounded-lg border border-white/25 bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/15 disabled:opacity-50"
+                  className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-4 py-2 text-sm font-semibold text-[var(--foreground)] hover:border-[#E8C84A]/35 disabled:opacity-50"
                 >
                   Cancel
                 </button>

@@ -1,5 +1,10 @@
 import { createBrowserClient } from "@/lib/supabase/client";
-import { normalizeBlueprintStoragePath } from "@/lib/storage-path";
+import {
+  buildBlueprintUploadObjectPath,
+  normalizeBlueprintStoragePath,
+} from "@/lib/storage-path";
+
+const BLUEPRINTS_BUCKET = "blueprints";
 
 export type UploadedSheetPayload = {
   /** Storage object path in the `blueprints` bucket (e.g. uploads/uuid-slug.pdf), never a public URL. */
@@ -10,82 +15,65 @@ export type UploadedSheetPayload = {
 };
 
 /**
- * Uploads one PDF via POST /api/upload-pdf (server uses service role + private bucket).
- * The browser never sees the service role key.
+ * Uploads a PDF directly from the browser to Supabase Storage using the user's session.
+ * Bypasses Vercel's ~4.5MB serverless body limit (no file bytes through Next.js API).
+ *
+ * Requires storage RLS allowing authenticated `INSERT` on `blueprints` / `uploads/*`
+ * (see `supabase/storage_blueprints_client_upload.sql`).
  */
 export async function uploadPdfFileToStorage(
   file: File,
   onProgress: (percent: number) => void,
 ): Promise<UploadedSheetPayload> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/upload-pdf");
+  if (file.size <= 0) {
+    throw new Error("Empty file.");
+  }
 
-    xhr.upload.addEventListener("progress", (e) => {
-      if (e.lengthComputable && e.total > 0) {
-        const pct = Math.round((e.loaded / e.total) * 100);
-        onProgress(Math.min(99, pct));
-      }
+  const type = file.type;
+  if (
+    type &&
+    type !== "application/pdf" &&
+    type !== "application/octet-stream" &&
+    type !== "application/x-pdf"
+  ) {
+    throw new Error("Only PDF uploads are allowed.");
+  }
+
+  onProgress(5);
+  const objectPath = buildBlueprintUploadObjectPath(file.name);
+  const supabase = createBrowserClient();
+
+  onProgress(25);
+  const { error } = await supabase.storage
+    .from(BLUEPRINTS_BUCKET)
+    .upload(objectPath, file, {
+      contentType: "application/pdf",
+      upsert: false,
     });
 
-    xhr.addEventListener("load", () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        onProgress(100);
-        try {
-          const json = JSON.parse(xhr.responseText) as {
-            storagePath?: string;
-            fileSize?: number;
-            originalFileName?: string;
-            error?: string;
-          };
-          if (json.error) {
-            reject(new Error(json.error));
-            return;
-          }
-          if (!json.storagePath) {
-            reject(new Error("Upload succeeded but no storage path returned."));
-            return;
-          }
-          const path = normalizeBlueprintStoragePath(json.storagePath);
-          if (!path.startsWith("uploads/")) {
-            reject(new Error("Server returned an unexpected storage path."));
-            return;
-          }
-          const sheetName =
-            file.name.replace(/\.pdf$/i, "").trim() || file.name;
-          resolve({
-            storagePath: path,
-            sheetName,
-            fileSize: json.fileSize ?? file.size,
-            originalFileName: json.originalFileName ?? file.name,
-          });
-        } catch {
-          reject(new Error("Invalid response from upload server."));
-        }
-        return;
-      }
-      let message = `Upload failed (${xhr.status}).`;
-      try {
-        const parsed = JSON.parse(xhr.responseText) as { error?: string };
-        if (parsed.error) message = parsed.error;
-      } catch {
-        if (xhr.responseText) message = xhr.responseText.slice(0, 200);
-      }
-      reject(new Error(message));
-    });
+  onProgress(100);
 
-    xhr.addEventListener("error", () => {
-      reject(
-        new Error(
-          "Network error while uploading. Check your connection and try again.",
-        ),
-      );
-    });
+  if (error) {
+    throw new Error(
+      error.message ||
+        "Storage upload failed. Check you are signed in and storage policies allow uploads.",
+    );
+  }
 
-    const body = new FormData();
-    body.append("file", file);
-    xhr.send(body);
-  });
+  const path = normalizeBlueprintStoragePath(objectPath);
+  if (!path.startsWith("uploads/")) {
+    throw new Error("Unexpected storage path after upload.");
+  }
+
+  const sheetName =
+    file.name.replace(/\.pdf$/i, "").trim() || file.name;
+
+  return {
+    storagePath: path,
+    sheetName,
+    fileSize: file.size,
+    originalFileName: file.name,
+  };
 }
 
 /**

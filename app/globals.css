@@ -1,16 +1,26 @@
 @import "tailwindcss";
 
+/* Dark (FIX 5): deeper page background, cards stepped up */
 :root,
 [data-theme="dark"] {
-  --background: #0a1628;
+  --background: #060d1a;
+  --surface-card: #0a1628;
+  --surface-elevated: #112240;
   --foreground: #ffffff;
+  --foreground-muted: rgba(255, 255, 255, 0.68);
+  --border: rgba(255, 255, 255, 0.12);
   --tpp-gold: #e8c84a;
 }
 
+/* Light (FIX 3): readable text, white cards, navy nav */
 [data-theme="light"] {
-  --background: #f1f5f9;
+  --background: #f0f4f8;
+  --surface-card: #ffffff;
+  --surface-elevated: #ffffff;
   --foreground: #0a1628;
-  --tpp-gold: #c9a227;
+  --foreground-muted: #4a5568;
+  --border: #e2e8f0;
+  --tpp-gold: #e8c84a;
 }
 
 @theme inline {
@@ -27,33 +37,34 @@ body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
+/* Nav headers: navy in both themes (FIX 3) */
 .app-header-wide {
-  border-bottom-color: rgba(255, 255, 255, 0.1);
-  background: rgba(7, 20, 34, 0.8);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0a1628;
 }
 [data-theme="light"] .app-header-wide {
-  border-bottom-color: rgba(10, 22, 40, 0.12);
-  background: rgba(255, 255, 255, 0.94);
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+  background: #0a1628;
 }
 
 .app-header-title {
   color: #ffffff;
 }
 [data-theme="light"] .app-header-title {
-  color: #0a1628;
+  color: #ffffff;
 }
 
 .app-header-sub {
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(255, 255, 255, 0.6);
 }
 [data-theme="light"] .app-header-sub {
-  color: rgba(10, 22, 40, 0.55);
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .app-nav-link-idle {
   border-bottom: 2px solid transparent;
   padding-bottom: 0.125rem;
-  color: rgba(255, 255, 255, 0.75);
+  color: rgba(255, 255, 255, 0.78);
   transition:
     color 0.15s,
     border-color 0.15s;
@@ -63,10 +74,10 @@ body {
   color: #e8c84a;
 }
 [data-theme="light"] .app-nav-link-idle {
-  color: rgba(10, 22, 40, 0.72);
+  color: rgba(255, 255, 255, 0.78);
 }
 [data-theme="light"] .app-nav-link-idle:hover {
-  color: #c9a227;
+  color: #e8c84a;
 }
 
 .app-nav-link-active {
@@ -76,43 +87,46 @@ body {
   color: #e8c84a;
 }
 [data-theme="light"] .app-nav-link-active {
-  color: #a88416;
-  border-bottom-color: #c9a227;
+  color: #e8c84a;
+  border-bottom-color: #e8c84a;
 }
 
 .app-tool-header {
-  border-bottom-color: rgba(255, 255, 255, 0.1);
-  background: #071422;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0a1628;
 }
 [data-theme="light"] .app-tool-header {
-  border-bottom-color: rgba(10, 22, 40, 0.12);
-  background: #ffffff;
-  box-shadow: 0 1px 0 rgba(10, 22, 40, 0.06);
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+  background: #0a1628;
+  box-shadow: none;
 }
 
 .app-tool-header h1 {
   color: #ffffff;
 }
 [data-theme="light"] .app-tool-header h1 {
-  color: #0a1628;
+  color: #ffffff;
 }
 
 .app-tool-header .tool-subtitle {
   color: rgba(232, 200, 74, 0.95);
 }
 [data-theme="light"] .app-tool-header .tool-subtitle {
-  color: #a88416;
+  color: rgba(232, 200, 74, 0.95);
 }
 
 .app-nav-search-input {
-  background: rgba(10, 22, 40, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   color: #ffffff;
 }
 [data-theme="light"] .app-nav-search-input {
-  background: #ffffff;
-  border-color: rgb(203, 213, 225);
-  color: #0a1628;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+.app-nav-search-input::placeholder {
+  color: rgba(255, 255, 255, 0.45);
 }
 
 .app-nav-search-dropdown {
@@ -121,37 +135,96 @@ body {
   color: #f1f5f9;
 }
 [data-theme="light"] .app-nav-search-dropdown {
-  background: #ffffff;
-  border-color: rgb(226, 232, 240);
-  color: #0a1628;
+  background: #0f1f35;
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #f1f5f9;
 }
 
 .tool-surface-card {
   border-radius: 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  background: var(--surface-card);
+  color: var(--foreground);
 }
 [data-theme="light"] .tool-surface-card {
-  border-color: rgb(226, 232, 240);
-  background: #ffffff;
-  box-shadow: 0 1px 2px rgba(10, 22, 40, 0.06);
+  box-shadow: 0 1px 3px rgba(10, 22, 40, 0.08);
 }
 
 .tool-muted {
-  color: rgba(255, 255, 255, 0.55);
-}
-[data-theme="light"] .tool-muted {
-  color: rgba(10, 22, 40, 0.55);
+  color: var(--foreground-muted);
 }
 
 .tool-field {
   border-radius: 0.5rem;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: #0a1628;
+  border: 1px solid var(--border);
+  background: var(--surface-card);
+  color: var(--foreground);
+}
+[data-theme="dark"] .tool-field {
+  background: var(--surface-elevated);
   color: #ffffff;
 }
-[data-theme="light"] .tool-field {
-  border-color: rgb(203, 213, 225);
+
+/* Dashboard */
+.dashboard-root {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.dash-surface {
+  border-radius: 1rem;
+  border: 1px solid var(--border);
+  background: var(--surface-card);
+  color: var(--foreground);
+}
+[data-theme="light"] .dash-surface {
+  box-shadow: 0 1px 3px rgba(10, 22, 40, 0.08);
+}
+
+.dash-muted {
+  color: var(--foreground-muted);
+}
+
+.dash-header-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+[data-theme="dark"] .dash-header-btn {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+[data-theme="dark"] .dash-header-btn:hover {
+  border-color: rgba(232, 200, 74, 0.45);
+  background: rgba(255, 255, 255, 0.12);
+}
+[data-theme="light"] .dash-header-btn {
+  border-color: var(--border);
   background: #ffffff;
   color: #0a1628;
+  box-shadow: 0 1px 2px rgba(10, 22, 40, 0.06);
+}
+[data-theme="light"] .dash-header-btn:hover {
+  border-color: rgba(232, 200, 74, 0.5);
+}
+
+.flash-banner-ok {
+  border: 1px solid rgba(52, 211, 153, 0.45);
+  background: rgba(6, 78, 59, 0.35);
+  color: rgb(209, 250, 229);
+}
+[data-theme="light"] .flash-banner-ok {
+  background: rgb(236, 253, 245);
+  color: rgb(6, 78, 59);
+  border-color: rgba(16, 185, 129, 0.5);
 }

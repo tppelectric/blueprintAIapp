@@ -17,6 +17,7 @@ export function LoginClient() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [statusHint, setStatusHint] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(
     errQ ? decodeURIComponent(errQ) : null,
   );
@@ -29,29 +30,68 @@ export function LoginClient() {
       e.preventDefault();
       setBusy(true);
       setError(null);
+      setStatusHint(null);
       const trimmedEmail = email.trim();
+      const safe = nextPath.startsWith("/") ? nextPath : "/dashboard";
+
+      const sleep = (ms: number) =>
+        new Promise<void>((resolve) => setTimeout(resolve, ms));
+
       try {
         const sb = createBrowserClient();
         console.log("Sign in attempt:", trimmedEmail);
-        const { data, error: signErr } = await sb.auth.signInWithPassword({
-          email: trimmedEmail,
-          password,
-        });
-        console.log("Auth response:", { data, error: signErr });
 
-        if (signErr) {
-          setError(signErr.message || "Sign-in failed.");
+        let data: Awaited<
+          ReturnType<typeof sb.auth.signInWithPassword>
+        >["data"] | null = null;
+        let signErr: Awaited<
+          ReturnType<typeof sb.auth.signInWithPassword>
+        >["error"] | null = null;
+
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          if (attempt === 2) {
+            setStatusHint("Retrying…");
+          }
+
+          const res = await sb.auth.signInWithPassword({
+            email: trimmedEmail,
+            password,
+          });
+          data = res.data;
+          signErr = res.error;
+
+          console.log("Full Supabase signInWithPassword response:", res);
+          console.log("Auth response summary:", {
+            hasSession: Boolean(res.data?.session),
+            userId: res.data?.session?.user?.id ?? null,
+            error: res.error,
+          });
+
+          if (signErr) {
+            setError(signErr.message || "Sign-in failed.");
+            return;
+          }
+
+          if (res.data?.session) {
+            break;
+          }
+
+          if (attempt === 1) {
+            continue;
+          }
+
+          setError("Login failed — please try again");
           return;
         }
 
-        if (!data.session) {
-          setError(
-            "No session returned after sign-in. Check Supabase URL/keys and cookie settings.",
-          );
+        if (!data?.session) {
+          setError("Login failed — please try again");
           return;
         }
 
-        const safe = nextPath.startsWith("/") ? nextPath : "/dashboard";
+        setStatusHint(null);
+        router.refresh();
+        await sleep(500);
         router.push(safe);
         router.refresh();
       } catch (ex) {
@@ -60,6 +100,7 @@ export function LoginClient() {
         console.error("Sign-in exception:", ex);
         setError(msg);
       } finally {
+        setStatusHint(null);
         setBusy(false);
       }
     },
@@ -143,8 +184,18 @@ export function LoginClient() {
           disabled={busy}
           className="w-full rounded-lg border-2 border-[#E8C84A]/60 bg-[#0d2847] py-3 text-sm font-bold text-white shadow-md transition hover:bg-[#123a5c] disabled:opacity-50"
         >
-          {busy ? "Signing in…" : "Sign In"}
+          {busy
+            ? statusHint === "Retrying…"
+              ? "Retrying…"
+              : "Signing in…"
+            : "Sign In"}
         </button>
+
+        {statusHint && !error ? (
+          <p className="text-center text-sm text-amber-200/90" role="status">
+            {statusHint}
+          </p>
+        ) : null}
 
         {error ? (
           <p

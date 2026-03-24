@@ -1,6 +1,13 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+function hasSupabaseAuthCookie(request: NextRequest): boolean {
+  return request.cookies.getAll().some((c) => {
+    const n = c.name.toLowerCase();
+    return n.includes("sb-") && n.includes("auth");
+  });
+}
+
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
@@ -28,7 +35,7 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  const {
+  let {
     data: { user },
   } = await supabase.auth.getUser();
 
@@ -42,6 +49,25 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/auth/callback") ||
     path === "/api/setup-status" ||
     path === "/api/setup-first-admin";
+
+  /** Brief pause + second getUser when cookies suggest a session but JWT not visible yet (client just set cookie). */
+  if (!user && !isPublic && hasSupabaseAuthCookie(request)) {
+    await new Promise((r) => setTimeout(r, 50));
+    ({
+      data: { user },
+    } = await supabase.auth.getUser());
+  }
+
+  /**
+   * Small delay + re-check before sending unauthenticated users to /login so
+   * Set-Cookie from the client can be visible on the next tick (race with SSR).
+   */
+  if (!user && !isPublic) {
+    await new Promise((r) => setTimeout(r, 40));
+    ({
+      data: { user },
+    } = await supabase.auth.getUser());
+  }
 
   if (!user && !isPublic) {
     const redirectUrl = request.nextUrl.clone();

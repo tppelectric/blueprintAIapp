@@ -88,6 +88,6 @@ export function useTheme() {
 export function useThemedPageShell() {
   const { theme } = useTheme();
   return theme === "light"
-    ? "min-h-screen bg-slate-100 text-slate-900 antialiased"
-    : "min-h-screen bg-[#0a1628] text-white antialiased";
+    ? "min-h-screen bg-[#f0f4f8] text-[#0a1628] antialiased"
+    : "min-h-screen bg-[#060d1a] text-white antialiased";
 }

@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { buildBlueprintUploadObjectPath } from "@/lib/storage-path";
 
+/** Fallback / tooling uploads; primary path is browser → Supabase (`lib/upload-blueprint.ts`). */
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const BUCKET = "blueprints";

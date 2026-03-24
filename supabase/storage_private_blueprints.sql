@@ -9,5 +9,6 @@ WHERE name = 'blueprints';
 -- DROP POLICY IF EXISTS "Allow public read" ON storage.objects;
 -- (Recreate policies in Dashboard → Storage → Policies for bucket `blueprints`.)
 
--- After this change, uploads must use the service role (e.g. POST /api/upload-pdf)
--- and PDFs must be loaded with signed URLs from POST /api/get-blueprint-url.
+-- Uploads: prefer authenticated browser → Storage (see storage_blueprints_client_upload.sql)
+-- to avoid Vercel body limits; optional service-role fallback POST /api/upload-pdf.
+-- PDFs are loaded with signed URLs from POST /api/get-blueprint-url.

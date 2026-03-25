@@ -30,6 +30,687 @@ function fmtDisplay(n: number): string {
   return s;
 }
 
+function factorialInt(n: number): number {
+  if (!Number.isInteger(n) || n < 0) return NaN;
+  if (n > 170) return Infinity;
+  let r = 1;
+  for (let i = 2; i <= n; i++) r *= i;
+  return r;
+}
+
+/** Scientific tab: gold keys, white numbers, navy utilities — matches widget theme. */
+function ScientificCalculatorPanel({ theme }: { theme: "dark" | "light" }) {
+  const [angleMode, setAngleMode] = useState<"deg" | "rad">("deg");
+  const [memory, setMemory] = useState(0);
+  const [history, setHistory] = useState<string[]>([]);
+
+  const [display, setDisplay] = useState("0");
+  const [acc, setAcc] = useState<number | null>(null);
+  const [pendingOp, setPendingOp] = useState<CalcOp | null>(null);
+  const [waiting, setWaiting] = useState(false);
+
+  /** Human-readable expression above the entry (e.g. "12 + 3 × "). */
+  const [expressionDisplay, setExpressionDisplay] = useState("");
+  /** EE: mantissa before E, then exponent digits */
+  const [eeMode, setEeMode] = useState(false);
+  const [eeMantissa, setEeMantissa] = useState<string | null>(null);
+  const [eeExpStr, setEeExpStr] = useState("");
+  /** xⁿ or ⁿ√x two-step */
+  const [powPending, setPowPending] = useState<number | null>(null);
+  const [rootPending, setRootPending] = useState<number | null>(null);
+
+  const numClass =
+    theme === "light"
+      ? "rounded-lg border border-slate-200 bg-white py-2.5 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-50 min-h-[40px]"
+      : "rounded-lg border border-white/20 bg-white py-2.5 text-sm font-semibold text-[#0a1628] shadow-sm hover:bg-white/90 min-h-[40px]";
+  const sciClass =
+    theme === "light"
+      ? "rounded-lg border border-amber-600/50 bg-amber-100 py-2 text-[11px] font-bold text-amber-950 shadow-sm hover:bg-amber-200 min-h-[40px] px-0.5 leading-tight"
+      : "rounded-lg border border-[#E8C84A]/60 bg-[#E8C84A]/20 py-2 text-[11px] font-bold text-[#E8C84A] shadow-sm hover:bg-[#E8C84A]/30 min-h-[40px] px-0.5 leading-tight";
+  const utilClass =
+    theme === "light"
+      ? "rounded-lg border border-slate-300 bg-slate-100 py-2 text-[11px] font-semibold text-slate-800 hover:bg-slate-200 min-h-[40px]"
+      : "rounded-lg border border-white/25 bg-[#0a1628] py-2 text-[11px] font-semibold text-white/90 hover:bg-white/10 min-h-[40px]";
+  const opClass =
+    "rounded-lg border border-[#E8C84A]/70 bg-[#E8C84A] py-2.5 text-sm font-bold text-[#0a1628] shadow-sm hover:bg-[#f0d56e] min-h-[40px]";
+
+  const screenExpr =
+    theme === "light"
+      ? "border border-slate-200 bg-slate-50 text-slate-800"
+      : "border border-white/15 bg-[#050d18] text-white/85";
+  const screenResult =
+    theme === "light"
+      ? "border border-slate-200 bg-white text-slate-900"
+      : "border border-white/15 bg-[#071a2e] text-white";
+
+  const toRad = (v: number) =>
+    angleMode === "deg" ? (v * Math.PI) / 180 : v;
+  const fromRad = (v: number) =>
+    angleMode === "deg" ? (v * 180) / Math.PI : v;
+
+  const getN = (): number => {
+    if (display === "Error") return NaN;
+    if (eeMode && eeMantissa != null) {
+      const exp =
+        eeExpStr === "" || eeExpStr === "-"
+          ? 0
+          : parseInt(eeExpStr, 10);
+      const m = parseFloat(eeMantissa);
+      if (Number.isNaN(m) || Number.isNaN(exp)) return NaN;
+      return m * Math.pow(10, exp);
+    }
+    return parseFloat(display);
+  };
+
+  const pushHistory = (line: string) => {
+    setHistory((h) => [line, ...h].slice(0, 5));
+  };
+
+  const resetEE = () => {
+    setEeMode(false);
+    setEeMantissa(null);
+    setEeExpStr("");
+  };
+
+  const setDisplayFromNumber = (n: number) => {
+    resetEE();
+    setDisplay(fmtDisplay(n));
+  };
+
+  const inputDigit = (d: string) => {
+    if (eeMode) {
+      if (eeMantissa == null || d === ".") return;
+      if (d === "-" && eeExpStr === "") {
+        setEeExpStr("-");
+        setDisplay(`${eeMantissa}E-`);
+        return;
+      }
+      if (!/\d/.test(d)) return;
+      const next = eeExpStr === "-" ? `-${d}` : eeExpStr + d;
+      if (!/^-?\d+$/.test(next)) return;
+      setEeExpStr(next);
+      const exp = parseInt(next, 10);
+      const m = parseFloat(eeMantissa);
+      if (!Number.isNaN(m) && !Number.isNaN(exp)) {
+        setDisplay(fmtDisplay(m * Math.pow(10, exp)));
+      }
+      return;
+    }
+    if (waiting) {
+      setDisplay(d === "." ? "0." : d);
+      setWaiting(false);
+    } else {
+      if (d === ".") {
+        if (display.includes(".")) return;
+        setDisplay(display + ".");
+      } else if (display === "0" && d !== ".") {
+        setDisplay(d);
+      } else {
+        setDisplay(display + d);
+      }
+    }
+  };
+
+  const inputOp = (next: CalcOp, sym: string) => {
+    resetEE();
+    const n = getN();
+    if (Number.isNaN(n)) return;
+    if (powPending != null) {
+      const base = powPending;
+      const r = Math.pow(base, n);
+      pushHistory(`${fmtDisplay(base)}^${fmtDisplay(n)} = ${fmtDisplay(r)}`);
+      setPowPending(null);
+      setDisplayFromNumber(r);
+      setAcc(null);
+      setPendingOp(null);
+      setExpressionDisplay("");
+      setWaiting(true);
+      return;
+    }
+    if (rootPending != null) {
+      if (n === 0) {
+        setDisplay("Error");
+        setRootPending(null);
+        return;
+      }
+      const rad = rootPending;
+      const r = Math.pow(rad, 1 / n);
+      pushHistory(`${fmtDisplay(n)}√(${fmtDisplay(rad)}) = ${fmtDisplay(r)}`);
+      setRootPending(null);
+      setDisplayFromNumber(r);
+      setAcc(null);
+      setPendingOp(null);
+      setExpressionDisplay("");
+      setWaiting(true);
+      return;
+    }
+
+    if (acc != null && pendingOp != null && !waiting) {
+      const r = calculate(acc, n, pendingOp);
+      if (!Number.isFinite(r)) {
+        setDisplay("Error");
+        setAcc(null);
+        setPendingOp(null);
+        setExpressionDisplay("");
+        return;
+      }
+      setAcc(r);
+      setDisplay(fmtDisplay(r));
+      setExpressionDisplay((e) => e + fmtDisplay(n) + ` ${sym} `);
+    } else {
+      setAcc(n);
+      setExpressionDisplay(`${fmtDisplay(n)} ${sym} `);
+    }
+    setPendingOp(next);
+    setWaiting(true);
+  };
+
+  const equals = () => {
+    resetEE();
+    const n = getN();
+    if (Number.isNaN(n)) return;
+    if (powPending != null) {
+      const base = powPending;
+      const r = Math.pow(base, n);
+      pushHistory(`${fmtDisplay(base)}^${fmtDisplay(n)} = ${fmtDisplay(r)}`);
+      setPowPending(null);
+      setDisplayFromNumber(r);
+      setAcc(null);
+      setPendingOp(null);
+      setExpressionDisplay("");
+      setWaiting(true);
+      return;
+    }
+    if (rootPending != null) {
+      if (n === 0) {
+        setDisplay("Error");
+        setRootPending(null);
+        return;
+      }
+      const rad = rootPending;
+      const r = Math.pow(rad, 1 / n);
+      pushHistory(`${fmtDisplay(n)}√(${fmtDisplay(rad)}) = ${fmtDisplay(r)}`);
+      setRootPending(null);
+      setDisplayFromNumber(r);
+      setAcc(null);
+      setPendingOp(null);
+      setExpressionDisplay("");
+      setWaiting(true);
+      return;
+    }
+    if (pendingOp == null || acc == null) return;
+    const r = calculate(acc, n, pendingOp);
+    const sym =
+      pendingOp === "+"
+        ? "+"
+        : pendingOp === "-"
+          ? "−"
+          : pendingOp === "×"
+            ? "×"
+            : "÷";
+    pushHistory(
+      `${expressionDisplay}${fmtDisplay(n)} = ${fmtDisplay(r)}`.replace(
+        /\s+/g,
+        " ",
+      ),
+    );
+    setDisplayFromNumber(r);
+    setAcc(null);
+    setPendingOp(null);
+    setExpressionDisplay("");
+    setWaiting(true);
+  };
+
+  const clearAll = () => {
+    resetEE();
+    setDisplay("0");
+    setAcc(null);
+    setPendingOp(null);
+    setWaiting(false);
+    setExpressionDisplay("");
+    setPowPending(null);
+    setRootPending(null);
+  };
+
+  const backspace = () => {
+    if (eeMode && eeMantissa != null) {
+      if (eeExpStr.length > 0) {
+        setEeExpStr((s) => s.slice(0, -1));
+        return;
+      }
+      resetEE();
+      return;
+    }
+    if (waiting) return;
+    if (display.length <= 1) setDisplay("0");
+    else setDisplay(display.slice(0, -1));
+  };
+
+  const applyUnary = (fn: (x: number) => number, label: string) => {
+    resetEE();
+    const n = getN();
+    if (Number.isNaN(n)) return;
+    const r = fn(n);
+    const argDeg =
+      angleMode === "deg" &&
+      (label === "sin" || label === "cos" || label === "tan")
+        ? "°"
+        : "";
+    pushHistory(`${label}(${fmtDisplay(n)}${argDeg}) = ${fmtDisplay(r)}`);
+    setDisplayFromNumber(r);
+    setWaiting(true);
+    setAcc(null);
+    setPendingOp(null);
+    setExpressionDisplay("");
+  };
+
+  const insertConst = (v: number) => {
+    resetEE();
+    setDisplay(fmtDisplay(v));
+    setWaiting(false);
+  };
+
+  const percent = () => {
+    resetEE();
+    const n = getN();
+    if (Number.isNaN(n)) return;
+    setDisplayFromNumber(n / 100);
+  };
+
+  const toggleSign = () => {
+    resetEE();
+    const n = getN();
+    if (Number.isNaN(n)) return;
+    setDisplayFromNumber(-n);
+  };
+
+  const openParen = () => {
+    resetEE();
+    setExpressionDisplay((e) => e + "(");
+  };
+  const closeParen = () => {
+    resetEE();
+    setExpressionDisplay((e) => e + ")");
+  };
+
+  const pressEE = () => {
+    const n = getN();
+    if (Number.isNaN(n)) return;
+    setEeMantissa(String(n));
+    setEeExpStr("");
+    setEeMode(true);
+    setDisplay(`${fmtDisplay(n)}E`);
+  };
+
+  const memStore = () => {
+    const n = getN();
+    if (!Number.isNaN(n)) setMemory(n);
+  };
+  const memRecall = () => {
+    resetEE();
+    setDisplay(fmtDisplay(memory));
+    setWaiting(true);
+  };
+  const memAdd = () => {
+    const n = getN();
+    if (!Number.isNaN(n)) setMemory((m) => m + n);
+  };
+  const memSub = () => {
+    const n = getN();
+    if (!Number.isNaN(n)) setMemory((m) => m - n);
+  };
+  const memClear = () => setMemory(0);
+
+  const copyResult = async () => {
+    const v = getN();
+    const t =
+      display === "Error"
+        ? "Error"
+        : Number.isFinite(v)
+          ? fmtDisplay(v)
+          : display;
+    try {
+      await navigator.clipboard.writeText(t);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const eeHint =
+    eeMode && eeMantissa != null
+      ? ` [EE: ${eeMantissa}×10^${eeExpStr === "" || eeExpStr === "-" ? "…" : eeExpStr}]`
+      : "";
+  const exprLine =
+    expressionDisplay +
+    (!waiting && display !== "Error" ? display : "") +
+    eeHint +
+    (powPending != null ? `  (${fmtDisplay(powPending)}^□)` : "") +
+    (rootPending != null ? `  (${fmtDisplay(rootPending)}^(1/□))` : "");
+
+  return (
+    <div className="space-y-2">
+      <p
+        className={
+          theme === "light"
+            ? "text-[10px] text-slate-600"
+            : "text-[10px] text-white/50"
+        }
+      >
+        PF, 3φ V, Z, f₀ — sin/cos, √, xⁿ, log/ln; Deg/Rad for trig. ( ) add text on
+        the top line for notes; + − × ÷ and = evaluate the number in the result row.
+      </p>
+      <div
+        className={`min-h-[2.25rem] rounded-lg px-2 py-1.5 text-left text-[11px] leading-snug break-all ${screenExpr}`}
+        title="Expression"
+      >
+        {exprLine.trim() || " "}
+      </div>
+      <div
+        className={`min-h-[2.75rem] rounded-lg px-3 py-2 text-right text-xl font-semibold tabular-nums tracking-tight ${screenResult}`}
+      >
+        {display}
+      </div>
+      {history.length > 0 ? (
+        <div
+          className={`max-h-[4.5rem] overflow-y-auto rounded border px-2 py-1 text-[10px] tabular-nums ${
+            theme === "light"
+              ? "border-slate-200 bg-slate-50 text-slate-600"
+              : "border-white/10 bg-black/20 text-white/55"
+          }`}
+        >
+          {history.map((h, i) => (
+            <div key={i} className="truncate" title={h}>
+              {h}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <div className="flex flex-wrap gap-1.5">
+        <button type="button" className={utilClass} onClick={copyResult}>
+          Copy
+        </button>
+        <button
+          type="button"
+          className={sciClass}
+          onClick={() =>
+            setAngleMode((m) => (m === "deg" ? "rad" : "deg"))
+          }
+        >
+          {angleMode === "deg" ? "Deg" : "Rad"}
+        </button>
+      </div>
+      <p
+        className={
+          theme === "light" ? "text-[10px] text-slate-500" : "text-[10px] text-white/40"
+        }
+      >
+        M: {memory !== 0 ? fmtDisplay(memory) : "0"}
+      </p>
+
+      <div className="max-h-[14rem] overflow-y-auto pr-0.5">
+        <div className="grid grid-cols-5 gap-1">
+          <button type="button" className={utilClass} onClick={memClear}>
+            MC
+          </button>
+          <button type="button" className={utilClass} onClick={memRecall}>
+            MR
+          </button>
+          <button type="button" className={utilClass} onClick={memSub}>
+            M−
+          </button>
+          <button type="button" className={utilClass} onClick={memAdd}>
+            M+
+          </button>
+          <button type="button" className={utilClass} onClick={memStore}>
+            MS
+          </button>
+
+          <button type="button" className={sciClass} onClick={openParen}>
+            (
+          </button>
+          <button type="button" className={sciClass} onClick={closeParen}>
+            )
+          </button>
+          <button type="button" className={sciClass} onClick={pressEE}>
+            EE
+          </button>
+          <button type="button" className={sciClass} onClick={() => applyUnary((x) => Math.abs(x), "abs")}>
+            |x|
+          </button>
+          <button
+            type="button"
+            className={sciClass}
+            onClick={() => applyUnary((x) => factorialInt(x), "n!")}
+          >
+            n!
+          </button>
+
+          <button
+            type="button"
+            className={sciClass}
+            onClick={() => applyUnary((x) => (x === 0 ? NaN : 1 / x), "1/x")}
+          >
+            1/x
+          </button>
+          <button type="button" className={sciClass} onClick={() => applyUnary((x) => x * x, "x²")}>
+            x²
+          </button>
+          <button type="button" className={sciClass} onClick={() => applyUnary((x) => x * x * x, "x³")}>
+            x³
+          </button>
+          <button
+            type="button"
+            className={sciClass}
+            onClick={() => {
+              resetEE();
+              const b = getN();
+              if (!Number.isNaN(b)) {
+                setPowPending(b);
+                setDisplay("0");
+                setWaiting(true);
+              }
+            }}
+          >
+            xⁿ
+          </button>
+          <button
+            type="button"
+            className={sciClass}
+            onClick={() => applyUnary((x) => (x < 0 ? NaN : Math.sqrt(x)), "√")}
+          >
+            √x
+          </button>
+
+          <button
+            type="button"
+            className={sciClass}
+            onClick={() => applyUnary((x) => (x < 0 ? NaN : Math.cbrt(x)), "∛")}
+          >
+            ∛x
+          </button>
+          <button
+            type="button"
+            className={sciClass}
+            onClick={() => {
+              resetEE();
+              const x = getN();
+              if (!Number.isNaN(x)) {
+                setRootPending(x);
+                setDisplay("0");
+                setWaiting(true);
+              }
+            }}
+          >
+            ⁿ√x
+          </button>
+          <button
+            type="button"
+            className={sciClass}
+            onClick={() => applyUnary((x) => Math.log10(x), "log")}
+          >
+            log
+          </button>
+          <button
+            type="button"
+            className={sciClass}
+            onClick={() => applyUnary((x) => Math.log(x), "ln")}
+          >
+            ln
+          </button>
+          <button
+            type="button"
+            className={sciClass}
+            onClick={() => applyUnary((x) => Math.log2(x), "log₂")}
+          >
+            log₂
+          </button>
+
+          <button
+            type="button"
+            className={sciClass}
+            onClick={() => applyUnary((x) => Math.pow(10, x), "10ˣ")}
+          >
+            10ˣ
+          </button>
+          <button
+            type="button"
+            className={sciClass}
+            onClick={() => applyUnary((x) => Math.exp(x), "eˣ")}
+          >
+            eˣ
+          </button>
+          <button
+            type="button"
+            className={sciClass}
+            onClick={() => applyUnary((x) => Math.sin(toRad(x)), "sin")}
+          >
+            sin
+          </button>
+          <button
+            type="button"
+            className={sciClass}
+            onClick={() => applyUnary((x) => Math.cos(toRad(x)), "cos")}
+          >
+            cos
+          </button>
+          <button
+            type="button"
+            className={sciClass}
+            onClick={() => applyUnary((x) => Math.tan(toRad(x)), "tan")}
+          >
+            tan
+          </button>
+
+          <button
+            type="button"
+            className={sciClass}
+            onClick={() =>
+              applyUnary((x) => fromRad(Math.asin(x)), "sin⁻¹")
+            }
+          >
+            sin⁻¹
+          </button>
+          <button
+            type="button"
+            className={sciClass}
+            onClick={() =>
+              applyUnary((x) => fromRad(Math.acos(x)), "cos⁻¹")
+            }
+          >
+            cos⁻¹
+          </button>
+          <button
+            type="button"
+            className={sciClass}
+            onClick={() =>
+              applyUnary((x) => fromRad(Math.atan(x)), "tan⁻¹")
+            }
+          >
+            tan⁻¹
+          </button>
+          <button
+            type="button"
+            className={sciClass}
+            onClick={() => insertConst(Math.PI)}
+          >
+            π
+          </button>
+          <button
+            type="button"
+            className={sciClass}
+            onClick={() => insertConst(Math.E)}
+          >
+            e
+          </button>
+        </div>
+      </div>
+
+      <p
+        className={
+          theme === "light" ? "text-[10px] text-slate-500" : "text-[10px] text-white/45"
+        }
+      >
+        sin⁻¹/cos⁻¹/tan⁻¹ result in {angleMode === "deg" ? "degrees" : "radians"}.
+      </p>
+
+      <div className="grid grid-cols-4 gap-1.5">
+        <button type="button" className={utilClass} onClick={clearAll}>
+          C
+        </button>
+        <button type="button" className={utilClass} onClick={backspace}>
+          ⌫
+        </button>
+        <button type="button" className={utilClass} onClick={percent}>
+          %
+        </button>
+        <button type="button" className={opClass} onClick={() => inputOp("÷", "÷")}>
+          ÷
+        </button>
+
+        {(["7", "8", "9"] as const).map((d) => (
+          <button key={d} type="button" className={numClass} onClick={() => inputDigit(d)}>
+            {d}
+          </button>
+        ))}
+        <button type="button" className={opClass} onClick={() => inputOp("×", "×")}>
+          ×
+        </button>
+
+        {(["4", "5", "6"] as const).map((d) => (
+          <button key={d} type="button" className={numClass} onClick={() => inputDigit(d)}>
+            {d}
+          </button>
+        ))}
+        <button type="button" className={opClass} onClick={() => inputOp("-", "−")}>
+          −
+        </button>
+
+        {(["1", "2", "3"] as const).map((d) => (
+          <button key={d} type="button" className={numClass} onClick={() => inputDigit(d)}>
+            {d}
+          </button>
+        ))}
+        <button type="button" className={opClass} onClick={() => inputOp("+", "+")}>
+          +
+        </button>
+
+        <button type="button" className={utilClass} onClick={toggleSign}>
+          +/−
+        </button>
+        <button type="button" className={numClass} onClick={() => inputDigit("0")}>
+          0
+        </button>
+        <button type="button" className={numClass} onClick={() => inputDigit(".")}>
+          .
+        </button>
+        <button type="button" className={opClass} onClick={equals}>
+          =
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function StandardCalculatorPanel({ theme }: { theme: "dark" | "light" }) {
   const [display, setDisplay] = useState("0");
   const [memory, setMemory] = useState(0);
@@ -833,7 +1514,7 @@ export function FloatingCalculatorWidget() {
           className={
             mobileLayout
               ? `fixed inset-x-0 bottom-0 z-[101] flex max-h-[min(88dvh,36rem)] flex-col rounded-t-2xl border-x border-t ${panelBg}`
-              : `fixed bottom-5 right-5 z-[101] flex w-[min(100vw-1.5rem,26rem)] flex-col rounded-xl border ${panelBg}`
+              : `fixed bottom-5 right-5 z-[101] flex w-[min(100vw-1.5rem,28rem)] flex-col rounded-xl border ${panelBg}`
           }
         >
           <div className="flex items-center justify-between border-b border-[#E8C84A]/25 px-3 py-2.5">
@@ -861,6 +1542,7 @@ export function FloatingCalculatorWidget() {
             {(
               [
                 ["calc", "Calculator"],
+                ["sci", "Scientific"],
                 ["ohm", "Ohm"],
                 ["power", "Power"],
                 ["units", "Units"],
@@ -882,6 +1564,7 @@ export function FloatingCalculatorWidget() {
           </div>
           <div className="max-h-[min(72vh,32rem)] overflow-y-auto p-4 text-sm">
             {tab === "calc" ? <StandardCalculatorPanel theme={theme} /> : null}
+            {tab === "sci" ? <ScientificCalculatorPanel theme={theme} /> : null}
             {tab === "ohm" ? <OhmLawPanel theme={theme} /> : null}
             {tab === "power" ? <PowerPanel theme={theme} /> : null}
             {tab === "units" ? <UnitsPanel theme={theme} /> : null}

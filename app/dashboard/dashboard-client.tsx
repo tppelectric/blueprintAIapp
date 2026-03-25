@@ -552,6 +552,9 @@ export function DashboardClient() {
             <Link href="/tools" className="btn-secondary btn-h-11 w-full">
               Tools hub
             </Link>
+            <Link href="/reference" className="btn-secondary btn-h-11 w-full">
+              Reference library
+            </Link>
             <Link
               href="/tools/load-calculator"
               className="btn-secondary btn-h-11 w-full"

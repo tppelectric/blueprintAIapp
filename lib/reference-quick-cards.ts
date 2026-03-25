@@ -110,7 +110,7 @@ export const QUICK_REFERENCE_CARDS: QuickRefCardDef[] = [
 
 export function quickReferenceCardsSearchHits() {
   return QUICK_REFERENCE_CARDS.map((c) => ({
-    kind: "card",
+    kind: "card" as const,
     title: c.title,
     subtitle: "Quick reference card",
     href: `/reference#${c.anchorId}`,

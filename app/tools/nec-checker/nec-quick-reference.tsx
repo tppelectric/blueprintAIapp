@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type CardDef = {
   id: string;
@@ -208,6 +208,21 @@ export function NecQuickReferenceGuides() {
     setOpen((p) => ({ ...p, [id]: !p[id] }));
   }, []);
 
+  useEffect(() => {
+    const hash = (window.location.hash || "").replace(/^#/, "").trim();
+    if (!hash.startsWith("nec-ref-")) return;
+    const cardId = hash.slice("nec-ref-".length);
+    if (!CARDS.some((c) => c.id === cardId)) return;
+    setOpen((p) => ({ ...p, [cardId]: true }));
+    const t = window.setTimeout(() => {
+      document.getElementById(hash)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 120);
+    return () => window.clearTimeout(t);
+  }, []);
+
   return (
     <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 print:break-inside-avoid">
       <h2 className="text-lg font-semibold text-white print:text-black">
@@ -222,7 +237,8 @@ export function NecQuickReferenceGuides() {
           return (
             <div
               key={c.id}
-              className={`overflow-hidden rounded-xl border-2 transition-colors print:break-inside-avoid ${CARD_STYLES[c.category]}`}
+              id={`nec-ref-${c.id}`}
+              className={`scroll-mt-24 overflow-hidden rounded-xl border-2 transition-colors print:break-inside-avoid ${CARD_STYLES[c.category]}`}
             >
               <button
                 type="button"

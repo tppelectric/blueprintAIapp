@@ -27,8 +27,12 @@ function isPdfMagic(buf: Uint8Array): boolean {
 function mapRow(r: Record<string, unknown>): ReferenceDocumentRow | null {
   const id = typeof r.id === "string" ? r.id : null;
   const title = typeof r.title === "string" ? r.title.trim() : "";
-  const cat = isReferenceDocCategory(r.category as string)
-    ? (r.category as ReferenceDocumentRow["category"])
+  const rawCat =
+    typeof r.category === "string" ? r.category.trim() : "";
+  const cat: ReferenceDocumentRow["category"] | null = rawCat
+    ? isReferenceDocCategory(rawCat)
+      ? rawCat
+      : "Other"
     : null;
   const file_path = typeof r.file_path === "string" ? r.file_path : null;
   const uploaded_by =

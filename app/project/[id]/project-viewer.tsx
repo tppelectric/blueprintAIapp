@@ -740,6 +740,10 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const [blueprintToolbarSearch, setBlueprintToolbarSearch] = useState("");
   const [resultsCategoryJump, setResultsCategoryJump] =
     useState<TakeoffFilterTab | null>(null);
+  const clearResultsCategoryJump = useCallback(
+    () => setResultsCategoryJump(null),
+    [],
+  );
   const [pageSummaryExportOpen, setPageSummaryExportOpen] = useState(false);
   const [pageSummaryExportBusy, setPageSummaryExportBusy] = useState(false);
   const [resumeSnapshot, setResumeSnapshot] = useState<ResumePayload | null>(
@@ -6885,6 +6889,13 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                     onExportAllTakeoffCsv={exportAllTakeoffCsv}
                     onRequestItemVerify={onRequestItemVerify}
                     onManualVerificationSave={() => void saveManualCounts()}
+                    planSearchQuery={blueprintToolbarSearch}
+                    onPlanSearchNavigateToPage={(p) => {
+                      setCurrentPage(p);
+                      setMobileResultsOpen(true);
+                    }}
+                    categoryJumpRequest={resultsCategoryJump}
+                    onCategoryJumpConsumed={clearResultsCategoryJump}
                   />
                 </div>
                 </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   formatUsd,
   scanModeById,
@@ -49,7 +49,7 @@ export function SelectPagesScanModal({
   onChangeSelected: (next: Set<number>) => void;
   pageMeta: Record<number, PagePickMeta>;
   /** One cell per page (1..numPages), same order; includes thumbnail + checkbox inside cell */
-  thumbnailCells: React.ReactNode[];
+  thumbnailCells: ReactNode[];
   onClose: () => void;
   onStartScan: () => void;
   estimateMode?: ScanModeId;

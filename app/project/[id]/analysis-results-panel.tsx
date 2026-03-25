@@ -535,9 +535,7 @@ function CompactItemRow({
     ? roomSelectValueForItem(item, roomOpts)
     : "";
 
-  const gptAgrees =
-    gptQty !== null && gptQty === claudeQty && gptQty !== null;
-  const gptConflict = gptQty !== null && gptQty !== claudeQty;
+  const gptAgrees = gptQty !== null && gptQty === claudeQty;
 
   return (
     <div
@@ -654,23 +652,15 @@ function CompactItemRow({
               {gptAgrees ? "✅" : "⚠️"}
             </span>
           ) : null}
-          {(item.verified_by === "override" ||
-            item.final_count != null) &&
+          {(item.verified_by === "override" || item.final_count != null) &&
           item.category !== "plan_note" ? (
             <span
               className="rounded-md border border-[#E8C84A]/50 bg-[#E8C84A]/15 px-2 py-1 text-[11px] font-semibold text-[#E8C84A]"
-              title="Manual override / saved final"
+              title="Manual override / saved final count"
             >
               Final:{" "}
               <span className="text-sm font-bold text-white">
-                {Math.round(
-                  Number(
-                    item.final_count ??
-                      (item.verified_by === "override"
-                        ? item.final_count
-                        : claudeQty),
-                  ),
-                )}
+                {Math.round(Number(item.final_count ?? claudeQty))}
               </span>
             </span>
           ) : null}
@@ -1501,6 +1491,10 @@ export function AnalysisResultsPanel({
   onExportAllTakeoffCsv,
   onRequestItemVerify,
   onManualVerificationSave,
+  planSearchQuery = "",
+  onPlanSearchNavigateToPage,
+  categoryJumpRequest,
+  onCategoryJumpConsumed,
 }: {
   items: ElectricalItemRow[];
   rooms: DetectedRoomRow[];
@@ -1528,6 +1522,12 @@ export function AnalysisResultsPanel({
   onExportAllTakeoffCsv?: () => void;
   onRequestItemVerify?: (item: ElectricalItemRow) => void;
   onManualVerificationSave?: () => void | Promise<void>;
+  /** Toolbar search: filter + highlight (current page list + project summary). */
+  planSearchQuery?: string;
+  onPlanSearchNavigateToPage?: (page: number) => void;
+  /** When set, switch category tab once then clear via callback. */
+  categoryJumpRequest?: TakeoffFilterTab | null;
+  onCategoryJumpConsumed?: () => void;
 }) {
   const router = useRouter();
   const patchRooms = onPatchRooms ?? (() => {});
@@ -1569,20 +1569,74 @@ export function AnalysisResultsPanel({
     [pageItems],
   );
 
+  const searchQ = planSearchQuery.trim();
+
+  const deviceItemsForSearch = useMemo(() => {
+    if (!searchQ) return deviceItems;
+    return deviceItems.filter((i) => itemTextMatchesSearch(i, searchQ));
+  }, [deviceItems, searchQ]);
+
+  const planNotesForSearch = useMemo(() => {
+    if (!searchQ) return planNotes;
+    return planNotes.filter((i) => itemTextMatchesSearch(i, searchQ));
+  }, [planNotes, searchQ]);
+
+  const searchProjectHits = useMemo(() => {
+    if (searchQ.length < 1) return [];
+    return items.filter((i) => itemTextMatchesSearch(i, searchQ));
+  }, [items, searchQ]);
+
+  const searchRoomKeys = useMemo(() => {
+    const s = new Set<string>();
+    for (const i of searchProjectHits) {
+      s.add(`${i.page_number}|${displayWhichRoom(i)}`);
+    }
+    return s.size;
+  }, [searchProjectHits]);
+
+  const searchGroupedByPageRoom = useMemo(() => {
+    const map = new Map<string, ElectricalItemRow[]>();
+    for (const i of searchProjectHits) {
+      const k = `${i.page_number}|${displayWhichRoom(i)}`;
+      const list = map.get(k) ?? [];
+      list.push(i);
+      map.set(k, list);
+    }
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [searchProjectHits]);
+
   const [takeoffSummaryOpen, setTakeoffSummaryOpen] = useState(false);
   const [categoryTab, setCategoryTab] = useState<TakeoffFilterTab>("all");
+  const [confidenceTier, setConfidenceTier] =
+    useState<ConfidenceTier>("all");
   const [materialsBusy, setMaterialsBusy] = useState(false);
 
+  useEffect(() => {
+    if (!categoryJumpRequest) return;
+    setCategoryTab(categoryJumpRequest);
+    onCategoryJumpConsumed?.();
+  }, [categoryJumpRequest, onCategoryJumpConsumed]);
+
   const filteredDeviceItems = useMemo(() => {
-    if (categoryTab === "all") return deviceItems;
+    if (categoryTab === "all") return deviceItemsForSearch;
     if (categoryTab === "plan_notes") return [];
-    return deviceItems.filter((i) => itemMatchesTakeoffTab(i, categoryTab));
-  }, [deviceItems, categoryTab]);
+    return deviceItemsForSearch.filter((i) =>
+      itemMatchesTakeoffTab(i, categoryTab),
+    );
+  }, [deviceItemsForSearch, categoryTab]);
+
+  const confidenceTierCounts = useMemo(() => {
+    const y = filteredDeviceItems.length;
+    const x = filteredDeviceItems.filter((i) =>
+      passesConfidenceTier(i, confidenceTier),
+    ).length;
+    return { x, y };
+  }, [filteredDeviceItems, confidenceTier]);
 
   const visiblePlanNotes = useMemo(() => {
     if (categoryTab !== "all" && categoryTab !== "plan_notes") return [];
-    return planNotes;
-  }, [planNotes, categoryTab]);
+    return planNotesForSearch;
+  }, [planNotesForSearch, categoryTab]);
 
   const roomAssignOptions = useMemo(
     () => assignableRoomOptionsWithDisambiguatedLabels(pageRooms),
@@ -2054,6 +2108,56 @@ export function AnalysisResultsPanel({
           </div>
         ) : null}
 
+        {searchQ.length > 0 ? (
+          <div className="mb-4 rounded-xl border border-yellow-500/35 bg-yellow-950/20 px-3 py-3 text-sm text-yellow-50/95">
+            <p className="font-semibold text-yellow-100">
+              Found &quot;{searchQ}&quot; in {searchProjectHits.length} item
+              {searchProjectHits.length === 1 ? "" : "s"} across{" "}
+              {searchRoomKeys} room
+              {searchRoomKeys === 1 ? "" : "s"} (all pages)
+            </p>
+            <ul className="mt-2 max-h-40 space-y-2 overflow-y-auto text-xs">
+              {searchGroupedByPageRoom.map(([key, hits]) => {
+                const [pg, room] = key.split("|");
+                const pageNum = Number(pg);
+                return (
+                  <li
+                    key={key}
+                    className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-white/80">
+                        Page {pageNum} · {room || "—"}
+                      </span>
+                      {onPlanSearchNavigateToPage ? (
+                        <button
+                          type="button"
+                          className="rounded border border-sky-500/40 px-2 py-0.5 text-[10px] font-semibold text-sky-200 hover:bg-sky-950/40"
+                          onClick={() => onPlanSearchNavigateToPage(pageNum)}
+                        >
+                          Go to page
+                        </button>
+                      ) : null}
+                    </div>
+                    <ul className="mt-1 space-y-0.5 text-white/70">
+                      {hits.slice(0, 4).map((h) => (
+                        <li key={h.id}>
+                          <HighlightSearch text={h.description} query={searchQ} />
+                        </li>
+                      ))}
+                      {hits.length > 4 ? (
+                        <li className="text-white/45">
+                          +{hits.length - 4} more…
+                        </li>
+                      ) : null}
+                    </ul>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
+
         {pageItems.length === 0 && !pageAnalysisWarning ? (
           <EmptyState
             icon={<span aria-hidden>🔍</span>}
@@ -2102,6 +2206,33 @@ export function AnalysisResultsPanel({
                 manualCounts={manualCounts}
                 manualMode={manualMode}
               />
+            ) : null}
+            {pageItems.length > 0 ? (
+              <div className="mb-3 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
+                <label className="flex flex-wrap items-center gap-2 text-[11px] text-white/70">
+                  <span>Show items:</span>
+                  <select
+                    value={confidenceTier}
+                    onChange={(e) =>
+                      setConfidenceTier(e.target.value as ConfidenceTier)
+                    }
+                    className="rounded-lg border border-white/15 bg-[#0a1628] px-2 py-1 text-xs text-white"
+                  >
+                    <option value="all">All items</option>
+                    <option value="90">High confidence (90%+)</option>
+                    <option value="75">Good confidence (75%+)</option>
+                    <option value="low">Review needed (under 75%)</option>
+                    <option value="conflicts">Conflicts only</option>
+                  </select>
+                </label>
+                <p className="text-[11px] text-white/50">
+                  Showing {confidenceTierCounts.x} of {confidenceTierCounts.y}{" "}
+                  items
+                  {confidenceTier !== "all"
+                    ? " (others dimmed, still exported)"
+                    : ""}
+                </p>
+              </div>
             ) : null}
             {items.length > 0 ? (
               <SendToToolsRow
@@ -2234,6 +2365,12 @@ export function AnalysisResultsPanel({
                                   : undefined
                               }
                               onManualVerificationSave={onManualVerificationSave}
+                              searchHighlightQuery={searchQ || null}
+                              confidenceMuted={
+                                confidenceTier !== "all" &&
+                                !passesConfidenceTier(item, confidenceTier)
+                              }
+                              rowBorderClass={itemRowVerificationBorder(item)}
                             />
                           ))
                         )}
@@ -2316,6 +2453,12 @@ export function AnalysisResultsPanel({
                           : undefined
                       }
                       onManualVerificationSave={onManualVerificationSave}
+                      searchHighlightQuery={searchQ || null}
+                      confidenceMuted={
+                        confidenceTier !== "all" &&
+                        !passesConfidenceTier(item, confidenceTier)
+                      }
+                      rowBorderClass={itemRowVerificationBorder(item)}
                     />
                   ))}
                 </div>
@@ -2347,6 +2490,12 @@ export function AnalysisResultsPanel({
                       onResetManualItemToAi={() => {}}
                       onAcceptGpt={() => {}}
                       onPatchItems={onPatchItems}
+                      searchHighlightQuery={searchQ || null}
+                      confidenceMuted={
+                        confidenceTier !== "all" &&
+                        !passesConfidenceTier(item, confidenceTier)
+                      }
+                      rowBorderClass={itemRowVerificationBorder(item)}
                     />
                   ))}
                 </div>

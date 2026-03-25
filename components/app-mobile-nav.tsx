@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { GlobalNavSearch } from "@/components/global-nav-search";
+import { HomeWeatherWidget } from "@/components/home-weather-widget";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useUserRole } from "@/hooks/use-user-role";
 import { createBrowserClient } from "@/lib/supabase/client";

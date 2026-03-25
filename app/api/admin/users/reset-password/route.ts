@@ -8,6 +8,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
+  const origin =
+    request.headers.get("origin") ??
+    request.headers.get("referer")?.split("/").slice(0, 3).join("/") ??
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() ??
+    "";
+  const redirectTo = origin
+    ? `${origin.replace(/\/$/, "")}/auth/callback`
+    : undefined;
+
   let body: { userId?: string };
   try {
     body = (await request.json()) as typeof body;
@@ -47,6 +56,7 @@ export async function POST(request: Request) {
   const { data, error } = await admin.auth.admin.generateLink({
     type: "recovery",
     email,
+    options: redirectTo ? { redirectTo } : undefined,
   });
 
   if (error) {

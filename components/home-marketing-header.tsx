@@ -57,17 +57,18 @@ export function HomeMarketingHeader() {
   return (
     <header className="app-header-wide border-b backdrop-blur-md">
       <div className="mx-auto flex min-h-14 max-w-6xl flex-col gap-2 px-4 py-2.5 sm:px-8 lg:min-h-16 lg:py-3">
-        <div className="flex w-full items-center gap-2 sm:gap-3">
+        <div className="flex w-full items-center justify-between gap-3 lg:justify-start lg:gap-3">
           <Link
             href="/"
-            className="flex min-w-0 max-w-[min(100%,12rem)] shrink-0 items-center gap-2 transition-opacity duration-200 hover:opacity-95 sm:max-w-[min(100%,18rem)] sm:gap-3 md:max-w-[min(100%,22rem)] lg:max-w-[min(100%,28rem)]"
+            className="flex min-w-0 max-w-[min(100%,14rem)] shrink-0 items-center gap-2 transition-opacity duration-200 hover:opacity-95 sm:max-w-[min(100%,20rem)] lg:max-w-[min(100%,28rem)] lg:gap-3"
           >
-            <TppLogoPill size="compact" className="shrink-0 md:hidden" />
+            {/* One logo: compact below lg, header at lg+ */}
+            <TppLogoPill size="compact" className="shrink-0 lg:hidden" />
             <TppLogoPill
               size="header"
-              className="hidden shrink-0 md:block"
+              className="hidden shrink-0 lg:block"
             />
-            <div className="hidden min-w-0 text-left sm:block">
+            <div className="hidden min-w-0 text-left lg:block">
               <span className="app-header-title block truncate text-base font-semibold tracking-tight sm:text-lg lg:text-xl">
                 Blueprint AI
               </span>
@@ -80,7 +81,7 @@ export function HomeMarketingHeader() {
             </div>
           </Link>
 
-          <div className="flex min-w-0 flex-1 justify-center px-0.5 sm:px-1">
+          <div className="hidden min-w-0 flex-1 justify-center px-1 lg:flex">
             <HomeWeatherWidget variant="header" />
           </div>
 

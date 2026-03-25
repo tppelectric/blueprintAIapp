@@ -144,12 +144,8 @@ export function openPageSummaryPdfReport(
     .map((r) => {
       const st = statusLabel(r.scanStatus);
       const cls = statusColorClass(r.scanStatus);
-      const img = r.thumbDataUrl
-        ? `<img src="${r.thumbDataUrl}" alt="" class="thumb" />`
-        : `<div class="thumb-ph">Pg ${r.page}</div>`;
       return `<tr>
 <td class="num">${r.page}</td>
-<td class="thumb-cell">${img}</td>
 <td><span class="pill ${cls}">${escapeHtml(st)}</span></td>
 <td class="num">${r.itemCount}</td>
 <td class="num">${r.roomCount}</td>
@@ -170,9 +166,6 @@ th,td{border:1px solid #ccc;padding:8px;text-align:left;vertical-align:middle}
 th{background:#f4f4f4}
 .num{text-align:center}
 .meta{font-size:0.75rem;color:#444}
-.thumb-cell{width:120px}
-.thumb{max-width:110px;max-height:140px;display:block;border-radius:4px;border:1px solid #ddd}
-.thumb-ph{width:80px;height:100px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:0.7rem;color:#888;border-radius:4px}
 .pill{display:inline-block;padding:3px 10px;border-radius:999px;font-weight:600;font-size:0.75rem}
 .status-ok{background:#d1fae5;color:#065f46}
 .status-warn{background:#fef3c7;color:#92400e}
@@ -190,7 +183,7 @@ footer{margin-top:20px;font-size:0.75rem;color:#666}
 </div>
 <h2 style="font-size:1rem;margin:0 0 10px">Per-page scan summary</h2>
 <table>
-<thead><tr><th>Page</th><th>Thumbnail</th><th>Status</th><th>Items</th><th>Rooms</th><th>Last scanned</th><th>Scan mode</th></tr></thead>
+<thead><tr><th>Page</th><th>Status</th><th>Items</th><th>Rooms</th><th>Last scanned</th><th>Scan mode</th></tr></thead>
 <tbody>${rowHtml}</tbody>
 </table>
 <div class="totals">

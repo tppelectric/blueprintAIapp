@@ -280,8 +280,8 @@ function CompactItemRow({
   manualCompareHint,
   onDismissManualCompare,
   onKeepAiCount,
-  forceOverrideOpen = false,
   onRequestVerify,
+  onManualVerificationSave,
 }: {
   item: ElectricalItemRow;
   manualMode: boolean;
@@ -305,9 +305,9 @@ function CompactItemRow({
   manualCompareHint?: boolean;
   onDismissManualCompare?: (itemId: string) => void;
   onKeepAiCount?: (itemId: string) => void;
-  /** Room bulk action: show override inputs for every item in the room */
-  forceOverrideOpen?: boolean;
   onRequestVerify?: () => void;
+  /** Save manual click counts for this page (toolbar parity). */
+  onManualVerificationSave?: () => void | Promise<void>;
 }) {
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState(item.description);
@@ -322,25 +322,6 @@ function CompactItemRow({
   const claudeQty = Math.round(Number(item.quantity));
   const gptQty =
     item.gpt_count != null ? Math.round(Number(item.gpt_count)) : null;
-
-  useEffect(() => {
-    if (forceOverrideOpen) {
-      setOverrideOpen(true);
-      setOverrideDraft(
-        String(item.final_count ?? (gptQty ?? claudeQty)),
-      );
-    } else {
-      setOverrideOpen(false);
-    }
-  }, [
-    forceOverrideOpen,
-    item.id,
-    item.final_count,
-    item.quantity,
-    item.gpt_count,
-    gptQty,
-    claudeQty,
-  ]);
 
   const status = item.verification_status ?? "pending";
   const vState = verifyState(claudeQty, gptQty, status);
@@ -645,6 +626,15 @@ function CompactItemRow({
           >
             +
           </button>
+          {isSelected && onManualVerificationSave ? (
+            <button
+              type="button"
+              onClick={() => void onManualVerificationSave()}
+              className="rounded-lg border border-emerald-500/50 bg-emerald-700/40 px-2.5 py-1.5 text-[11px] font-bold text-emerald-50 hover:bg-emerald-600/50"
+            >
+              Done
+            </button>
+          ) : null}
         </div>
       ) : null}
       {manualCompareHint && item.category !== "plan_note" ? (
@@ -778,7 +768,7 @@ function CompactItemRow({
         {overrideOpen ? (
           <div className="mt-2 flex flex-wrap items-center gap-2 rounded border border-amber-500/35 bg-amber-950/25 p-2">
             <span className="text-[10px] text-amber-100/90">
-              Override (AI stays {claudeQty})
+              Override (AI stays {claudeQty}) — Enter to save
             </span>
             <input
               type="number"
@@ -790,14 +780,6 @@ function CompactItemRow({
               }}
               className="w-20 rounded border border-white/20 bg-[#0a1628] px-1.5 py-1 text-xs text-white"
             />
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => void submitOverride()}
-              className="rounded-lg bg-amber-600 px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-amber-500 disabled:opacity-40"
-            >
-              Save
-            </button>
           </div>
         ) : null}
     </div>
@@ -812,7 +794,6 @@ function RoomHeader({
   onPatchRooms,
   onExportRoom,
   onAcceptAllInRoom,
-  onOverrideAllInRoom,
 }: {
   room: DetectedRoomRow;
   expanded: boolean;
@@ -821,7 +802,6 @@ function RoomHeader({
   onPatchRooms: (updates: DetectedRoomRow[]) => void;
   onExportRoom?: () => void;
   onAcceptAllInRoom?: () => void;
-  onOverrideAllInRoom?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(room.room_name);
@@ -902,7 +882,7 @@ function RoomHeader({
         <p className="mt-1 text-[11px] font-medium text-white/70">
           {deviceTotal} total devices
         </p>
-        {onAcceptAllInRoom || onOverrideAllInRoom || onExportRoom ? (
+        {onAcceptAllInRoom || onExportRoom ? (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {onAcceptAllInRoom ? (
               <button
@@ -911,15 +891,6 @@ function RoomHeader({
                 className="rounded border border-emerald-500/45 bg-emerald-950/35 px-2 py-1 text-[10px] font-semibold text-emerald-100 hover:bg-emerald-950/50"
               >
                 Accept All in Room
-              </button>
-            ) : null}
-            {onOverrideAllInRoom ? (
-              <button
-                type="button"
-                onClick={onOverrideAllInRoom}
-                className="rounded border border-amber-500/45 bg-amber-950/35 px-2 py-1 text-[10px] font-semibold text-amber-100 hover:bg-amber-950/50"
-              >
-                Override All
               </button>
             ) : null}
             {onExportRoom ? (
@@ -1070,16 +1041,12 @@ function TakeoffSummaryCollapsible({
         <div className="px-3 py-3">
           <div className="mb-3 rounded-lg border border-white/12 bg-white/[0.04] px-2.5 py-2 text-[11px] leading-relaxed text-white/85">
             <p className="font-semibold text-white">
-              Verified items: {verification.verifiedCount} / {verification.total}{" "}
-              total
+              Verified: {verification.verifiedCount} / {verification.total} total
             </p>
             <p className="mt-1 text-white/65">
               Accepted: {verification.accepted} | Override:{" "}
               {verification.override} | Manual: {verification.manual} | Unverified:{" "}
               {verification.unverified}
-              {verification.conflict > 0
-                ? ` | Conflict: ${verification.conflict}`
-                : ""}
             </p>
           </div>
           <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 text-xs sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
@@ -1385,6 +1352,7 @@ export function AnalysisResultsPanel({
   onExportAllTakeoffPdf,
   onExportAllTakeoffCsv,
   onRequestItemVerify,
+  onManualVerificationSave,
 }: {
   items: ElectricalItemRow[];
   rooms: DetectedRoomRow[];
@@ -1411,6 +1379,7 @@ export function AnalysisResultsPanel({
   onExportAllTakeoffPdf?: () => void;
   onExportAllTakeoffCsv?: () => void;
   onRequestItemVerify?: (item: ElectricalItemRow) => void;
+  onManualVerificationSave?: () => void | Promise<void>;
 }) {
   const router = useRouter();
   const patchRooms = onPatchRooms ?? (() => {});
@@ -1622,18 +1591,11 @@ export function AnalysisResultsPanel({
   const [assignAllRoomId, setAssignAllRoomId] = useState("");
   const [dragOverRoomId, setDragOverRoomId] = useState<string | null>(null);
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
-  const [roomOverrideBulkId, setRoomOverrideBulkId] = useState<string | null>(
-    null,
-  );
   const [acceptAllBusy, setAcceptAllBusy] = useState(false);
 
   useEffect(() => {
     if (!bulkMode) setBulkSelected(new Set());
   }, [bulkMode]);
-
-  useEffect(() => {
-    setRoomOverrideBulkId(null);
-  }, [currentPage]);
 
   useEffect(() => {
     const clear = () => {
@@ -2076,14 +2038,6 @@ export function AnalysisResultsPanel({
                           ? () => void acceptAllInRoom(list)
                           : undefined
                       }
-                      onOverrideAllInRoom={
-                        !manualMode && list.length > 0
-                          ? () =>
-                              setRoomOverrideBulkId((id) =>
-                                id === room.id ? null : room.id,
-                              )
-                          : undefined
-                      }
                     />
                     {expanded ? (
                       <div className="space-y-2 px-3 py-3">
@@ -2122,12 +2076,12 @@ export function AnalysisResultsPanel({
                               manualCompareHint={manualCompareHintFor(item)}
                               onDismissManualCompare={dismissManualCompareHint}
                               onKeepAiCount={(id) => void keepAiCountForItem(id)}
-                              forceOverrideOpen={roomOverrideBulkId === room.id}
                               onRequestVerify={
                                 !manualMode && onRequestItemVerify
                                   ? () => onRequestItemVerify(item)
                                   : undefined
                               }
+                              onManualVerificationSave={onManualVerificationSave}
                             />
                           ))
                         )}
@@ -2204,12 +2158,12 @@ export function AnalysisResultsPanel({
                       manualCompareHint={manualCompareHintFor(item)}
                       onDismissManualCompare={dismissManualCompareHint}
                       onKeepAiCount={(id) => void keepAiCountForItem(id)}
-                      forceOverrideOpen={false}
                       onRequestVerify={
                         !manualMode && onRequestItemVerify
                           ? () => onRequestItemVerify(item)
                           : undefined
                       }
+                      onManualVerificationSave={onManualVerificationSave}
                     />
                   ))}
                 </div>

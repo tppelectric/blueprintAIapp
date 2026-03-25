@@ -89,7 +89,6 @@ import {
 import {
   downloadPageSummaryCsv,
   openPageSummaryPdfReport,
-  renderPageThumbDataUrl,
   type PageSummaryExportRow,
   type PageThumbScanStatusExport,
 } from "@/lib/page-summary-export";
@@ -3915,24 +3914,12 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     setPageSummaryExportOpen(false);
   }, [pageSummaryExportData.rows, project]);
 
-  const runPageSummaryPdfExport = useCallback(async () => {
-    if (!pdfDocs?.length || numPages < 1) return;
+  const runPageSummaryPdfExport = useCallback(() => {
+    if (numPages < 1) return;
     setPageSummaryExportBusy(true);
     try {
       const rows: PageSummaryExportRow[] = [];
       for (let p = 1; p <= numPages; p++) {
-        const mapped = globalPageToLocal(p, pdfDocs);
-        let thumbDataUrl = "";
-        if (mapped) {
-          try {
-            thumbDataUrl = await renderPageThumbDataUrl(
-              mapped.doc,
-              mapped.localPage,
-            );
-          } catch {
-            thumbDataUrl = "";
-          }
-        }
         const st = thumbByPage[p] as PageThumbScanStatusExport | undefined;
         const meta = pageScanMeta[p];
         rows.push({
@@ -3944,7 +3931,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
             ? new Date(meta.at).toLocaleString()
             : "—",
           scanMode: meta?.modeLabel ?? "—",
-          thumbDataUrl: thumbDataUrl || undefined,
         });
       }
       const totals = {
@@ -3967,7 +3953,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       setPageSummaryExportBusy(false);
     }
   }, [
-    pdfDocs,
     numPages,
     thumbByPage,
     pageScanMeta,
@@ -5567,6 +5552,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                     onExportAllTakeoffPdf={exportAllTakeoffPdf}
                     onExportAllTakeoffCsv={exportAllTakeoffCsv}
                     onRequestItemVerify={onRequestItemVerify}
+                    onManualVerificationSave={() => void saveManualCounts()}
                   />
                 </div>
                 </div>
@@ -5729,16 +5715,14 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
               Export page summary
             </h2>
             <p className="mt-2 text-xs leading-relaxed text-white/65">
-              One row per page with status, counts, last scan, and mode. PDF
-              includes thumbnails.
+              One row per page: status, item and room counts, last scan time, and
+              mode. Print or save as PDF from the print dialog.
             </p>
             <div className="mt-4 flex flex-col gap-2">
               <button
                 type="button"
-                disabled={
-                  pageSummaryExportBusy || !pdfDocs?.length || numPages < 1
-                }
-                onClick={() => void runPageSummaryPdfExport()}
+                disabled={pageSummaryExportBusy || numPages < 1}
+                onClick={() => runPageSummaryPdfExport()}
                 className="rounded-lg border border-sky-500/45 bg-sky-950/40 px-3 py-2.5 text-sm font-semibold text-sky-100 hover:bg-sky-950/55 disabled:opacity-45"
               >
                 {pageSummaryExportBusy ? "Preparing PDF…" : "Download PDF"}

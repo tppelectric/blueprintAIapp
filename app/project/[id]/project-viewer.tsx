@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { TppLogoPill } from "@/components/tpp-logo-pill";
 import {
   forwardRef,
@@ -93,6 +94,7 @@ import {
   type PageThumbScanStatusExport,
 } from "@/lib/page-summary-export";
 import { runTakeoffExport, type TakeoffExportInclude } from "@/lib/scan-export";
+import type { ProjectScansPayload } from "@/lib/project-scans-types";
 
 type PageThumbScanStatus = "ok" | "warn" | "error" | "spin" | "wait";
 
@@ -537,6 +539,7 @@ const MainPageCanvas = forwardRef<
 });
 
 export function ProjectViewer({ projectId }: { projectId: string }) {
+  const searchParams = useSearchParams();
   const [project, setProject] = useState<ProjectRow | null>(null);
   const [sheets, setSheets] = useState<SheetRow[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -730,6 +733,19 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     string | null
   >(null);
   const [scanReloadToken, setScanReloadToken] = useState(0);
+  const [scanLibrary, setScanLibrary] = useState<ProjectScansPayload | null>(
+    null,
+  );
+  const [scanLibraryBusy, setScanLibraryBusy] = useState(false);
+  const [activeLibraryRoomScanId, setActiveLibraryRoomScanId] = useState<
+    string | null
+  >(null);
+  const [activeLibrarySavedScanId, setActiveLibrarySavedScanId] = useState<
+    string | null
+  >(null);
+  const [explicitSaveBusy, setExplicitSaveBusy] = useState<
+    "room" | "electrical" | "full" | null
+  >(null);
   const [takeoffViewMode, setTakeoffViewMode] = useState<"live" | "recall">(
     "live",
   );
@@ -819,6 +835,28 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   }, [reloadRoomScanHistory]);
 
   useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setScanLibraryBusy(true);
+      try {
+        const res = await fetch(
+          `/api/project-scans/${encodeURIComponent(projectId)}`,
+        );
+        const j = (await res.json()) as ProjectScansPayload & { error?: string };
+        if (!cancelled && res.ok && !j.error) setScanLibrary(j);
+        else if (!cancelled) setScanLibrary(null);
+      } catch {
+        if (!cancelled) setScanLibrary(null);
+      } finally {
+        if (!cancelled) setScanLibraryBusy(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, scanReloadToken]);
+
+  useEffect(() => {
     if (roomScanOpen) void reloadRoomScanHistory();
   }, [roomScanOpen, reloadRoomScanHistory]);
 
@@ -841,6 +879,38 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     handleSelectHistoryScan(row.id);
     setRoomScanOpen(true);
   }, [roomScanHistory, handleSelectHistoryScan]);
+
+  const clearScanFocusQuery = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const u = new URL(window.location.href);
+    if (!u.searchParams.has("scanFocus")) return;
+    u.searchParams.delete("scanFocus");
+    const q = u.searchParams.toString();
+    window.history.replaceState({}, "", u.pathname + (q ? `?${q}` : ""));
+  }, []);
+
+  useEffect(() => {
+    const focus = searchParams.get("scanFocus");
+    if (!focus) return;
+    if (focus === "room") {
+      const row = roomScanHistory[0];
+      if (row) {
+        handleSelectHistoryScan(row.id);
+        setRoomScanOpen(true);
+      }
+      clearScanFocusQuery();
+      return;
+    }
+    if (focus === "electrical") {
+      setScanHistoryOpen(true);
+      clearScanFocusQuery();
+    }
+  }, [
+    searchParams,
+    roomScanHistory,
+    handleSelectHistoryScan,
+    clearScanFocusQuery,
+  ]);
 
   const manualCountsRef = useRef(manualCounts);
   manualCountsRef.current = manualCounts;
@@ -2866,6 +2936,120 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     }
   }, [performPageReset]);
 
+  const saveRoomScanToLibrary = useCallback(async () => {
+    if (!roomScanData?.rooms?.length) {
+      window.alert(
+        'Run "Scan Rooms and Sq Footage" first, then save the room scan.',
+      );
+      return;
+    }
+    setExplicitSaveBusy("room");
+    try {
+      const sb = createBrowserClient();
+      let totalSq = 0;
+      const floorSet = new Set<number>();
+      for (const r of roomScanData.rooms) {
+        if (r.sq_ft != null && r.sq_ft > 0) totalSq += r.sq_ft;
+        if (r.floor != null) floorSet.add(Math.round(r.floor));
+      }
+      const floors = floorSet.size > 0 ? Math.max(...floorSet) : 1;
+      const label = `${new Date().toLocaleString()} · page ${roomScanDialogPage}`;
+      const { error } = await sb.from("project_room_scans").insert({
+        project_id: projectId,
+        rooms_json: roomScanData.rooms,
+        total_sqft: Math.round(totalSq),
+        floor_count: floors,
+        scan_page: roomScanDialogPage,
+        equipment_suggestions_json:
+          roomScanData.equipment_placement_suggestions ?? [],
+        scan_notes: [roomScanData.scan_notes?.trim(), `Saved: ${label}`]
+          .filter(Boolean)
+          .join("\n"),
+      });
+      if (error) throw error;
+      void reloadRoomScanHistory();
+      setScanReloadToken((t) => t + 1);
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Save failed.");
+    } finally {
+      setExplicitSaveBusy(null);
+    }
+  }, [
+    roomScanData,
+    roomScanDialogPage,
+    projectId,
+    reloadRoomScanHistory,
+  ]);
+
+  const saveElectricalTakeoffToLibrary = useCallback(async () => {
+    if (!analysisItems.length) {
+      window.alert("No electrical items to save. Run analysis first.");
+      return;
+    }
+    setExplicitSaveBusy("electrical");
+    try {
+      const saveRes = await fetch("/api/saved-scans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          pageNumber: 1,
+          scanName: `Electrical takeoff · ${new Date().toLocaleString()}`,
+          itemsSnapshot: analysisItems,
+          roomsSnapshot: detectedRooms,
+          totalItems: analysisItems.length,
+          notes: null,
+          scanType: "electrical",
+        }),
+      });
+      const sj = (await saveRes.json()) as { error?: string };
+      if (!saveRes.ok) throw new Error(sj.error ?? "Save failed.");
+      setScanReloadToken((t) => t + 1);
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Save failed.");
+    } finally {
+      setExplicitSaveBusy(null);
+    }
+  }, [analysisItems, detectedRooms, projectId]);
+
+  const saveFullPlanScanToLibrary = useCallback(async () => {
+    if (!analysisItems.length && !roomScanData?.rooms?.length) {
+      window.alert("Need room scan data and/or electrical items to save.");
+      return;
+    }
+    setExplicitSaveBusy("full");
+    try {
+      const saveRes = await fetch("/api/saved-scans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          pageNumber: Math.max(1, currentPage),
+          scanName: `Full plan · ${new Date().toLocaleString()}`,
+          itemsSnapshot: analysisItems,
+          roomsSnapshot: detectedRooms,
+          totalItems: analysisItems.length,
+          notes: null,
+          scanType: "full",
+          planRoomsJson: roomScanData?.rooms ?? null,
+        }),
+      });
+      const sj = (await saveRes.json()) as { error?: string };
+      if (!saveRes.ok) throw new Error(sj.error ?? "Save failed.");
+      setScanReloadToken((t) => t + 1);
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Save failed.");
+    } finally {
+      setExplicitSaveBusy(null);
+    }
+  }, [
+    analysisItems,
+    detectedRooms,
+    roomScanData,
+    currentPage,
+    projectId,
+  ]);
+
   const applyViewScan = useCallback(
     (scan: SavedScanRow) => {
       const items = parseScanItems(scan.items_snapshot);
@@ -2886,6 +3070,42 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     },
     [projectId],
   );
+
+  const applySavedScanFromLibrary = useCallback(
+    (scan: SavedScanRow) => {
+      const items = parseScanItems(scan.items_snapshot);
+      const rooms = parseScanRooms(scan.rooms_snapshot);
+      setAnalysisItems(items);
+      setDetectedRooms(rooms);
+      const p = scan.page_number >= 1 ? scan.page_number : 1;
+      setCurrentPage(p);
+      setScanHistoryOpen(false);
+      setRecallPickerOpen(false);
+      localStorage.removeItem(recallScanStorageKey(projectId));
+      setTakeoffViewMode("live");
+      setActiveRecallSession(null);
+      setActiveLibrarySavedScanId(scan.id);
+      setActiveLibraryRoomScanId(null);
+      setManualMode(false);
+      setManualDots([]);
+      setManualCounts({});
+      setSelectedManualItemId(null);
+      setManualActionStack([]);
+      setManualCountingRoomId("UNASSIGNED");
+    },
+    [projectId],
+  );
+
+  const openRoomScanFromLibrary = useCallback((row: ProjectRoomScanRow) => {
+    setSelectedRoomScanId(row.id);
+    setRoomScanData(projectRoomScanRowToResponse(row));
+    setRoomScanDialogPage(row.scan_page);
+    setRoomScanAutosave(false);
+    setRoomScanSavedAtLabel(formatRoomScanBannerDate(row.created_at));
+    setRoomScanOpen(true);
+    setActiveLibraryRoomScanId(row.id);
+    setActiveLibrarySavedScanId(null);
+  }, []);
 
   const applyRecallSession = useCallback(
     (session: SavedScanSession) => {
@@ -4371,6 +4591,67 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                   Export Page Summary
                 </button>
               </div>
+              <div className="max-h-[220px] shrink-0 space-y-1.5 overflow-y-auto border-t border-white/10 px-2 py-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-white/55">
+                  📋 Saved Scans
+                </p>
+                {scanLibraryBusy ? (
+                  <p className="text-[10px] text-white/45">Loading…</p>
+                ) : scanLibrary ? (
+                  <>
+                    {scanLibrary.roomScans.slice(0, 12).map((row) => (
+                      <button
+                        key={`rs-${row.id}`}
+                        type="button"
+                        onClick={() => openRoomScanFromLibrary(row)}
+                        className="flex w-full items-center justify-between gap-1 rounded border border-teal-500/30 bg-teal-950/25 px-1.5 py-1 text-left text-[10px] text-teal-50/95 hover:bg-teal-950/40"
+                      >
+                        <span className="min-w-0 truncate">
+                          Room · p{row.scan_page} ·{" "}
+                          {formatRoomScanBannerDate(row.created_at)}
+                        </span>
+                        {activeLibraryRoomScanId === row.id ? (
+                          <span aria-label="Loaded">✅</span>
+                        ) : null}
+                      </button>
+                    ))}
+                    {scanLibrary.electricalScans.slice(0, 8).map((scan) => (
+                      <button
+                        key={`es-${scan.id}`}
+                        type="button"
+                        onClick={() => applySavedScanFromLibrary(scan)}
+                        className="flex w-full items-center justify-between gap-1 rounded border border-amber-500/30 bg-amber-950/25 px-1.5 py-1 text-left text-[10px] text-amber-50/95 hover:bg-amber-950/40"
+                      >
+                        <span className="min-w-0 truncate">
+                          Electrical · {scan.scan_name.slice(0, 28)}
+                          {scan.scan_name.length > 28 ? "…" : ""}
+                        </span>
+                        {activeLibrarySavedScanId === scan.id ? (
+                          <span aria-label="Loaded">✅</span>
+                        ) : null}
+                      </button>
+                    ))}
+                    {scanLibrary.fullScans.slice(0, 8).map((scan) => (
+                      <button
+                        key={`fs-${scan.id}`}
+                        type="button"
+                        onClick={() => applySavedScanFromLibrary(scan)}
+                        className="flex w-full items-center justify-between gap-1 rounded border border-violet-500/30 bg-violet-950/25 px-1.5 py-1 text-left text-[10px] text-violet-50/95 hover:bg-violet-950/40"
+                      >
+                        <span className="min-w-0 truncate">
+                          Full · {scan.scan_name.slice(0, 28)}
+                          {scan.scan_name.length > 28 ? "…" : ""}
+                        </span>
+                        {activeLibrarySavedScanId === scan.id ? (
+                          <span aria-label="Loaded">✅</span>
+                        ) : null}
+                      </button>
+                    ))}
+                  </>
+                ) : (
+                  <p className="text-[10px] text-white/45">No library data.</p>
+                )}
+              </div>
               <div
                 role="separator"
                 aria-orientation="vertical"
@@ -4400,7 +4681,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
               📋 Recall Past Scan
             </button>
             {pageThumbnailItems}
-            <div className="mt-auto shrink-0 border-t border-white/10 pt-2">
+            <div className="mt-auto shrink-0 space-y-2 border-t border-white/10 pt-2">
               <button
                 type="button"
                 disabled={numPages < 1}
@@ -4409,6 +4690,52 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
               >
                 Export Page Summary
               </button>
+              <div className="max-h-[180px] space-y-1 overflow-y-auto">
+                <p className="text-[10px] font-semibold text-white/55">
+                  📋 Saved Scans
+                </p>
+                {scanLibrary?.roomScans.slice(0, 8).map((row) => (
+                  <button
+                    key={`m-rs-${row.id}`}
+                    type="button"
+                    onClick={() => {
+                      openRoomScanFromLibrary(row);
+                      setMobileThumbsOpen(false);
+                    }}
+                    className="w-full truncate rounded border border-teal-500/30 bg-teal-950/25 px-1.5 py-1 text-left text-[10px] text-teal-50/95"
+                  >
+                    {activeLibraryRoomScanId === row.id ? "✅ " : ""}Room p
+                    {row.scan_page}
+                  </button>
+                ))}
+                {scanLibrary?.electricalScans.slice(0, 6).map((scan) => (
+                  <button
+                    key={`m-es-${scan.id}`}
+                    type="button"
+                    onClick={() => {
+                      applySavedScanFromLibrary(scan);
+                      setMobileThumbsOpen(false);
+                    }}
+                    className="w-full truncate rounded border border-amber-500/30 bg-amber-950/25 px-1.5 py-1 text-left text-[10px] text-amber-50/95"
+                  >
+                    {activeLibrarySavedScanId === scan.id ? "✅ " : ""}
+                    Elec
+                  </button>
+                ))}
+                {scanLibrary?.fullScans.slice(0, 6).map((scan) => (
+                  <button
+                    key={`m-fs-${scan.id}`}
+                    type="button"
+                    onClick={() => {
+                      applySavedScanFromLibrary(scan);
+                      setMobileThumbsOpen(false);
+                    }}
+                    className="w-full truncate rounded border border-violet-500/30 bg-violet-950/25 px-1.5 py-1 text-left text-[10px] text-violet-50/95"
+                  >
+                    {activeLibrarySavedScanId === scan.id ? "✅ " : ""}Full
+                  </button>
+                ))}
+              </div>
             </div>
           </aside>
 
@@ -4684,6 +5011,54 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                   className="rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/20 px-3 py-2 text-sm font-semibold text-fuchsia-100 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-fuchsia-500/30"
                 >
                   Target Scan
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    analyzeBusy ||
+                    legendBusy ||
+                    symbolToolboxBusy ||
+                    explicitSaveBusy !== null
+                  }
+                  onClick={() => void saveRoomScanToLibrary()}
+                  title="Save current AI room scan to the project library"
+                  className="rounded-lg border border-teal-500/50 bg-teal-950/40 px-3 py-2 text-sm font-semibold text-teal-100 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-teal-950/55"
+                >
+                  {explicitSaveBusy === "room" ? "Saving…" : "💾 Save Room Scan"}
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    analyzeBusy ||
+                    legendBusy ||
+                    symbolToolboxBusy ||
+                    explicitSaveBusy !== null ||
+                    analysisItems.length === 0
+                  }
+                  onClick={() => void saveElectricalTakeoffToLibrary()}
+                  title="Save all electrical takeoff items as a named snapshot"
+                  className="rounded-lg border border-amber-500/50 bg-amber-950/40 px-3 py-2 text-sm font-semibold text-amber-100 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-amber-950/55"
+                >
+                  {explicitSaveBusy === "electrical"
+                    ? "Saving…"
+                    : "💾 Save Electrical Takeoff"}
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    analyzeBusy ||
+                    legendBusy ||
+                    symbolToolboxBusy ||
+                    explicitSaveBusy !== null ||
+                    (analysisItems.length === 0 && !roomScanData?.rooms?.length)
+                  }
+                  onClick={() => void saveFullPlanScanToLibrary()}
+                  title="Save room + electrical data together"
+                  className="rounded-lg border border-violet-500/50 bg-violet-950/40 px-3 py-2 text-sm font-semibold text-violet-100 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-violet-950/55"
+                >
+                  {explicitSaveBusy === "full"
+                    ? "Saving…"
+                    : "💾 Save Full Plan Scan"}
                 </button>
                 <button
                   type="button"

@@ -55,6 +55,8 @@ export async function POST(request: Request) {
     roomsSnapshot?: unknown[];
     totalItems?: number;
     notes?: string | null;
+    scanType?: string;
+    planRoomsJson?: unknown;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -104,18 +106,32 @@ export async function POST(request: Request) {
     );
   }
 
+  const scanTypeRaw = body.scanType?.trim().toLowerCase();
+  const scanType =
+    scanTypeRaw === "full" ||
+    scanTypeRaw === "room" ||
+    scanTypeRaw === "target"
+      ? scanTypeRaw
+      : "electrical";
+
+  const insertRow: Record<string, unknown> = {
+    project_id: projectId,
+    page_number: pageNumber,
+    scan_name: scanName,
+    scan_date: new Date().toISOString(),
+    items_snapshot: itemsSnapshot,
+    rooms_snapshot: roomsSnapshot,
+    total_items: totalItems,
+    notes: body.notes?.trim() || null,
+    scan_type: scanType,
+  };
+  if (body.planRoomsJson !== undefined) {
+    insertRow.plan_rooms_json = body.planRoomsJson;
+  }
+
   const { data, error } = await supabase
     .from("saved_scans")
-    .insert({
-      project_id: projectId,
-      page_number: pageNumber,
-      scan_name: scanName,
-      scan_date: new Date().toISOString(),
-      items_snapshot: itemsSnapshot,
-      rooms_snapshot: roomsSnapshot,
-      total_items: totalItems,
-      notes: body.notes?.trim() || null,
-    })
+    .insert(insertRow)
     .select()
     .maybeSingle();
 

@@ -4,6 +4,10 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnalyzerProjectAssistant } from "@/components/analyzer-project-assistant";
+import {
+  ImportFromPlansCard,
+  type PlanImportApplyEvent,
+} from "@/components/import-from-plans-card";
 import { ToolBlueprintFloorPlanPanel } from "@/components/tool-blueprint-floor-plan-panel";
 import { ToolPageHeader } from "@/components/tool-page-header";
 import { VoiceInputButton } from "@/components/voice-input-button";
@@ -67,6 +71,7 @@ import {
   analysisToWifiRooms,
   totalSqFtFromAnalysis,
 } from "@/lib/project-describer-prefill";
+import { boostWifiRoomsFromElectricalItems } from "@/lib/scan-import-from-plans";
 
 const U6_PRO_TIER_OVERRIDE = {
   label: "UniFi U6 Pro ($179 ea.)",
@@ -424,6 +429,9 @@ export function WifiAnalyzerClient() {
   >([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [linkedProjectId, setLinkedProjectId] = useState<string>("");
+  const [planSourceProjectId, setPlanSourceProjectId] = useState<string | null>(
+    null,
+  );
 
   const [totalBuildingSqFtInput, setTotalBuildingSqFtInput] = useState("");
   const [constructionType, setConstructionType] =
@@ -840,6 +848,10 @@ export function WifiAnalyzerClient() {
       if (linkedProjectId) {
         row.project_id = linkedProjectId;
       }
+      const src = planSourceProjectId || linkedProjectId || null;
+      if (src) {
+        row.source_project_id = src;
+      }
       const { data, error } = await sb
         .from("wifi_calculations")
         .insert(row)
@@ -962,6 +974,27 @@ export function WifiAnalyzerClient() {
               setBuildingType(guessWifiBuildingTypeFromAnalysis(a));
               setVendor(guessWifiVendorFromAnalysis(a));
               setBudget(guessWifiBudgetFromAnalysis(a));
+            }}
+          />
+          <ImportFromPlansCard
+            tool="wifi"
+            newId={newId}
+            onSourceProjectLinked={(id, name) => {
+              setLinkedProjectId(id);
+              setPlanSourceProjectId(id);
+              if (name.trim()) setProjectName(name);
+            }}
+            onApply={(e: PlanImportApplyEvent) => {
+              if (e.tool !== "wifi") return;
+              if (e.kind === "rooms") {
+                setRooms(e.rooms);
+                setTotalBuildingSqFtInput(String(e.totalSqFt));
+                setStories(e.stories);
+              } else {
+                setRooms((prev) =>
+                  boostWifiRoomsFromElectricalItems(prev, e.items),
+                );
+              }
             }}
           />
           <section className="space-y-4">

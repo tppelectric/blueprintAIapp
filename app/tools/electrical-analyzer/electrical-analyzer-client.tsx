@@ -5,6 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnalyzerProjectAssistant } from "@/components/analyzer-project-assistant";
+import {
+  ImportFromPlansCard,
+  type PlanImportApplyEvent,
+} from "@/components/import-from-plans-card";
 import { ToolBlueprintFloorPlanPanel } from "@/components/tool-blueprint-floor-plan-panel";
 import { ToolPageHeader } from "@/components/tool-page-header";
 import { LinkToJobDialog } from "@/components/link-to-job-dialog";
@@ -51,6 +55,7 @@ import {
   electricalSetupFromAnalysis,
 } from "@/lib/analyzer-description-apply";
 import { ElectricalRoomCard } from "./electrical-analyzer-room-card";
+import { electricalItemsToElectricalRooms } from "@/lib/scan-import-from-plans";
 
 function newId() {
   return typeof crypto !== "undefined" && crypto.randomUUID
@@ -221,6 +226,9 @@ export function ElectricalAnalyzerClient() {
   const [woNo, setWoNo] = useState("");
   const [propNo, setPropNo] = useState("");
   const [linkedProjectId, setLinkedProjectId] = useState("");
+  const [planSourceProjectId, setPlanSourceProjectId] = useState<string | null>(
+    null,
+  );
   const [blueprintProjects, setBlueprintProjects] = useState<
     { id: string; project_name: string | null; file_name: string }[]
   >([]);
@@ -346,6 +354,8 @@ export function ElectricalAnalyzerClient() {
         circuits_json: results.circuitSchedule as unknown[],
       };
       if (linkedProjectId) row.project_id = linkedProjectId;
+      const src = planSourceProjectId || linkedProjectId || null;
+      if (src) row.source_project_id = src;
       const { data, error } = await sb
         .from("electrical_projects")
         .insert(row)
@@ -441,6 +451,29 @@ export function ElectricalAnalyzerClient() {
               console.log("Setting setup from assistant:", setupPatch);
               setRooms(newRooms);
               setSetup((s) => ({ ...s, ...setupPatch }));
+            }}
+          />
+          <ImportFromPlansCard
+            tool="electrical"
+            newId={newId}
+            onSourceProjectLinked={(id, name) => {
+              setLinkedProjectId(id);
+              setPlanSourceProjectId(id);
+              if (name.trim()) patchSetup({ projectName: name });
+            }}
+            onApply={(e: PlanImportApplyEvent) => {
+              if (e.tool !== "electrical") return;
+              if (e.kind === "rooms") {
+                setRooms(e.rooms);
+                setSetup((s) => ({
+                  ...s,
+                  totalSqFt: e.totalSqFt,
+                  numFloors: e.floors,
+                }));
+              } else {
+                const mapped = electricalItemsToElectricalRooms(e.items, newId);
+                if (mapped.length) setRooms(mapped);
+              }
             }}
           />
           <section className="space-y-4">

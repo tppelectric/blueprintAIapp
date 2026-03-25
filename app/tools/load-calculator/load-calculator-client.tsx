@@ -3,6 +3,10 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ToolPageHeader } from "@/components/tool-page-header";
+import {
+  ImportFromPlansCard,
+  type PlanImportApplyEvent,
+} from "@/components/import-from-plans-card";
 import { LinkToJobDialog } from "@/components/link-to-job-dialog";
 import { createBrowserClient } from "@/lib/supabase/client";
 import {
@@ -88,6 +92,15 @@ export function LoadCalculatorClient() {
   const [loadBusy, setLoadBusy] = useState(false);
   const [savedLoadCalcId, setSavedLoadCalcId] = useState<string | null>(null);
   const [jobLinkOpen, setJobLinkOpen] = useState(false);
+  const [planSourceProjectId, setPlanSourceProjectId] = useState<string | null>(
+    null,
+  );
+
+  function newId() {
+    return typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `lc-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  }
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -286,14 +299,18 @@ export function LoadCalculatorClient() {
           : { tab: "commercial", ...comInput };
       const results =
         tab === "residential" ? resResults : comResults;
+      const insertPayload: Record<string, unknown> = {
+        project_name: projectName.trim() || "Untitled",
+        building_type: tab,
+        inputs_json: inputs,
+        results_json: results,
+      };
+      if (planSourceProjectId) {
+        insertPayload.source_project_id = planSourceProjectId;
+      }
       const { data, error } = await sb
         .from("load_calculations")
-        .insert({
-          project_name: projectName.trim() || "Untitled",
-          building_type: tab,
-          inputs_json: inputs,
-          results_json: results,
-        })
+        .insert(insertPayload)
         .select("id")
         .single();
       if (error) throw error;
@@ -410,7 +427,35 @@ export function LoadCalculatorClient() {
         </div>
       </ToolPageHeader>
 
-      <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
+      <main className="mx-auto max-w-4xl space-y-8 px-4 py-6 sm:px-6 sm:py-8">
+        <ImportFromPlansCard
+          tool="load_calc"
+          newId={newId}
+          onSourceProjectLinked={(id, name) => {
+            setPlanSourceProjectId(id);
+            if (name.trim()) setProjectName(name);
+          }}
+          onApply={(e: PlanImportApplyEvent) => {
+            if (e.tool !== "load_calc") return;
+            if (e.kind === "rooms") {
+              if (e.totalSqFt > 0) setSqFt(Math.round(e.totalSqFt));
+              if (e.roomCount > 0) {
+                setBedrooms((b) => Math.max(b, Math.min(8, Math.ceil(e.roomCount / 3))));
+              }
+            } else {
+              setAppliances((prev) => {
+                const next = { ...prev };
+                for (const [k, v] of Object.entries(e.appliances)) {
+                  const key = k as ResidentialApplianceKey;
+                  if (v?.enabled) {
+                    next[key] = { ...next[key], enabled: true };
+                  }
+                }
+                return next;
+              });
+            }
+          }}
+        />
         <div className="flex gap-2 rounded-xl border border-white/10 bg-white/[0.04] p-1">
           <button
             type="button"

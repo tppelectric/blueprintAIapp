@@ -4,6 +4,10 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnalyzerProjectAssistant } from "@/components/analyzer-project-assistant";
+import {
+  ImportFromPlansCard,
+  type PlanImportApplyEvent,
+} from "@/components/import-from-plans-card";
 import { ToolBlueprintFloorPlanPanel } from "@/components/tool-blueprint-floor-plan-panel";
 import { ToolPageHeader } from "@/components/tool-page-header";
 import { VoiceInputButton } from "@/components/voice-input-button";
@@ -58,6 +62,7 @@ import {
   floorsFromAnalysis,
   totalSqFtFromAnalysis,
 } from "@/lib/project-describer-prefill";
+import { boostAvRoomsFromElectricalItems } from "@/lib/scan-import-from-plans";
 
 function newId() {
   return typeof crypto !== "undefined" && crypto.randomUUID
@@ -186,6 +191,9 @@ export function AvAnalyzerClient() {
   const [woNo, setWoNo] = useState("");
   const [propNo, setPropNo] = useState("");
   const [linkedProjectId, setLinkedProjectId] = useState("");
+  const [planSourceProjectId, setPlanSourceProjectId] = useState<string | null>(
+    null,
+  );
   const [blueprintProjects, setBlueprintProjects] = useState<
     { id: string; project_name: string | null; file_name: string }[]
   >([]);
@@ -338,6 +346,8 @@ export function AvAnalyzerClient() {
         },
       };
       if (linkedProjectId) row.project_id = linkedProjectId;
+      const src = planSourceProjectId || linkedProjectId || null;
+      if (src) row.source_project_id = src;
       const { data, error } = await sb
         .from("av_calculations")
         .insert(row)
@@ -403,6 +413,27 @@ export function AvAnalyzerClient() {
               setBudget(guessAvBudgetFromAnalysis(a));
               setPrimaryFocus(guessAvPrimaryFocusFromAnalysis(a));
               setAudioBrand(guessAvAudioBrandFromAnalysis(a));
+            }}
+          />
+          <ImportFromPlansCard
+            tool="av"
+            newId={newId}
+            onSourceProjectLinked={(id, name) => {
+              setLinkedProjectId(id);
+              setPlanSourceProjectId(id);
+              if (name.trim()) setProjectName(name);
+            }}
+            onApply={(e: PlanImportApplyEvent) => {
+              if (e.tool !== "av") return;
+              if (e.kind === "rooms") {
+                setRooms(e.rooms);
+                setTotalSqFt(e.totalSqFt);
+                setFloors(e.floors);
+              } else {
+                setRooms((prev) =>
+                  boostAvRoomsFromElectricalItems(prev, e.items),
+                );
+              }
             }}
           />
           <section className="space-y-4">

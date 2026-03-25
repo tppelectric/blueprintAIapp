@@ -12,7 +12,12 @@ create table if not exists public.saved_scans (
   total_items integer not null default 0 check (total_items >= 0),
   notes text,
   scan_mode text,
-  created_at timestamptz not null default now()
+  scan_type text not null default 'electrical',
+  plan_rooms_json jsonb,
+  created_at timestamptz not null default now(),
+  constraint saved_scans_scan_type_check check (
+    scan_type in ('electrical', 'room', 'full', 'target')
+  )
 );
 
 create index if not exists saved_scans_project_id_idx

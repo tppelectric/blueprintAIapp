@@ -4,6 +4,8 @@ import Link from "next/link";
 import { DashboardApiUsageCard } from "@/components/dashboard-api-usage-card";
 import { WideAppHeader } from "@/components/wide-app-header";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ProjectScansSummary } from "@/lib/project-scans-types";
+import { formatPlanScanRelativeDate } from "@/lib/scan-import-from-plans";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { fetchBlueprintSignedUrl } from "@/lib/fetch-blueprint-signed-url";
 import { getPdfjs } from "@/lib/pdfjs-worker";
@@ -227,6 +229,9 @@ export function DashboardClient() {
   const [deleteTarget, setDeleteTarget] = useState<ProjectRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [recentJobs, setRecentJobs] = useState<JobListRow[]>([]);
+  const [scanSummaries, setScanSummaries] = useState<
+    Record<string, ProjectScansSummary>
+  >({});
   const savedTimerRef = useRef<number | null>(null);
   const editShellRef = useRef<HTMLElement | null>(null);
 
@@ -344,6 +349,31 @@ export function DashboardClient() {
       cancelled = true;
     };
   }, [load]);
+
+  useEffect(() => {
+    if (!projects.length) {
+      setScanSummaries({});
+      return;
+    }
+    let cancelled = false;
+    const ids = projects.map((p) => p.id).join(",");
+    void (async () => {
+      try {
+        const r = await fetch(
+          `/api/project-scans/batch?ids=${encodeURIComponent(ids)}`,
+        );
+        const j = (await r.json()) as {
+          summaries?: Record<string, ProjectScansSummary>;
+        };
+        if (!cancelled) setScanSummaries(j.summaries ?? {});
+      } catch {
+        if (!cancelled) setScanSummaries({});
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projects]);
 
   useEffect(() => {
     if (!flashMessage) return;
@@ -744,6 +774,50 @@ export function DashboardClient() {
                       </dd>
                     </div>
                   </dl>
+                  {scanSummaries[p.id] ? (
+                    <div className="mt-4 space-y-2 border-t border-[var(--border)] pt-4">
+                      <div className="flex flex-wrap gap-2">
+                        <Link
+                          href={`/project/${p.id}?scanFocus=room`}
+                          className={[
+                            "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition-colors",
+                            scanSummaries[p.id]!.hasRoomScan
+                              ? "bg-emerald-500/15 text-emerald-200 ring-emerald-500/40 hover:bg-emerald-500/25"
+                              : "bg-[var(--surface-elevated)] text-[var(--foreground)]/50 ring-[var(--border)]",
+                          ].join(" ")}
+                          title={
+                            scanSummaries[p.id]!.hasRoomScan
+                              ? "Open room scan"
+                              : "No room scan yet"
+                          }
+                        >
+                          📋 Room Scan
+                        </Link>
+                        <Link
+                          href={`/project/${p.id}?scanFocus=electrical`}
+                          className={[
+                            "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition-colors",
+                            scanSummaries[p.id]!.hasElectricalScan
+                              ? "bg-emerald-500/15 text-emerald-200 ring-emerald-500/40 hover:bg-emerald-500/25"
+                              : "bg-[var(--surface-elevated)] text-[var(--foreground)]/50 ring-[var(--border)]",
+                          ].join(" ")}
+                          title={
+                            scanSummaries[p.id]!.hasElectricalScan
+                              ? "Open electrical scans"
+                              : "No electrical scan yet"
+                          }
+                        >
+                          ⚡ Electrical Scan
+                        </Link>
+                      </div>
+                      <p className="dash-muted text-xs">
+                        Last scan:{" "}
+                        {formatPlanScanRelativeDate(
+                          scanSummaries[p.id]!.lastScanned,
+                        )}
+                      </p>
+                    </div>
+                  ) : null}
                   <div className="mt-6 flex flex-1 flex-col justify-end">
                     <Link
                       href={`/project/${p.id}`}

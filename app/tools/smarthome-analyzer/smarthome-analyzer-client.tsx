@@ -5,6 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnalyzerProjectAssistant } from "@/components/analyzer-project-assistant";
+import {
+  ImportFromPlansCard,
+  type PlanImportApplyEvent,
+} from "@/components/import-from-plans-card";
 import { ToolBlueprintFloorPlanPanel } from "@/components/tool-blueprint-floor-plan-panel";
 import { ToolPageHeader } from "@/components/tool-page-header";
 import { VoiceInputButton } from "@/components/voice-input-button";
@@ -12,6 +16,7 @@ import { LinkToJobDialog } from "@/components/link-to-job-dialog";
 import { ProjectBreakdownEditor } from "@/components/project-breakdown-editor";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { floorPlanScanToSmartHomeRooms } from "@/lib/tool-floor-plan-scan";
+import { boostSmartHomeFromElectricalItems } from "@/lib/scan-import-from-plans";
 import {
   computeSmartHomePlan,
   type ShBudget,
@@ -182,6 +187,9 @@ export function SmartHomeAnalyzerClient() {
   const [woNo, setWoNo] = useState("");
   const [propNo, setPropNo] = useState("");
   const [linkedProjectId, setLinkedProjectId] = useState("");
+  const [planSourceProjectId, setPlanSourceProjectId] = useState<string | null>(
+    null,
+  );
   const [blueprintProjects, setBlueprintProjects] = useState<
     { id: string; project_name: string | null; file_name: string }[]
   >([]);
@@ -322,6 +330,8 @@ export function SmartHomeAnalyzerClient() {
         },
       };
       if (linkedProjectId) row.project_id = linkedProjectId;
+      const src = planSourceProjectId || linkedProjectId || null;
+      if (src) row.source_project_id = src;
       const { data, error } = await sb
         .from("smarthome_calculations")
         .insert(row)
@@ -392,6 +402,27 @@ export function SmartHomeAnalyzerClient() {
               setBuildingType(guessShBuildingTypeFromAnalysis(a));
               setBudget(guessShBudgetFromAnalysis(a));
               setControlSystem(guessShControlSystemFromAnalysis(a));
+            }}
+          />
+          <ImportFromPlansCard
+            tool="smarthome"
+            newId={newId}
+            onSourceProjectLinked={(id, name) => {
+              setLinkedProjectId(id);
+              setPlanSourceProjectId(id);
+              if (name.trim()) setProjectName(name);
+            }}
+            onApply={(e: PlanImportApplyEvent) => {
+              if (e.tool !== "smarthome") return;
+              if (e.kind === "rooms") {
+                setRooms(e.rooms);
+                setTotalSqFt(e.totalSqFt);
+                setFloors(e.floors);
+              } else {
+                setRooms((prev) =>
+                  boostSmartHomeFromElectricalItems(prev, e.items),
+                );
+              }
             }}
           />
           <section className="space-y-4">

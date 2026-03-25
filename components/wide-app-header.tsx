@@ -108,7 +108,7 @@ export function WideAppHeader({
             </div>
           </Link>
 
-          <div className="hidden shrink-0 items-center gap-2 sm:gap-3 lg:flex">
+          <div className="max-lg:!hidden shrink-0 items-center gap-2 sm:gap-3 lg:flex">
             <GlobalNavSearch className="w-64 xl:w-80" />
             <ThemeToggle />
             <HeaderAuthMenu />
@@ -120,7 +120,7 @@ export function WideAppHeader({
         </div>
 
         <nav
-          className="mt-3 hidden flex-wrap items-center justify-center gap-x-1 gap-y-2 text-sm font-medium sm:gap-x-2 lg:flex lg:flex-1"
+          className="mt-3 max-lg:!hidden flex-wrap items-center justify-center gap-x-1 gap-y-2 text-sm font-medium sm:gap-x-2 lg:flex lg:flex-1"
           aria-label="Primary"
         >
           {navItems}

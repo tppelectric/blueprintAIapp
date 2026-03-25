@@ -76,7 +76,7 @@ export function HomeMarketingHeader() {
             </div>
           </Link>
 
-          <div className="hidden shrink-0 items-center gap-2 sm:gap-3 lg:flex">
+          <div className="max-lg:!hidden shrink-0 items-center gap-2 sm:gap-3 lg:flex">
             <GlobalNavSearch className="w-64 xl:w-80" />
             <ThemeToggle />
             <HeaderAuthMenu />
@@ -88,7 +88,7 @@ export function HomeMarketingHeader() {
         </div>
 
         <nav
-          className="hidden flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm font-medium lg:flex lg:flex-1"
+          className="max-lg:!hidden flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm font-medium lg:flex lg:flex-1"
           aria-label="Primary"
         >
           {navItems}

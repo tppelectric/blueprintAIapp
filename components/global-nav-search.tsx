@@ -160,7 +160,10 @@ export function GlobalNavSearch({
   }
 
   return (
-    <div ref={wrapRef} className={`relative ${className ?? ""}`}>
+    <div
+      ref={wrapRef}
+      className={`relative min-w-0 max-lg:!hidden lg:block ${className ?? ""}`.trim()}
+    >
       <label className="sr-only" htmlFor={inputId}>
         Search tools, NEC, jobs
       </label>

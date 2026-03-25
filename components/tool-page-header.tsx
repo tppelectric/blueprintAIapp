@@ -55,10 +55,14 @@ export function ToolPageHeader({
         </div>
         <div className="flex w-full flex-col gap-3 md:w-auto md:max-w-md md:flex-1 md:items-end">
           <div className="flex w-full flex-wrap items-center justify-end gap-1.5 sm:gap-2">
-            <GlobalNavSearch />
-            <ThemeToggle />
-            <HeaderAuthMenu />
-            <AppMobileNavButton variant="app" />
+            <div className="max-lg:!hidden items-center gap-1.5 sm:gap-2 lg:flex">
+              <GlobalNavSearch />
+              <ThemeToggle />
+              <HeaderAuthMenu />
+            </div>
+            <div className="lg:hidden">
+              <AppMobileNavButton variant="app" />
+            </div>
           </div>
           {children ? (
             <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">

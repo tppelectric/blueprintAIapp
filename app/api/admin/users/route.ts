@@ -19,18 +19,62 @@ export async function GET() {
     );
   }
 
-  const { data, error } = await admin
+  const { data: profileRows, error } = await admin
     .from("user_profiles")
     .select(
       "id,email,full_name,role,is_active,created_at,updated_at",
-    )
-    .order("email", { ascending: true });
+    );
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ users: data ?? [] });
+  const lastSignInById = new Map<string, string | null>();
+  let page = 1;
+  const perPage = 200;
+  for (;;) {
+    const { data: pageData, error: listErr } =
+      await admin.auth.admin.listUsers({ page, perPage });
+    if (listErr) {
+      return NextResponse.json(
+        { error: listErr.message ?? "Could not list auth users." },
+        { status: 502 },
+      );
+    }
+    const batch = pageData?.users ?? [];
+    for (const u of batch) {
+      lastSignInById.set(
+        u.id,
+        typeof u.last_sign_in_at === "string" ? u.last_sign_in_at : null,
+      );
+    }
+    if (batch.length < perPage) break;
+    page += 1;
+    if (page > 100) break;
+  }
+
+  type Row = (typeof profileRows)[number];
+  const merged = (profileRows ?? []).map((row: Row) => ({
+    ...row,
+    last_sign_in_at: lastSignInById.get(row.id) ?? null,
+  }));
+
+  merged.sort((a, b) => {
+    const ta = a.last_sign_in_at
+      ? new Date(a.last_sign_in_at).getTime()
+      : null;
+    const tb = b.last_sign_in_at
+      ? new Date(b.last_sign_in_at).getTime()
+      : null;
+    if (ta === null && tb === null) {
+      return (a.email ?? "").localeCompare(b.email ?? "");
+    }
+    if (ta === null) return 1;
+    if (tb === null) return -1;
+    return tb - ta;
+  });
+
+  return NextResponse.json({ users: merged });
 }
 
 export async function PATCH(request: Request) {

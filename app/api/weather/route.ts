@@ -135,8 +135,9 @@ export async function GET(request: NextRequest) {
     });
 
     const cityLine =
-      current.name +
-      (current.sys?.country ? `, ${current.sys.country}` : "");
+      zip === "12601"
+        ? "Poughkeepsie, NY"
+        : `${current.name}${current.sys?.country ? `, ${current.sys.country}` : ""}`;
 
     return NextResponse.json({
       zip,

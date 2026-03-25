@@ -62,8 +62,8 @@ function savePrefs(p: StoredPrefs) {
 export function HomeWeatherWidget({
   variant = "default",
 }: {
-  /** `header`: single-line compact control for nav bar; dropdown centered below. */
-  variant?: "default" | "header";
+  /** `header`: nav bar; `drawer`: full-width in mobile menu, forecast expands in-flow. */
+  variant?: "default" | "header" | "drawer";
 }) {
   const [prefs, setPrefs] = useState<StoredPrefs>({
     zips: [DEFAULT_ZIP],
@@ -173,95 +173,10 @@ export function HomeWeatherWidget({
     (prefs.activeZip === DEFAULT_ZIP ? "Poughkeepsie, NY" : `ZIP ${prefs.activeZip}`);
 
   const isHeader = variant === "header";
+  const isDrawer = variant === "drawer";
 
-  return (
-    <div
-      ref={wrapRef}
-      className={`relative z-[100] shrink-0 text-left ${isHeader ? "flex justify-center" : ""}`}
-    >
-      <button
-        type="button"
-        onClick={() => setExpanded((e) => !e)}
-        className={
-          isHeader
-            ? "flex max-w-full flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5 rounded-lg border border-white/15 bg-[#071422]/85 px-2 py-1.5 text-center text-white/90 shadow-sm transition-colors hover:border-[#E8C84A]/40 hover:bg-[#0a1628] sm:gap-x-2 sm:px-2.5 sm:py-2"
-            : "flex max-w-[11rem] items-center gap-1.5 rounded-lg border border-white/15 bg-[#071422]/90 px-2 py-1.5 text-left text-xs text-white/90 shadow-sm transition-colors hover:border-[#E8C84A]/35 hover:bg-[#0a1628] sm:max-w-none sm:gap-2 sm:px-2.5 sm:text-sm"
-        }
-        aria-expanded={expanded}
-        aria-haspopup="dialog"
-      >
-        {loading && !data ? (
-          <span className="text-white/50">
-            {isHeader ? "…" : "Weather…"}
-          </span>
-        ) : error && !data ? (
-          <span className="truncate text-amber-200/80">
-            {isHeader ? "Setup" : "Weather — setup"}
-          </span>
-        ) : data ? (
-          isHeader ? (
-            <>
-              <span
-                className="shrink-0 text-xl leading-none sm:text-2xl"
-                aria-hidden
-              >
-                {data.current.iconEmoji || "🌤"}
-              </span>
-              <span className="min-w-0 text-[#E8C84A]">
-                <span className="text-base font-semibold tabular-nums">
-                  {data.current.tempF}°F
-                </span>
-              </span>
-              <span className="text-white/35" aria-hidden>
-                |
-              </span>
-              <span className="max-w-[14rem] min-w-0 text-sm font-medium leading-snug text-white/85 sm:max-w-[18rem]">
-                {data.current.cityLabel}
-              </span>
-              <span className="text-white/35" aria-hidden>
-                |
-              </span>
-              <span className="text-xs text-white/65 sm:text-sm">
-                {data.current.humidity}% humidity
-                <span className="text-white/35"> · </span>
-                <span className="tabular-nums">
-                  {data.current.windArrow ?? "↑"}
-                  {data.current.windMph} mph
-                </span>
-              </span>
-            </>
-          ) : (
-            <>
-              <span className="shrink-0 text-base sm:text-lg" aria-hidden>
-                {data.current.iconEmoji}
-              </span>
-              <span className="min-w-0 truncate">
-                <span className="font-semibold text-[#E8C84A]">
-                  {data.current.tempF}°F
-                </span>
-                <span className="text-white/50"> | </span>
-                <span className="text-white/80">{collapsedLabel}</span>
-              </span>
-            </>
-          )
-        ) : (
-          <span className="text-white/50">Weather</span>
-        )}
-      </button>
-
-      <div
-        className={[
-          "absolute top-[calc(100%+0.35rem)] w-[min(100vw-2rem,20rem)] origin-top overflow-hidden rounded-xl border border-white/12 bg-[#071422] shadow-2xl ring-1 ring-[#E8C84A]/15 transition-[max-height,opacity] duration-200 ease-out",
-          isHeader
-            ? "left-1/2 right-auto -translate-x-1/2"
-            : "right-0",
-          expanded ? "max-h-[85vh] opacity-100" : "pointer-events-none max-h-0 opacity-0",
-        ].join(" ")}
-        role="dialog"
-        aria-label="Weather details"
-        aria-hidden={!expanded}
-      >
-        <div className="max-h-[min(85vh,32rem)] overflow-y-auto p-3 sm:p-4">
+  const detailsBody = (
+    <>
           <div className="flex items-start justify-between gap-2 border-b border-white/10 pb-2">
             <h3 className="text-sm font-semibold text-white">Weather</h3>
             <div className="flex shrink-0 gap-1">
@@ -279,9 +194,9 @@ export function HomeWeatherWidget({
                 type="button"
                 onClick={() => setExpanded(false)}
                 className="rounded-md border border-white/15 px-2 py-1 text-xs text-white/70 hover:bg-white/10"
-                aria-label="Close"
+                aria-label={isDrawer ? "Collapse forecast" : "Close"}
               >
-                ×
+                {isDrawer ? "▲" : "×"}
               </button>
             </div>
           </div>
@@ -431,6 +346,161 @@ export function HomeWeatherWidget({
               ))}
             </ul>
           </section>
+    </>
+  );
+
+  if (isDrawer) {
+    return (
+      <div ref={wrapRef} className="w-full text-left">
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="flex w-full flex-col items-stretch gap-1 rounded-xl border border-white/12 bg-[#071422]/90 px-3 py-3 text-left shadow-sm ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/35 hover:bg-[#0a1628]"
+          aria-expanded={expanded}
+          aria-controls="weather-drawer-panel"
+          id="weather-drawer-trigger"
+        >
+          {loading && !data ? (
+            <span className="text-sm text-white/50">Loading weather…</span>
+          ) : error && !data ? (
+            <span className="text-sm text-amber-200/85">Tap to set location</span>
+          ) : data ? (
+            <>
+              <div className="flex items-center gap-3">
+                <span className="text-3xl leading-none" aria-hidden>
+                  {data.current.iconEmoji || "🌤"}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-2xl font-bold tabular-nums text-[#E8C84A]">
+                    {data.current.tempF}°F
+                  </p>
+                  <p className="truncate text-sm font-medium leading-snug text-white/90">
+                    {data.current.cityLabel}
+                  </p>
+                </div>
+              </div>
+              <p className="line-clamp-2 text-xs text-white/55">
+                {data.current.description}
+                <span className="text-white/35"> · </span>
+                <span className="tabular-nums">
+                  {data.current.humidity}% humidity
+                </span>
+              </p>
+            </>
+          ) : (
+            <span className="text-sm text-white/50">Weather</span>
+          )}
+          <span className="pt-1 text-[10px] font-semibold uppercase tracking-wide text-[#E8C84A]/90">
+            {expanded ? "▲ Hide forecast & locations" : "▼ Show forecast & locations"}
+          </span>
+        </button>
+        <div
+          id="weather-drawer-panel"
+          role="region"
+          aria-labelledby="weather-drawer-trigger"
+          className={[
+            "mt-2 overflow-hidden rounded-xl border border-white/12 bg-[#071422] shadow-inner ring-1 ring-[#E8C84A]/10 transition-[max-height,opacity] duration-200",
+            expanded ? "max-h-[min(55vh,28rem)] opacity-100" : "max-h-0 opacity-0",
+          ].join(" ")}
+          aria-hidden={!expanded}
+        >
+          <div className="max-h-[min(55vh,28rem)] overflow-y-auto overscroll-contain p-3 sm:p-4">
+            {detailsBody}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={wrapRef}
+      className={`relative z-[100] shrink-0 text-left ${isHeader ? "flex justify-center" : ""}`}
+    >
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className={
+          isHeader
+            ? "flex max-w-full flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5 rounded-lg border border-white/15 bg-[#071422]/85 px-2 py-1.5 text-center text-white/90 shadow-sm transition-colors hover:border-[#E8C84A]/40 hover:bg-[#0a1628] sm:gap-x-2 sm:px-2.5 sm:py-2"
+            : "flex max-w-[11rem] items-center gap-1.5 rounded-lg border border-white/15 bg-[#071422]/90 px-2 py-1.5 text-left text-xs text-white/90 shadow-sm transition-colors hover:border-[#E8C84A]/35 hover:bg-[#0a1628] sm:max-w-none sm:gap-2 sm:px-2.5 sm:text-sm"
+        }
+        aria-expanded={expanded}
+        aria-haspopup="dialog"
+      >
+        {loading && !data ? (
+          <span className="text-white/50">
+            {isHeader ? "…" : "Weather…"}
+          </span>
+        ) : error && !data ? (
+          <span className="truncate text-amber-200/80">
+            {isHeader ? "Setup" : "Weather — setup"}
+          </span>
+        ) : data ? (
+          isHeader ? (
+            <>
+              <span
+                className="shrink-0 text-xl leading-none sm:text-2xl"
+                aria-hidden
+              >
+                {data.current.iconEmoji || "🌤"}
+              </span>
+              <span className="min-w-0 text-[#E8C84A]">
+                <span className="text-base font-semibold tabular-nums">
+                  {data.current.tempF}°F
+                </span>
+              </span>
+              <span className="text-white/35" aria-hidden>
+                |
+              </span>
+              <span className="max-w-[14rem] min-w-0 text-sm font-medium leading-snug text-white/85 sm:max-w-[18rem]">
+                {data.current.cityLabel}
+              </span>
+              <span className="text-white/35" aria-hidden>
+                |
+              </span>
+              <span className="text-xs text-white/65 sm:text-sm">
+                {data.current.humidity}% humidity
+                <span className="text-white/35"> · </span>
+                <span className="tabular-nums">
+                  {data.current.windArrow ?? "↑"}
+                  {data.current.windMph} mph
+                </span>
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="shrink-0 text-base sm:text-lg" aria-hidden>
+                {data.current.iconEmoji}
+              </span>
+              <span className="min-w-0 truncate">
+                <span className="font-semibold text-[#E8C84A]">
+                  {data.current.tempF}°F
+                </span>
+                <span className="text-white/50"> | </span>
+                <span className="text-white/80">{collapsedLabel}</span>
+              </span>
+            </>
+          )
+        ) : (
+          <span className="text-white/50">Weather</span>
+        )}
+      </button>
+
+      <div
+        className={[
+          "absolute top-[calc(100%+0.35rem)] w-[min(100vw-2rem,20rem)] origin-top overflow-hidden rounded-xl border border-white/12 bg-[#071422] shadow-2xl ring-1 ring-[#E8C84A]/15 transition-[max-height,opacity] duration-200 ease-out",
+          isHeader
+            ? "left-1/2 right-auto -translate-x-1/2"
+            : "right-0",
+          expanded ? "max-h-[85vh] opacity-100" : "pointer-events-none max-h-0 opacity-0",
+        ].join(" ")}
+        role="dialog"
+        aria-label="Weather details"
+        aria-hidden={!expanded}
+      >
+        <div className="max-h-[min(85vh,32rem)] overflow-y-auto p-3 sm:p-4">
+          {detailsBody}
         </div>
       </div>
     </div>

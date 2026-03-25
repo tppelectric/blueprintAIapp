@@ -241,7 +241,7 @@ function MobileMenuPortal({
           <p className="px-1 pb-2 text-[10px] font-bold uppercase tracking-wide text-[#E8C84A]/80">
             Weather
           </p>
-          <HomeWeatherWidget variant="default" />
+          <HomeWeatherWidget variant="drawer" />
         </div>
         <nav
           className="min-h-0 flex-1 overflow-y-auto px-3 py-4"

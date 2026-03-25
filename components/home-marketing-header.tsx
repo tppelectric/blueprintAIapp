@@ -57,17 +57,13 @@ export function HomeMarketingHeader() {
   return (
     <header className="app-header-wide border-b backdrop-blur-md">
       <div className="mx-auto flex min-h-14 max-w-6xl flex-col gap-2 px-4 py-2.5 sm:px-8 lg:min-h-16 lg:py-3">
-        <div className="flex w-full items-center justify-between gap-3 lg:justify-start lg:gap-3">
+        <div className="flex w-full items-center justify-between gap-3">
           <Link
             href="/"
             className="flex min-w-0 max-w-[min(100%,14rem)] shrink-0 items-center gap-2 transition-opacity duration-200 hover:opacity-95 sm:max-w-[min(100%,20rem)] lg:max-w-[min(100%,28rem)] lg:gap-3"
           >
-            {/* One logo: compact below lg, header at lg+ */}
-            <TppLogoPill size="compact" className="shrink-0 lg:hidden" />
-            <TppLogoPill
-              size="header"
-              className="hidden shrink-0 lg:block"
-            />
+            <TppLogoPill size="compact" className="lg:hidden shrink-0" />
+            <TppLogoPill size="header" className="hidden lg:block shrink-0" />
             <div className="hidden min-w-0 text-left lg:block">
               <span className="app-header-title block truncate text-base font-semibold tracking-tight sm:text-lg lg:text-xl">
                 Blueprint AI
@@ -81,22 +77,21 @@ export function HomeMarketingHeader() {
             </div>
           </Link>
 
-          <div className="hidden min-w-0 flex-1 justify-center px-1 lg:flex">
+          <div className="hidden min-w-0 flex-1 justify-center px-2 lg:flex">
             <HomeWeatherWidget variant="header" />
           </div>
 
           <div
-            className="flex shrink-0 items-center gap-2 sm:gap-3"
+            className="hidden shrink-0 items-center gap-2 sm:gap-3 lg:flex"
             aria-label="Header tools"
           >
-            <div className="max-lg:!hidden flex items-center gap-2 sm:gap-3">
-              <GlobalNavSearch className="shrink-0" />
-              <ThemeToggle />
-              <HeaderAuthMenu />
-            </div>
-            <div className="lg:hidden">
-              <AppMobileNavButton variant="marketing" />
-            </div>
+            <GlobalNavSearch className="shrink-0" />
+            <ThemeToggle />
+            <HeaderAuthMenu />
+          </div>
+
+          <div className="shrink-0 lg:hidden">
+            <AppMobileNavButton variant="marketing" />
           </div>
         </div>
 

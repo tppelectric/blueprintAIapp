@@ -6,7 +6,6 @@ import {
   useEffect,
   useMemo,
   useState,
-  type ReactNode,
 } from "react";
 import type { ElectricalItemRow } from "@/lib/electrical-item-types";
 import type { DetectedRoomRow } from "@/lib/detected-room-types";
@@ -158,41 +157,103 @@ function effectiveQty(
   return Math.round(Number(item.quantity));
 }
 
-function verifyIcon(
-  item: ElectricalItemRow,
-  claudeQty: number,
-  gptQty: number | null,
-): ReactNode {
-  const s = item.verification_status ?? "pending";
-  const v = verifyState(claudeQty, gptQty, s);
-  if (s === "manual") {
+function verificationBreakdown(items: ElectricalItemRow[]) {
+  let accepted = 0;
+  let override = 0;
+  let manual = 0;
+  let unverified = 0;
+  let conflict = 0;
+  let total = 0;
+  for (const i of items) {
+    if (i.category === "plan_note") continue;
+    total++;
+    const st = i.verification_status ?? "pending";
+    const vb = i.verified_by ?? null;
+    if (st === "conflict") {
+      conflict++;
+      continue;
+    }
+    if (st === "manual") {
+      manual++;
+      continue;
+    }
+    if (vb === "override") {
+      override++;
+      continue;
+    }
+    if (vb === "accept" || vb === "resolve") {
+      accepted++;
+      continue;
+    }
+    if (st === "confirmed") {
+      accepted++;
+      continue;
+    }
+    unverified++;
+  }
+  return {
+    total,
+    verifiedCount: accepted + override + manual,
+    accepted,
+    override,
+    manual,
+    unverified,
+    conflict,
+  };
+}
+
+function ItemVerificationBadge({ item }: { item: ElectricalItemRow }) {
+  const claudeQty = Math.round(Number(item.quantity));
+  const gptQty =
+    item.gpt_count != null ? Math.round(Number(item.gpt_count)) : null;
+  const status = item.verification_status ?? "pending";
+  const vb = item.verified_by ?? null;
+
+  if (status === "conflict") {
     return (
-      <span className="text-[10px] font-bold text-sky-300" title="Manual verified">
-        M
+      <span className="shrink-0 rounded border border-red-500/40 bg-red-950/35 px-1.5 py-0.5 text-[9px] font-semibold text-red-100">
+        ⚠️ Conflict
       </span>
     );
   }
-  if (v === "confirmed")
+  if (status === "manual") {
+    const x = Math.round(Number(item.final_count ?? claudeQty));
     return (
-      <span className="text-emerald-300" title="Confirmed">
-        ✓
+      <span className="shrink-0 rounded border border-sky-500/45 bg-sky-950/40 px-1.5 py-0.5 text-[9px] font-semibold text-sky-100">
+        👆 Verified: {x}
       </span>
     );
-  if (v === "verify_needed")
+  }
+  if (vb === "override") {
+    const x = Math.round(Number(item.final_count ?? claudeQty));
     return (
-      <span className="text-amber-300" title="Verify needed">
-        ⚠
+      <span className="shrink-0 rounded border border-amber-500/50 bg-amber-950/40 px-1.5 py-0.5 text-[9px] font-semibold text-amber-100">
+        ✏️ Override: {x}
       </span>
     );
-  if (v === "conflict")
+  }
+  if (
+    vb === "accept" ||
+    vb === "resolve" ||
+    (status === "confirmed" && vb !== "override")
+  ) {
     return (
-      <span className="text-red-300" title="Conflict">
-        ⚑
+      <span className="shrink-0 rounded border border-emerald-500/45 bg-emerald-950/40 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-100">
+        ✅ Accepted
       </span>
     );
+  }
+  const vs = verifyState(claudeQty, gptQty, status);
+  if (vs === "verify_needed") {
+    return (
+      <span className="shrink-0 rounded border border-amber-500/35 bg-amber-950/30 px-1.5 py-0.5 text-[9px] font-semibold text-amber-100">
+        🤖 Verify AI/GPT
+      </span>
+    );
+  }
   return (
-    <span className="text-white/35" title="Awaiting GPT">
-      ○
+    <span className="shrink-0 rounded border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-semibold text-white/65">
+      🤖 AI Only
     </span>
   );
 }
@@ -219,6 +280,8 @@ function CompactItemRow({
   manualCompareHint,
   onDismissManualCompare,
   onKeepAiCount,
+  forceOverrideOpen = false,
+  onRequestVerify,
 }: {
   item: ElectricalItemRow;
   manualMode: boolean;
@@ -242,6 +305,9 @@ function CompactItemRow({
   manualCompareHint?: boolean;
   onDismissManualCompare?: (itemId: string) => void;
   onKeepAiCount?: (itemId: string) => void;
+  /** Room bulk action: show override inputs for every item in the room */
+  forceOverrideOpen?: boolean;
+  onRequestVerify?: () => void;
 }) {
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState(item.description);
@@ -253,10 +319,30 @@ function CompactItemRow({
     if (!editingName) setDraftName(item.description);
   }, [item.description, editingName]);
 
-  const status = item.verification_status ?? "pending";
   const claudeQty = Math.round(Number(item.quantity));
   const gptQty =
     item.gpt_count != null ? Math.round(Number(item.gpt_count)) : null;
+
+  useEffect(() => {
+    if (forceOverrideOpen) {
+      setOverrideOpen(true);
+      setOverrideDraft(
+        String(item.final_count ?? (gptQty ?? claudeQty)),
+      );
+    } else {
+      setOverrideOpen(false);
+    }
+  }, [
+    forceOverrideOpen,
+    item.id,
+    item.final_count,
+    item.quantity,
+    item.gpt_count,
+    gptQty,
+    claudeQty,
+  ]);
+
+  const status = item.verification_status ?? "pending";
   const vState = verifyState(claudeQty, gptQty, status);
   const showManual = manualMode;
   const manualClickCount = Math.round(Number(manualCount ?? 0));
@@ -390,7 +476,10 @@ function CompactItemRow({
       }}
       role={showManual ? "button" : undefined}
     >
-      <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="flex flex-wrap items-start gap-2 border-b border-white/5 pb-2"
+        onClick={(e) => e.stopPropagation()}
+      >
         {dragEnabled ? (
           <span
             role="button"
@@ -402,7 +491,7 @@ function CompactItemRow({
               onDragItemChange?.(item.id);
             }}
             onDragEnd={() => onDragItemChange?.(null)}
-            className="cursor-grab touch-none select-none text-sm leading-none text-white/35 hover:text-cyan-300/90 active:cursor-grabbing"
+            className="mt-0.5 cursor-grab touch-none select-none text-sm leading-none text-white/35 hover:text-cyan-300/90 active:cursor-grabbing"
             aria-label="Drag to move to another room"
             title="Drag into a room"
             onKeyDown={(e) => {
@@ -417,19 +506,16 @@ function CompactItemRow({
             type="checkbox"
             checked={bulkChecked ?? false}
             onChange={() => onBulkToggle?.()}
-            className="h-3.5 w-3.5 shrink-0 rounded border-white/30 bg-[#0a1628]"
+            className="mt-1 h-3.5 w-3.5 shrink-0 rounded border-white/30 bg-[#0a1628]"
             aria-label={`Select ${item.description}`}
             onClick={(e) => e.stopPropagation()}
           />
         ) : null}
         <span
-          className={`h-2.5 w-2.5 shrink-0 rounded-full ${confidenceDotClass(item.confidence)}`}
+          className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${confidenceDotClass(item.confidence)}`}
           title={`Confidence ${Math.round(item.confidence * 100)}%`}
         />
-        <span className="w-4 shrink-0 text-center" title="Verification">
-          {verifyIcon(item, claudeQty, gptQty)}
-        </span>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 basis-[10rem]">
           {editingName ? (
             <input
               value={draftName}
@@ -458,59 +544,109 @@ function CompactItemRow({
             </button>
           )}
         </div>
-        {showManual && item.category !== "plan_note" ? (
-          <div className="flex shrink-0 flex-col items-end gap-0.5 text-end text-[10px] tabular-nums leading-tight">
-            <span className="text-white/55" title="AI count (locked)">
-              AI{" "}
-              <span className="font-semibold text-white">{claudeQty}</span>
-            </span>
-            <span className="text-sky-300/90" title="Your manual clicks">
-              Manual{" "}
-              <span className="font-semibold text-sky-100">
-                {manualClickCount}
-              </span>
-            </span>
-            <span className="text-emerald-300/90" title="Saved preview: manual if &gt; 0, else AI">
-              Final{" "}
-              <span className="font-semibold text-emerald-100">
-                {finalPreview}
-              </span>
-            </span>
-          </div>
-        ) : (
-          <div className="flex shrink-0 items-center gap-1.5 tabular-nums text-white/80">
-            <span title="Claude">{claudeQty}</span>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 text-[10px] tabular-nums">
+          <span
+            className="rounded bg-white/[0.06] px-1.5 py-0.5 font-medium text-white/90"
+            title="AI-detected count"
+          >
+            AI: <span className="font-bold text-white">{claudeQty}</span>
             {gptQty !== null && gptQty !== claudeQty ? (
-              <span className="text-violet-300" title="GPT">
-                /{gptQty}
-              </span>
+              <span className="text-violet-300"> ({gptQty} GPT)</span>
             ) : null}
-          </div>
-        )}
-        <div className="flex shrink-0 items-center gap-0.5">
+          </span>
+          <span
+            className="rounded bg-white/[0.06] px-1.5 py-0.5 font-medium text-sky-200/90"
+            title={
+              showManual
+                ? "Clicks on blueprint this session"
+                : "Saved manual count (after verify)"
+            }
+          >
+            Manual:{" "}
+            <span className="font-bold text-white">
+              {showManual && item.category !== "plan_note"
+                ? manualClickCount
+                : item.verification_status === "manual"
+                  ? Math.round(Number(item.final_count ?? 0))
+                  : "—"}
+            </span>
+          </span>
+          <ItemVerificationBadge item={item} />
+        </div>
+      </div>
+      {item.category !== "plan_note" ? (
+        <div
+          className="mt-2 flex flex-wrap gap-2"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void acceptVerified()}
+            className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/50 bg-emerald-800/35 px-2.5 py-1.5 text-[11px] font-bold text-emerald-50 hover:bg-emerald-800/50 disabled:opacity-40"
+            title="Accept AI count as final verified"
+          >
+            ✅ Accept
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => {
+              setOverrideDraft(
+                String(item.final_count ?? gptQty ?? claudeQty),
+              );
+              setOverrideOpen((o) => !o);
+            }}
+            className="inline-flex items-center gap-1 rounded-lg border border-amber-500/45 bg-amber-950/40 px-2.5 py-1.5 text-[11px] font-bold text-amber-100 hover:bg-amber-950/55 disabled:opacity-40"
+            title="Type the correct count"
+          >
+            ✏️ Override
+          </button>
+          {onRequestVerify ? (
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => onRequestVerify()}
+              className="inline-flex items-center gap-1 rounded-lg border border-sky-500/45 bg-sky-950/40 px-2.5 py-1.5 text-[11px] font-bold text-sky-100 hover:bg-sky-950/55 disabled:opacity-40"
+              title="Click-to-count on blueprint for this item"
+            >
+              👆 Verify
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {showManual && item.category !== "plan_note" ? (
+        <div
+          className="mt-2 flex flex-wrap items-center justify-end gap-2 border-t border-white/5 pt-2"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="mr-auto text-[10px] text-white/50">
+            Session:{" "}
+            <span className="font-semibold text-emerald-200/90">
+              Final preview {finalPreview}
+            </span>
+          </span>
           <button
             type="button"
             aria-label="Decrease"
-            disabled={!showManual}
             onClick={() => onManualCountDelta(item.id, -1)}
-            className="flex h-7 w-7 items-center justify-center rounded border border-white/20 bg-white/10 text-white disabled:opacity-35"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/20 bg-white/10 text-white"
           >
             −
           </button>
-          <span className="min-w-[2rem] text-center font-semibold text-white">
+          <span className="min-w-[2.25rem] text-center text-sm font-bold text-white">
             {manualStepperShown}
           </span>
           <button
             type="button"
             aria-label="Increase"
-            disabled={!showManual}
             onClick={() => onManualCountDelta(item.id, 1)}
-            className="flex h-7 w-7 items-center justify-center rounded border border-white/20 bg-white/10 text-white disabled:opacity-35"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/20 bg-white/10 text-white"
           >
             +
           </button>
         </div>
-      </div>
+      ) : null}
       {manualCompareHint && item.category !== "plan_note" ? (
         <div
           className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded border border-amber-500/30 bg-amber-950/25 px-2 py-1.5 text-[10px] text-amber-50/95"
@@ -610,14 +746,6 @@ function CompactItemRow({
             Clear manual
           </button>
         ) : null}
-        <button
-          type="button"
-          disabled={saving}
-          onClick={() => void acceptVerified()}
-          className="text-[10px] font-semibold text-emerald-300 hover:underline disabled:opacity-40"
-        >
-          Accept
-        </button>
         {gptQty !== null && status !== "manual" && vState !== "confirmed" ? (
           <button
             type="button"
@@ -628,17 +756,6 @@ function CompactItemRow({
             Use GPT
           </button>
         ) : null}
-        <button
-          type="button"
-          disabled={saving}
-          onClick={() => {
-            setOverrideDraft(String(item.final_count ?? gptQty ?? claudeQty));
-            setOverrideOpen((o) => !o);
-          }}
-          className="text-[10px] text-white/60 hover:underline"
-        >
-          Override
-        </button>
       </div>
         {quickSuggestRooms && quickSuggestRooms.length > 0 ? (
           <div className="mt-1.5 flex flex-wrap gap-1 border-t border-white/5 pt-1.5">
@@ -659,24 +776,30 @@ function CompactItemRow({
           </div>
         ) : null}
         {overrideOpen ? (
-        <div className="mt-2 flex gap-1 rounded border border-violet-500/30 bg-violet-950/20 p-2">
-          <input
-            type="number"
-            min={0}
-            value={overrideDraft}
-            onChange={(e) => setOverrideDraft(e.target.value)}
-            className="w-16 rounded border border-white/20 bg-[#0a1628] px-1 py-0.5 text-xs text-white"
-          />
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => void submitOverride()}
-            className="rounded bg-violet-600 px-2 py-0.5 text-[10px] text-white"
-          >
-            Save
-          </button>
-        </div>
-      ) : null}
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded border border-amber-500/35 bg-amber-950/25 p-2">
+            <span className="text-[10px] text-amber-100/90">
+              Override (AI stays {claudeQty})
+            </span>
+            <input
+              type="number"
+              min={0}
+              value={overrideDraft}
+              onChange={(e) => setOverrideDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void submitOverride();
+              }}
+              className="w-20 rounded border border-white/20 bg-[#0a1628] px-1.5 py-1 text-xs text-white"
+            />
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void submitOverride()}
+              className="rounded-lg bg-amber-600 px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-amber-500 disabled:opacity-40"
+            >
+              Save
+            </button>
+          </div>
+        ) : null}
     </div>
   );
 }
@@ -688,6 +811,8 @@ function RoomHeader({
   deviceTotal,
   onPatchRooms,
   onExportRoom,
+  onAcceptAllInRoom,
+  onOverrideAllInRoom,
 }: {
   room: DetectedRoomRow;
   expanded: boolean;
@@ -695,6 +820,8 @@ function RoomHeader({
   deviceTotal: number;
   onPatchRooms: (updates: DetectedRoomRow[]) => void;
   onExportRoom?: () => void;
+  onAcceptAllInRoom?: () => void;
+  onOverrideAllInRoom?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(room.room_name);
@@ -775,17 +902,39 @@ function RoomHeader({
         <p className="mt-1 text-[11px] font-medium text-white/70">
           {deviceTotal} total devices
         </p>
+        {onAcceptAllInRoom || onOverrideAllInRoom || onExportRoom ? (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {onAcceptAllInRoom ? (
+              <button
+                type="button"
+                onClick={onAcceptAllInRoom}
+                className="rounded border border-emerald-500/45 bg-emerald-950/35 px-2 py-1 text-[10px] font-semibold text-emerald-100 hover:bg-emerald-950/50"
+              >
+                Accept All in Room
+              </button>
+            ) : null}
+            {onOverrideAllInRoom ? (
+              <button
+                type="button"
+                onClick={onOverrideAllInRoom}
+                className="rounded border border-amber-500/45 bg-amber-950/35 px-2 py-1 text-[10px] font-semibold text-amber-100 hover:bg-amber-950/50"
+              >
+                Override All
+              </button>
+            ) : null}
+            {onExportRoom ? (
+              <button
+                type="button"
+                onClick={onExportRoom}
+                className="rounded border border-cyan-500/40 bg-cyan-950/35 px-2 py-1 text-[10px] font-semibold text-cyan-100 hover:bg-cyan-950/50"
+              >
+                Export Room
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
-        {onExportRoom ? (
-          <button
-            type="button"
-            onClick={onExportRoom}
-            className="rounded border border-emerald-500/40 bg-emerald-950/40 px-2 py-0.5 text-[10px] font-semibold text-emerald-100 hover:bg-emerald-950/55"
-          >
-            Export
-          </button>
-        ) : null}
         <button
           type="button"
           onClick={onToggle}
@@ -881,6 +1030,10 @@ function TakeoffSummaryCollapsible({
     0,
   );
   const grandTotal = grandDevices + planNoteLines;
+  const verification = useMemo(
+    () => verificationBreakdown([...deviceItems, ...planNotes]),
+    [deviceItems, planNotes],
+  );
 
   return (
     <section className="mb-4 rounded-xl border border-[#E8C84A]/35 bg-[#050d18] shadow-sm">
@@ -915,6 +1068,20 @@ function TakeoffSummaryCollapsible({
       </div>
       {expanded ? (
         <div className="px-3 py-3">
+          <div className="mb-3 rounded-lg border border-white/12 bg-white/[0.04] px-2.5 py-2 text-[11px] leading-relaxed text-white/85">
+            <p className="font-semibold text-white">
+              Verified items: {verification.verifiedCount} / {verification.total}{" "}
+              total
+            </p>
+            <p className="mt-1 text-white/65">
+              Accepted: {verification.accepted} | Override:{" "}
+              {verification.override} | Manual: {verification.manual} | Unverified:{" "}
+              {verification.unverified}
+              {verification.conflict > 0
+                ? ` | Conflict: ${verification.conflict}`
+                : ""}
+            </p>
+          </div>
           <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 text-xs sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
             <span className="font-semibold uppercase tracking-wide text-white/50">
               Category
@@ -1215,6 +1382,9 @@ export function AnalysisResultsPanel({
   projectId,
   projectLabel = "Project",
   onOpenTakeoffExport,
+  onExportAllTakeoffPdf,
+  onExportAllTakeoffCsv,
+  onRequestItemVerify,
 }: {
   items: ElectricalItemRow[];
   rooms: DetectedRoomRow[];
@@ -1238,6 +1408,9 @@ export function AnalysisResultsPanel({
   projectId?: string;
   projectLabel?: string;
   onOpenTakeoffExport?: () => void;
+  onExportAllTakeoffPdf?: () => void;
+  onExportAllTakeoffCsv?: () => void;
+  onRequestItemVerify?: (item: ElectricalItemRow) => void;
 }) {
   const router = useRouter();
   const patchRooms = onPatchRooms ?? (() => {});
@@ -1449,10 +1622,18 @@ export function AnalysisResultsPanel({
   const [assignAllRoomId, setAssignAllRoomId] = useState("");
   const [dragOverRoomId, setDragOverRoomId] = useState<string | null>(null);
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
+  const [roomOverrideBulkId, setRoomOverrideBulkId] = useState<string | null>(
+    null,
+  );
+  const [acceptAllBusy, setAcceptAllBusy] = useState(false);
 
   useEffect(() => {
     if (!bulkMode) setBulkSelected(new Set());
   }, [bulkMode]);
+
+  useEffect(() => {
+    setRoomOverrideBulkId(null);
+  }, [currentPage]);
 
   useEffect(() => {
     const clear = () => {
@@ -1557,6 +1738,45 @@ export function AnalysisResultsPanel({
     },
     [onPatchItems, dismissManualCompareHint],
   );
+
+  const acceptItemsByList = useCallback(
+    async (targets: ElectricalItemRow[]) => {
+      const list = targets.filter((i) => i.category !== "plan_note");
+      if (list.length === 0) return;
+      setAcceptAllBusy(true);
+      try {
+        for (const it of list) {
+          const res = await fetch("/api/electrical-items/accept-verified", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ itemId: it.id }),
+          });
+          const json = (await res.json()) as {
+            item?: ElectricalItemRow;
+            error?: string;
+          };
+          if (!res.ok) throw new Error(json.error ?? "Accept failed.");
+          if (json.item) onPatchItems([json.item]);
+        }
+      } catch (e) {
+        window.alert(e instanceof Error ? e.message : "Accept failed.");
+      } finally {
+        setAcceptAllBusy(false);
+      }
+    },
+    [onPatchItems],
+  );
+
+  const acceptAllInRoom = useCallback(
+    async (roomItems: ElectricalItemRow[]) => {
+      await acceptItemsByList(roomItems);
+    },
+    [acceptItemsByList],
+  );
+
+  const acceptAllPageItems = useCallback(async () => {
+    await acceptItemsByList(deviceItems);
+  }, [acceptItemsByList, deviceItems]);
 
   const manualCompareHintFor = useCallback(
     (row: ElectricalItemRow) => {
@@ -1675,6 +1895,37 @@ export function AnalysisResultsPanel({
             Manual count: pick a room in the toolbar, select an item, then click
             the blueprint. Dots are colored by room and shaped by item type.
           </p>
+        ) : null}
+
+        {deviceItems.length > 0 && !manualMode && !assignmentOpen ? (
+          <div className="mb-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={acceptAllBusy}
+              onClick={() => void acceptAllPageItems()}
+              className="rounded-lg border border-emerald-500/45 bg-emerald-950/40 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-100 hover:bg-emerald-950/55 disabled:opacity-45"
+            >
+              {acceptAllBusy ? "Accepting…" : "Accept All Items"}
+            </button>
+            {onExportAllTakeoffPdf ? (
+              <button
+                type="button"
+                onClick={() => onExportAllTakeoffPdf()}
+                className="rounded-lg border border-sky-500/45 bg-sky-950/40 px-2.5 py-1.5 text-[11px] font-semibold text-sky-100 hover:bg-sky-950/55"
+              >
+                Export All as PDF
+              </button>
+            ) : null}
+            {onExportAllTakeoffCsv ? (
+              <button
+                type="button"
+                onClick={() => onExportAllTakeoffCsv()}
+                className="rounded-lg border border-white/20 bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-white/15"
+              >
+                Export All as CSV
+              </button>
+            ) : null}
+          </div>
         ) : null}
 
         {pageAnalysisWarning ? (
@@ -1820,6 +2071,19 @@ export function AnalysisResultsPanel({
                       onExportRoom={
                         onExportRoom ? () => onExportRoom(room) : undefined
                       }
+                      onAcceptAllInRoom={
+                        !manualMode && list.length > 0
+                          ? () => void acceptAllInRoom(list)
+                          : undefined
+                      }
+                      onOverrideAllInRoom={
+                        !manualMode && list.length > 0
+                          ? () =>
+                              setRoomOverrideBulkId((id) =>
+                                id === room.id ? null : room.id,
+                              )
+                          : undefined
+                      }
                     />
                     {expanded ? (
                       <div className="space-y-2 px-3 py-3">
@@ -1858,6 +2122,12 @@ export function AnalysisResultsPanel({
                               manualCompareHint={manualCompareHintFor(item)}
                               onDismissManualCompare={dismissManualCompareHint}
                               onKeepAiCount={(id) => void keepAiCountForItem(id)}
+                              forceOverrideOpen={roomOverrideBulkId === room.id}
+                              onRequestVerify={
+                                !manualMode && onRequestItemVerify
+                                  ? () => onRequestItemVerify(item)
+                                  : undefined
+                              }
                             />
                           ))
                         )}
@@ -1934,6 +2204,12 @@ export function AnalysisResultsPanel({
                       manualCompareHint={manualCompareHintFor(item)}
                       onDismissManualCompare={dismissManualCompareHint}
                       onKeepAiCount={(id) => void keepAiCountForItem(id)}
+                      forceOverrideOpen={false}
+                      onRequestVerify={
+                        !manualMode && onRequestItemVerify
+                          ? () => onRequestItemVerify(item)
+                          : undefined
+                      }
                     />
                   ))}
                 </div>

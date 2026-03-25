@@ -35,6 +35,8 @@ import {
 } from "@/lib/manual-count-style";
 import {
   electricalItemsForManualRoom,
+  isItemUnassignedForPage,
+  itemMatchesDetectedRoom,
   roomHueIndexForManualDots,
 } from "@/lib/room-item-match";
 import {
@@ -52,6 +54,14 @@ import {
 import { formatAutoScanName } from "@/lib/saved-scan-format";
 import type { SavedScanRow } from "@/lib/saved-scan-types";
 import { parseScanItems, parseScanRooms } from "@/lib/saved-scan-types";
+import {
+  clusterSavedScansIntoSessions,
+  formatRecallSessionDate,
+  mergeSessionItemsAndRooms,
+  recallScanStorageKey,
+  recallThumbMaps,
+  type SavedScanSession,
+} from "@/lib/saved-scan-sessions";
 import { ScanHistoryPanel } from "./scan-history-panel";
 import { SymbolLegendPanel } from "./symbol-legend-panel";
 import { TakeoffExportDialog } from "./takeoff-export-dialog";
@@ -370,6 +380,7 @@ function PageThumbnail({
   onSelect,
   disabled,
   scanStatus,
+  thumbNote,
 }: {
   pdfDoc: PDFDocumentProxy;
   pageNumber: number;
@@ -379,6 +390,8 @@ function PageThumbnail({
   onSelect: () => void;
   disabled?: boolean;
   scanStatus?: PageThumbScanStatus;
+  /** Extra line under page number (e.g. recall item count). */
+  thumbNote?: string | null;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderTaskRef = useRef<RenderTask | null>(null);
@@ -449,6 +462,11 @@ function PageThumbnail({
       <span className="mt-1 block text-center text-xs text-white/70">
         {globalPageLabel}
       </span>
+      {thumbNote ? (
+        <span className="mt-0.5 block text-center text-[10px] leading-tight text-white/50">
+          {thumbNote}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -694,6 +712,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const symbolMatchPageTrackRef = useRef<number | null>(null);
   const symbolCaptureRef = useRef<SymbolCaptureState | null>(null);
   const symbolMatchStateRef = useRef<SymbolMatchState | null>(null);
+  const pendingManualVerifyItemIdRef = useRef<string | null>(null);
 
   const [scanHistoryOpen, setScanHistoryOpen] = useState(false);
   const [roomScanOpen, setRoomScanOpen] = useState(false);
@@ -712,6 +731,21 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     string | null
   >(null);
   const [scanReloadToken, setScanReloadToken] = useState(0);
+  const [takeoffViewMode, setTakeoffViewMode] = useState<"live" | "recall">(
+    "live",
+  );
+  const takeoffViewModeRef = useRef<"live" | "recall">(takeoffViewMode);
+  takeoffViewModeRef.current = takeoffViewMode;
+  const [activeRecallSession, setActiveRecallSession] =
+    useState<SavedScanSession | null>(null);
+  const [recallPickerOpen, setRecallPickerOpen] = useState(false);
+  const [recallPickerLoading, setRecallPickerLoading] = useState(false);
+  const [recallPickerSessions, setRecallPickerSessions] = useState<
+    SavedScanSession[]
+  >([]);
+  const [recallPickerError, setRecallPickerError] = useState<string | null>(
+    null,
+  );
   const [resetDialog, setResetDialog] = useState<{
     itemCount: number;
     roomCount: number;
@@ -753,6 +787,12 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     setSelectedRoomScanId(null);
     setRoomScanSavedAtLabel(null);
     setPageScanMeta({});
+    setTakeoffViewMode("live");
+    setActiveRecallSession(null);
+    setRecallPickerOpen(false);
+    setRecallPickerSessions([]);
+    setRecallPickerError(null);
+    setScanReloadToken(0);
   }, [projectId]);
 
   const reloadRoomScanHistory = useCallback(async () => {
@@ -862,6 +902,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   }, [projectId]);
 
   useEffect(() => {
+    if (takeoffViewMode === "recall") return;
     if (scanProgressOpen) return;
     if (analyzePhase !== "idle") return;
     if (numPages < 1) return;
@@ -877,6 +918,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       return next;
     });
   }, [
+    takeoffViewMode,
     scanProgressOpen,
     analyzePhase,
     numPages,
@@ -1005,6 +1047,98 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     setRoomAssignmentView(false);
   }, [currentPage]);
 
+  const enterManualVerifyForItem = useCallback(
+    (item: ElectricalItemRow) => {
+      if (symbolCaptureState || symbolMatchState) {
+        window.alert(
+          "Exit symbol capture or match mode before manual verify.",
+        );
+        return;
+      }
+      if (getManualDotStyle(item).skipDot) {
+        window.alert("Plan notes are not counted on the blueprint.");
+        return;
+      }
+      if (!pageCountableItems.some((i) => i.id === item.id)) {
+        window.alert("This item cannot be manually counted on the blueprint.");
+        return;
+      }
+      let roomId: string | "UNASSIGNED" = "UNASSIGNED";
+      for (const r of pageRoomsForManual) {
+        if (
+          itemMatchesDetectedRoom(item, r) &&
+          !isItemUnassignedForPage(item, pageRoomsForManual)
+        ) {
+          roomId = r.id;
+          break;
+        }
+      }
+      if (!manualMode) {
+        const zeros = Object.fromEntries(
+          pageItemsForManual.map((i) => [i.id, 0]),
+        );
+        setManualCounts(zeros);
+        setManualDots([]);
+        setManualActionStack([]);
+        setManualCountingRoomId(roomId);
+        setRoomAssignmentView(false);
+        setManualMode(true);
+      } else {
+        setManualCountingRoomId(roomId);
+      }
+      setSelectedManualItemId(item.id);
+      setManualBanner(`Click the blueprint to count: ${item.description}`);
+      zoomTouchedByUserRef.current = true;
+      const fw = fitWidthZoomRef.current;
+      setZoom((z) => Math.min(ZOOM_MAX, Math.max(z, fw * 1.35, 1.45)));
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const sc = blueprintViewportRef.current;
+          if (sc) {
+            sc.scrollLeft = Math.max(
+              0,
+              (sc.scrollWidth - sc.clientWidth) / 2,
+            );
+            sc.scrollTop = Math.max(
+              0,
+              (sc.scrollHeight - sc.clientHeight) / 2,
+            );
+          }
+        });
+      });
+    },
+    [
+      manualMode,
+      pageCountableItems,
+      pageItemsForManual,
+      pageRoomsForManual,
+      symbolCaptureState,
+      symbolMatchState,
+    ],
+  );
+
+  const onRequestItemVerify = useCallback(
+    (item: ElectricalItemRow) => {
+      if (item.page_number !== currentPage) {
+        pendingManualVerifyItemIdRef.current = item.id;
+        setCurrentPage(item.page_number);
+        return;
+      }
+      enterManualVerifyForItem(item);
+    },
+    [currentPage, enterManualVerifyForItem],
+  );
+
+  useEffect(() => {
+    const id = pendingManualVerifyItemIdRef.current;
+    if (!id) return;
+    pendingManualVerifyItemIdRef.current = null;
+    const item = analysisItems.find(
+      (i) => i.id === id && i.page_number === currentPage,
+    );
+    if (item) enterManualVerifyForItem(item);
+  }, [currentPage, analysisItems, enterManualVerifyForItem]);
+
   useEffect(() => {
     if (!manualMode) return;
     if (
@@ -1018,7 +1152,25 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
+      const recallKey = recallScanStorageKey(projectId);
+      const recallId =
+        typeof window !== "undefined" ? localStorage.getItem(recallKey) : null;
+      let scansPayload: SavedScanRow[] = [];
+      try {
+        const scanRes = await fetch(
+          `/api/saved-scans?projectId=${encodeURIComponent(projectId)}`,
+        );
+        const sj = (await scanRes.json()) as {
+          scans?: SavedScanRow[];
+          error?: string;
+        };
+        if (scanRes.ok) {
+          scansPayload = sj.scans ?? [];
+        }
+      } catch {
+        scansPayload = [];
+      }
       try {
         const supabase = createBrowserClient();
         const [itemsRes, roomsRes] = await Promise.all([
@@ -1034,6 +1186,63 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
             .order("page_number", { ascending: true }),
         ]);
         if (cancelled) return;
+        if (recallId && scansPayload.length > 0) {
+          const sessions = clusterSavedScansIntoSessions(scansPayload);
+          const session = sessions.find((s) => s.id === recallId);
+          if (session) {
+            const { items, rooms } = mergeSessionItemsAndRooms(session.rows);
+            setAnalysisItems(items);
+            setDetectedRooms(rooms);
+            setTakeoffViewMode("recall");
+            setActiveRecallSession(session);
+            return;
+          }
+          localStorage.removeItem(recallKey);
+        }
+        if (itemsRes.data) {
+          setAnalysisItems(itemsRes.data as ElectricalItemRow[]);
+        }
+        if (roomsRes.data) {
+          setDetectedRooms(roomsRes.data as DetectedRoomRow[]);
+        }
+        setTakeoffViewMode("live");
+        setActiveRecallSession(null);
+      } catch {
+        if (!cancelled) {
+          setTakeoffViewMode("live");
+          setActiveRecallSession(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  useEffect(() => {
+    if (scanReloadToken === 0) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const supabase = createBrowserClient();
+        const [itemsRes, roomsRes] = await Promise.all([
+          supabase
+            .from("electrical_items")
+            .select("*")
+            .eq("project_id", projectId)
+            .order("page_number", { ascending: true }),
+          supabase
+            .from("detected_rooms")
+            .select("*")
+            .eq("project_id", projectId)
+            .order("page_number", { ascending: true }),
+        ]);
+        if (cancelled) return;
+        if (takeoffViewModeRef.current === "recall") {
+          localStorage.removeItem(recallScanStorageKey(projectId));
+          setTakeoffViewMode("live");
+          setActiveRecallSession(null);
+        }
         if (itemsRes.data) {
           setAnalysisItems(itemsRes.data as ElectricalItemRow[]);
         }
@@ -1041,13 +1250,13 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           setDetectedRooms(roomsRes.data as DetectedRoomRow[]);
         }
       } catch {
-        /* RLS or missing table — panel stays empty until analyze */
+        /* RLS or missing table */
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [projectId, scanReloadToken]);
 
   const pdfDocsRef = useRef<PDFDocumentProxy[] | null>(null);
   const currentPageRef = useRef(currentPage);
@@ -2658,20 +2867,121 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     }
   }, [performPageReset]);
 
-  const applyViewScan = useCallback((scan: SavedScanRow) => {
-    const items = parseScanItems(scan.items_snapshot);
-    const rooms = parseScanRooms(scan.rooms_snapshot);
-    setCurrentPage(scan.page_number);
-    setAnalysisItems((prev) => [
-      ...prev.filter((i) => i.page_number !== scan.page_number),
-      ...items,
-    ]);
-    setDetectedRooms((prev) => [
-      ...prev.filter((r) => r.page_number !== scan.page_number),
-      ...rooms,
-    ]);
-    setScanHistoryOpen(false);
-  }, []);
+  const applyViewScan = useCallback(
+    (scan: SavedScanRow) => {
+      const items = parseScanItems(scan.items_snapshot);
+      const rooms = parseScanRooms(scan.rooms_snapshot);
+      setCurrentPage(scan.page_number);
+      setAnalysisItems((prev) => [
+        ...prev.filter((i) => i.page_number !== scan.page_number),
+        ...items,
+      ]);
+      setDetectedRooms((prev) => [
+        ...prev.filter((r) => r.page_number !== scan.page_number),
+        ...rooms,
+      ]);
+      setScanHistoryOpen(false);
+      localStorage.removeItem(recallScanStorageKey(projectId));
+      setTakeoffViewMode("live");
+      setActiveRecallSession(null);
+    },
+    [projectId],
+  );
+
+  const applyRecallSession = useCallback(
+    (session: SavedScanSession) => {
+      const { items, rooms } = mergeSessionItemsAndRooms(session.rows);
+      setAnalysisItems(items);
+      setDetectedRooms(rooms);
+      setTakeoffViewMode("recall");
+      setActiveRecallSession(session);
+      localStorage.setItem(recallScanStorageKey(projectId), session.id);
+      setRecallPickerOpen(false);
+      const p = session.pages[0];
+      if (p != null && p >= 1) setCurrentPage(p);
+      setManualMode(false);
+      setManualDots([]);
+      setManualCounts({});
+      setSelectedManualItemId(null);
+      setManualActionStack([]);
+      setManualCountingRoomId("UNASSIGNED");
+      setMobileThumbsOpen(false);
+    },
+    [projectId],
+  );
+
+  const switchToLiveTakeoff = useCallback(async () => {
+    localStorage.removeItem(recallScanStorageKey(projectId));
+    setTakeoffViewMode("live");
+    setActiveRecallSession(null);
+    setManualMode(false);
+    setManualDots([]);
+    setManualCounts({});
+    setSelectedManualItemId(null);
+    setManualActionStack([]);
+    setManualCountingRoomId("UNASSIGNED");
+    try {
+      const supabase = createBrowserClient();
+      const [itemsRes, roomsRes] = await Promise.all([
+        supabase
+          .from("electrical_items")
+          .select("*")
+          .eq("project_id", projectId)
+          .order("page_number", { ascending: true }),
+        supabase
+          .from("detected_rooms")
+          .select("*")
+          .eq("project_id", projectId)
+          .order("page_number", { ascending: true }),
+      ]);
+      if (itemsRes.data) {
+        setAnalysisItems(itemsRes.data as ElectricalItemRow[]);
+      }
+      if (roomsRes.data) {
+        setDetectedRooms(roomsRes.data as DetectedRoomRow[]);
+      }
+    } catch {
+      /* keep prior state if fetch fails */
+    }
+  }, [projectId]);
+
+  const openRecallScanPicker = useCallback(async () => {
+    setRecallPickerOpen(true);
+    setRecallPickerLoading(true);
+    setRecallPickerError(null);
+    try {
+      const res = await fetch(
+        `/api/saved-scans?projectId=${encodeURIComponent(projectId)}`,
+      );
+      const j = (await res.json()) as {
+        scans?: SavedScanRow[];
+        error?: string;
+      };
+      if (!res.ok) throw new Error(j.error ?? "Could not load saved scans.");
+      const sessions = clusterSavedScansIntoSessions(j.scans ?? []);
+      sessions.sort(
+        (a, b) =>
+          new Date(b.scanDate).getTime() - new Date(a.scanDate).getTime(),
+      );
+      setRecallPickerSessions(sessions);
+    } catch (e) {
+      setRecallPickerError(
+        e instanceof Error ? e.message : "Could not load saved scans.",
+      );
+      setRecallPickerSessions([]);
+    } finally {
+      setRecallPickerLoading(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!recallPickerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setRecallPickerOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [recallPickerOpen]);
 
   const runTargetScan = useCallback(async () => {
     const q = targetQuery.trim();
@@ -3734,11 +4044,28 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     manualMode,
   ]);
 
+  const recallThumbState = useMemo(() => {
+    if (takeoffViewMode !== "recall" || !activeRecallSession || numPages < 1) {
+      return null;
+    }
+    return recallThumbMaps(numPages, activeRecallSession);
+  }, [takeoffViewMode, activeRecallSession, numPages]);
+
   const pageThumbnailItems = useMemo(() => {
     if (!pdfDocs?.length || numPages < 1) return null;
     return Array.from({ length: numPages }, (_, i) => i + 1).map((n) => {
       const mapped = globalPageToLocal(n, pdfDocs);
       if (!mapped) return null;
+      const scanStatus =
+        takeoffViewMode === "recall" && recallThumbState
+          ? (recallThumbState.statusByPage[n] as PageThumbScanStatus)
+          : thumbByPage[n];
+      let thumbNote: string | null = null;
+      if (takeoffViewMode === "recall" && recallThumbState) {
+        const c = recallThumbState.itemCountByPage[n];
+        thumbNote =
+          c === null ? "Not scanned" : `${c} item${c === 1 ? "" : "s"}`;
+      }
       return (
         <PageThumbnail
           key={n}
@@ -3756,11 +4083,20 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
             }
           }}
           disabled={blockPageNav}
-          scanStatus={thumbByPage[n]}
+          scanStatus={scanStatus}
+          thumbNote={thumbNote}
         />
       );
     });
-  }, [pdfDocs, numPages, currentPage, blockPageNav, thumbByPage]);
+  }, [
+    pdfDocs,
+    numPages,
+    currentPage,
+    blockPageNav,
+    thumbByPage,
+    takeoffViewMode,
+    recallThumbState,
+  ]);
 
   if (projectLoading) {
     return (
@@ -3883,6 +4219,30 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         </div>
       </header>
 
+      {takeoffViewMode === "recall" && activeRecallSession ? (
+        <div
+          className="shrink-0 border-b border-amber-500/40 bg-amber-950/45 px-4 py-2.5 text-center text-sm text-amber-50/95 backdrop-blur-sm"
+          role="status"
+        >
+          <span className="font-medium">
+            Viewing scan from{" "}
+            {formatRecallSessionDate(activeRecallSession.scanDate)} —{" "}
+            {activeRecallSession.pageCount} page
+            {activeRecallSession.pageCount === 1 ? "" : "s"} |{" "}
+            {analysisItems.length} item
+            {analysisItems.length === 1 ? "" : "s"}
+          </span>
+          <span className="mx-2 text-amber-200/60">|</span>
+          <button
+            type="button"
+            onClick={() => void switchToLiveTakeoff()}
+            className="inline-flex items-center rounded-lg border border-white/25 bg-white/15 px-3 py-1 text-xs font-bold text-white hover:bg-white/25"
+          >
+            Switch to Live
+          </button>
+        </div>
+      ) : null}
+
       {pdfLoading && (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 py-20">
           <div
@@ -3957,7 +4317,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
             />
           ) : null}
           {thumbCollapsedDesktop ? (
-            <div className="hidden shrink-0 flex-col border-r border-white/10 bg-[#071422]/90 transition-all duration-300 ease-in-out lg:flex">
+            <div className="hidden w-9 shrink-0 flex-col border-r border-white/10 bg-[#071422]/90 transition-all duration-300 ease-in-out lg:flex">
               <button
                 type="button"
                 title="Expand thumbnails"
@@ -3966,6 +4326,15 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                 className="flex h-11 w-9 shrink-0 items-center justify-center text-sm text-white/85 hover:bg-white/10"
               >
                 ▶
+              </button>
+              <button
+                type="button"
+                title="Recall past scan"
+                aria-label="Recall past scan"
+                onClick={() => void openRecallScanPicker()}
+                className="flex min-h-[2.75rem] w-9 shrink-0 items-center justify-center border-t border-white/10 text-base leading-none text-white/80 hover:bg-white/10"
+              >
+                📋
               </button>
             </div>
           ) : (
@@ -3980,23 +4349,43 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                   : undefined
               }
             >
-              <div className="flex shrink-0 items-center justify-end border-b border-white/10 px-1 py-2">
+              <div className="flex shrink-0 flex-col gap-2 border-b border-white/10 px-2 py-2">
+                <div className="flex items-center justify-end">
+                  <button
+                    type="button"
+                    title="Collapse thumbnails"
+                    aria-label="Collapse thumbnails"
+                    onClick={() => setThumbCollapsedDesktop(true)}
+                    className="rounded px-2 py-1 text-sm text-white/80 hover:bg-white/10"
+                  >
+                    ◀
+                  </button>
+                </div>
                 <button
                   type="button"
-                  title="Collapse thumbnails"
-                  aria-label="Collapse thumbnails"
-                  onClick={() => setThumbCollapsedDesktop(true)}
-                  className="rounded px-2 py-1 text-sm text-white/80 hover:bg-white/10"
+                  onClick={() => void openRecallScanPicker()}
+                  disabled={numPages < 1}
+                  className="w-full rounded-lg border border-amber-500/40 bg-amber-950/35 px-2 py-2 text-[11px] font-semibold leading-tight text-amber-100 hover:bg-amber-950/50 disabled:opacity-40"
                 >
-                  ◀
+                  📋 Recall Past Scan
                 </button>
               </div>
               <aside
-                className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-2 pb-4"
+                className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden px-2 pb-2"
                 aria-label="Page thumbnails"
               >
                 {pageThumbnailItems}
               </aside>
+              <div className="shrink-0 border-t border-white/10 px-2 py-2">
+                <button
+                  type="button"
+                  disabled={numPages < 1}
+                  onClick={() => setPageSummaryExportOpen(true)}
+                  className="w-full rounded-lg border border-emerald-500/40 bg-emerald-950/40 px-2 py-2 text-[11px] font-semibold text-emerald-100 hover:bg-emerald-950/55 disabled:opacity-40"
+                >
+                  Export Page Summary
+                </button>
+              </div>
               <div
                 role="separator"
                 aria-orientation="vertical"
@@ -4017,7 +4406,25 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
             ].join(" ")}
             aria-label="Page thumbnails"
           >
+            <button
+              type="button"
+              onClick={() => void openRecallScanPicker()}
+              disabled={numPages < 1}
+              className="w-full shrink-0 rounded-lg border border-amber-500/40 bg-amber-950/35 px-2 py-2 text-[11px] font-semibold leading-tight text-amber-100 hover:bg-amber-950/50 disabled:opacity-40"
+            >
+              📋 Recall Past Scan
+            </button>
             {pageThumbnailItems}
+            <div className="mt-auto shrink-0 border-t border-white/10 pt-2">
+              <button
+                type="button"
+                disabled={numPages < 1}
+                onClick={() => setPageSummaryExportOpen(true)}
+                className="w-full rounded-lg border border-emerald-500/40 bg-emerald-950/40 px-2 py-2 text-[11px] font-semibold text-emerald-100 hover:bg-emerald-950/55 disabled:opacity-40"
+              >
+                Export Page Summary
+              </button>
+            </div>
           </aside>
 
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
@@ -5157,6 +5564,9 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                       setTakeoffExportRoom(null);
                       setTakeoffExportOpen(true);
                     }}
+                    onExportAllTakeoffPdf={exportAllTakeoffPdf}
+                    onExportAllTakeoffCsv={exportAllTakeoffCsv}
+                    onRequestItemVerify={onRequestItemVerify}
                   />
                 </div>
                 </div>
@@ -5197,6 +5607,160 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           >
             Export
           </button>
+        </div>
+      ) : null}
+
+      {recallPickerOpen ? (
+        <div
+          className="fixed inset-0 z-[212] flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !recallPickerLoading)
+              setRecallPickerOpen(false);
+          }}
+        >
+          <div
+            className="flex max-h-[min(90vh,32rem)] w-full max-w-lg flex-col rounded-2xl border border-white/15 bg-[#0a1628] shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="recall-scan-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="shrink-0 border-b border-white/10 px-5 py-4">
+              <h2
+                id="recall-scan-title"
+                className="text-lg font-semibold text-white"
+              >
+                Recall past scan
+              </h2>
+              <p className="mt-1 text-xs leading-relaxed text-white/55">
+                Sessions group saves made within a few minutes (e.g. one batch
+                run). Thumbnails show ✅ items, ⚠️ empty page, ○ not in session.
+              </p>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+              {recallPickerLoading && recallPickerSessions.length === 0 ? (
+                <p className="px-2 py-6 text-center text-sm text-white/60">
+                  Loading saved scans…
+                </p>
+              ) : null}
+              {recallPickerError ? (
+                <p className="px-2 py-2 text-sm text-red-200">
+                  {recallPickerError}
+                </p>
+              ) : null}
+              {!recallPickerLoading &&
+              !recallPickerError &&
+              recallPickerSessions.length === 0 ? (
+                <p className="px-2 py-6 text-center text-sm text-white/55">
+                  No saved scans yet. Run analysis to create history.
+                </p>
+              ) : null}
+              <ul className="space-y-2">
+                {recallPickerSessions.map((s) => {
+                  const isActive = activeRecallSession?.id === s.id;
+                  return (
+                    <li key={s.id}>
+                      <button
+                        type="button"
+                        disabled={recallPickerLoading}
+                        onClick={() => applyRecallSession(s)}
+                        className={[
+                          "w-full rounded-xl border px-3 py-3 text-left transition-colors",
+                          isActive
+                            ? "border-amber-400/60 bg-amber-950/35"
+                            : "border-white/12 bg-white/[0.04] hover:border-amber-500/35 hover:bg-white/[0.07]",
+                        ].join(" ")}
+                      >
+                        <p className="text-sm font-semibold text-white">
+                          {s.label}
+                          {isActive ? (
+                            <span className="ml-2 text-[11px] font-normal text-amber-200/90">
+                              (current)
+                            </span>
+                          ) : null}
+                        </p>
+                        <p className="mt-1 text-xs text-white/60">
+                          {formatRecallSessionDate(s.scanDate)}
+                        </p>
+                        <p className="mt-1 text-[11px] text-white/55">
+                          Pages scanned: {s.pageCount} · Total items (lines):{" "}
+                          {s.totalItemLines} · Mode: {s.scanMode ?? "—"}
+                        </p>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+            <div className="shrink-0 border-t border-white/10 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setRecallPickerOpen(false)}
+                className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/15"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {pageSummaryExportOpen ? (
+        <div
+          className="fixed inset-0 z-[210] flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !pageSummaryExportBusy)
+              setPageSummaryExportOpen(false);
+          }}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-white/15 bg-[#0a1628] p-5 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="page-summary-export-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2
+              id="page-summary-export-title"
+              className="text-base font-semibold text-white"
+            >
+              Export page summary
+            </h2>
+            <p className="mt-2 text-xs leading-relaxed text-white/65">
+              One row per page with status, counts, last scan, and mode. PDF
+              includes thumbnails.
+            </p>
+            <div className="mt-4 flex flex-col gap-2">
+              <button
+                type="button"
+                disabled={
+                  pageSummaryExportBusy || !pdfDocs?.length || numPages < 1
+                }
+                onClick={() => void runPageSummaryPdfExport()}
+                className="rounded-lg border border-sky-500/45 bg-sky-950/40 px-3 py-2.5 text-sm font-semibold text-sky-100 hover:bg-sky-950/55 disabled:opacity-45"
+              >
+                {pageSummaryExportBusy ? "Preparing PDF…" : "Download PDF"}
+              </button>
+              <button
+                type="button"
+                disabled={pageSummaryExportData.rows.length === 0}
+                onClick={() => runPageSummaryCsvExport()}
+                className="rounded-lg border border-emerald-500/45 bg-emerald-950/40 px-3 py-2.5 text-sm font-semibold text-emerald-100 hover:bg-emerald-950/55 disabled:opacity-45"
+              >
+                Download CSV
+              </button>
+              <button
+                type="button"
+                disabled={pageSummaryExportBusy}
+                onClick={() => setPageSummaryExportOpen(false)}
+                className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/15"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 

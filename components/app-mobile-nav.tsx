@@ -230,6 +230,12 @@ function MobileMenuPortal({
         <div className="shrink-0 border-b border-white/10 px-2 pb-3 pt-1">
           <MobileDrawerUserSection onNavigate={onClose} />
         </div>
+        <div className="shrink-0 border-b border-white/10 px-3 py-3">
+          <p className="px-1 pb-2 text-[10px] font-bold uppercase tracking-wide text-[#E8C84A]/80">
+            Weather
+          </p>
+          <HomeWeatherWidget variant="default" />
+        </div>
         <nav
           className="min-h-0 flex-1 overflow-y-auto px-3 py-4"
           aria-label="Primary"

@@ -552,6 +552,12 @@ export function DashboardClient() {
             <Link href="/tools" className="btn-secondary btn-h-11 w-full">
               Tools hub
             </Link>
+            <Link
+              href="/jobs/daily-logs"
+              className="btn-secondary btn-h-11 w-full border-[#E8C84A]/35 text-[#E8C84A]"
+            >
+              Daily logs
+            </Link>
             <Link href="/reference" className="btn-secondary btn-h-11 w-full">
               Reference library
             </Link>

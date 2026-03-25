@@ -473,6 +473,12 @@ export function JobsClient() {
             >
               Customers
             </Link>
+            <Link
+              href="/jobs/daily-logs"
+              className="btn-secondary btn-h-11 w-full justify-center border-[#E8C84A]/35 text-[#E8C84A] hover:border-[#E8C84A]/50 sm:w-auto"
+            >
+              Daily logs
+            </Link>
             <button
               type="button"
               disabled={jobs.length === 0}

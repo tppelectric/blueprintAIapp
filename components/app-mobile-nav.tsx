@@ -5,9 +5,10 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { GlobalNavSearch } from "@/components/global-nav-search";
-import { HeaderAuthMenu } from "@/components/header-auth-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useUserRole } from "@/hooks/use-user-role";
+import { createBrowserClient } from "@/lib/supabase/client";
+import { ROLE_LABELS } from "@/lib/user-roles";
 
 type AppNavKey = "dashboard" | "jobs" | "customers" | "upload";
 
@@ -33,6 +34,125 @@ function linkClass(active: boolean) {
   ].join(" ");
 }
 
+function emailInitialLetter(email: string): string {
+  const local = email.split("@")[0]?.trim() ?? "";
+  const c = local[0] ?? email[0] ?? "?";
+  return c.toUpperCase();
+}
+
+function MobileDrawerUserSection({ onNavigate }: { onNavigate: () => void }) {
+  const [email, setEmail] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const { role, loading: roleLoading } = useUserRole();
+
+  useEffect(() => {
+    const sb = createBrowserClient();
+    let cancelled = false;
+    void sb.auth.getSession().then(({ data }) => {
+      if (!cancelled) {
+        setEmail(data.session?.user?.email ?? null);
+        setReady(true);
+      }
+    });
+    const {
+      data: { subscription },
+    } = sb.auth.onAuthStateChange((_e, session) => {
+      setEmail(session?.user?.email ?? null);
+    });
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const signOut = useCallback(async () => {
+    if (
+      !window.confirm(
+        "Sign out of Blueprint AI? You will need to sign in again to continue.",
+      )
+    ) {
+      return;
+    }
+    const sb = createBrowserClient();
+    await sb.auth.signOut();
+    window.location.href = "/login";
+  }, []);
+
+  if (!ready) {
+    return (
+      <div
+        className="mx-1 h-16 animate-pulse rounded-lg bg-white/10"
+        aria-hidden
+      />
+    );
+  }
+
+  if (!email) {
+    return null;
+  }
+
+  const roleLabel =
+    !roleLoading && role ? ROLE_LABELS[role] : roleLoading ? "…" : null;
+
+  return (
+    <div className="mx-1 rounded-xl border border-white/12 bg-[#071422]/60 px-3 py-3">
+      <div className="flex items-start gap-3">
+        <div
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#E8C84A] text-lg font-bold text-[#0a1628]"
+          aria-hidden
+        >
+          {emailInitialLetter(email)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="break-all text-sm font-medium leading-snug text-white">
+            {email}
+          </p>
+          {roleLabel ? (
+            <span className="mt-1 inline-block rounded-md bg-[#E8C84A]/18 px-2 py-0.5 text-[11px] font-semibold text-[#E8C84A]">
+              {roleLabel}
+            </span>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          className="touch-target-sm shrink-0 rounded-lg px-2 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+          aria-expanded={expanded}
+          aria-label={expanded ? "Hide account actions" : "Show account actions"}
+          onClick={() => setExpanded((e) => !e)}
+        >
+          <span
+            className={`inline-block text-lg transition-transform duration-200 ${
+              expanded ? "rotate-180" : ""
+            }`}
+            aria-hidden
+          >
+            ▼
+          </span>
+        </button>
+      </div>
+      {expanded ? (
+        <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
+          <Link
+            href="/dashboard"
+            className="block rounded-lg px-2 py-2 text-sm font-medium text-white/90 transition-colors hover:bg-white/10"
+            onClick={onNavigate}
+          >
+            Profile & account
+          </Link>
+          <button
+            type="button"
+            onClick={() => void signOut()}
+            className="w-full rounded-lg border border-white/15 bg-white/[0.04] px-3 py-2 text-center text-xs font-semibold text-[#E8C84A] transition-colors hover:bg-[#E8C84A]/10"
+          >
+            Sign out
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function MobileMenuPortal({
   open,
   onClose,
@@ -54,7 +174,6 @@ function MobileMenuPortal({
   const custActive = pathname.startsWith("/customers");
   const uploadActive = pathname === "/upload";
   const toolsActive = pathname.startsWith("/tools");
-  const adminActive = pathname.startsWith("/admin");
   const homeActive = pathname === "/";
 
   if (!mounted || typeof document === "undefined") return null;
@@ -106,8 +225,8 @@ function MobileMenuPortal({
         <div className="shrink-0 px-3 pt-2">
           <ThemeToggle className="flex w-full justify-center py-2.5" />
         </div>
-        <div className="shrink-0 border-b border-white/10 px-3 pb-3">
-          <HeaderAuthMenu />
+        <div className="shrink-0 border-b border-white/10 px-2 pb-3 pt-1">
+          <MobileDrawerUserSection onNavigate={onClose} />
         </div>
         <nav
           className="min-h-0 flex-1 overflow-y-auto px-3 py-4"
@@ -171,18 +290,6 @@ function MobileMenuPortal({
           >
             Upload
           </Link>
-          {showUserManagement ? (
-            <>
-              <div className="my-2 border-t border-white/10" />
-              <Link
-                href="/admin/users"
-                className={linkClass(adminActive)}
-                onClick={onClose}
-              >
-                ⚙️ User Management
-              </Link>
-            </>
-          ) : null}
           {variant === "marketing" ? (
             <>
               <a
@@ -202,6 +309,18 @@ function MobileMenuPortal({
             </>
           ) : null}
         </nav>
+        {showUserManagement ? (
+          <div className="shrink-0 border-t border-white/10 bg-[#071422]/50 px-3 py-3">
+            <Link
+              href="/admin/users"
+              className="flex items-center justify-center gap-2 rounded-lg border border-[#E8C84A]/35 bg-[#E8C84A]/10 px-3 py-2.5 text-sm font-semibold text-[#E8C84A] transition-colors hover:bg-[#E8C84A]/18"
+              onClick={onClose}
+            >
+              <span aria-hidden>⚙️</span>
+              User Management
+            </Link>
+          </div>
+        ) : null}
       </div>
     </div>,
     document.body,

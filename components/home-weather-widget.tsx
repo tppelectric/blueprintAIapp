@@ -15,6 +15,8 @@ type WeatherPayload = {
     feelsLikeF: number;
     humidity: number;
     windMph: number;
+    windDeg?: number;
+    windArrow?: string;
     description: string;
     iconEmoji: string;
   };
@@ -55,13 +57,6 @@ function savePrefs(p: StoredPrefs) {
   } catch {
     /* ignore */
   }
-}
-
-function shortCityName(cityLabel: string): string {
-  const t = cityLabel.trim();
-  if (!t) return "";
-  const comma = t.indexOf(",");
-  return comma === -1 ? t : t.slice(0, comma).trim();
 }
 
 export function HomeWeatherWidget({
@@ -176,7 +171,6 @@ export function HomeWeatherWidget({
   const collapsedLabel =
     data?.current.cityLabel ??
     (prefs.activeZip === DEFAULT_ZIP ? "Poughkeepsie, NY" : `ZIP ${prefs.activeZip}`);
-  const headerCity = shortCityName(collapsedLabel);
 
   const isHeader = variant === "header";
 
@@ -190,7 +184,7 @@ export function HomeWeatherWidget({
         onClick={() => setExpanded((e) => !e)}
         className={
           isHeader
-            ? "flex max-w-full items-center gap-1 rounded-md border border-white/12 bg-[#071422]/85 px-1.5 py-1 text-left text-[11px] text-white/90 shadow-sm transition-colors hover:border-[#E8C84A]/40 hover:bg-[#0a1628] sm:gap-1.5 sm:px-2 sm:py-1 sm:text-xs"
+            ? "flex max-w-full flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5 rounded-lg border border-white/15 bg-[#071422]/85 px-2 py-1.5 text-center text-white/90 shadow-sm transition-colors hover:border-[#E8C84A]/40 hover:bg-[#0a1628] sm:gap-x-2 sm:px-2.5 sm:py-2"
             : "flex max-w-[11rem] items-center gap-1.5 rounded-lg border border-white/15 bg-[#071422]/90 px-2 py-1.5 text-left text-xs text-white/90 shadow-sm transition-colors hover:border-[#E8C84A]/35 hover:bg-[#0a1628] sm:max-w-none sm:gap-2 sm:px-2.5 sm:text-sm"
         }
         aria-expanded={expanded}
@@ -207,15 +201,33 @@ export function HomeWeatherWidget({
         ) : data ? (
           isHeader ? (
             <>
-              <span className="shrink-0 text-sm leading-none" aria-hidden>
+              <span
+                className="shrink-0 text-xl leading-none sm:text-2xl"
+                aria-hidden
+              >
                 {data.current.iconEmoji || "🌤"}
               </span>
-              <span className="min-w-0 truncate whitespace-nowrap">
-                <span className="font-semibold tabular-nums text-[#E8C84A]">
+              <span className="min-w-0 text-[#E8C84A]">
+                <span className="text-base font-semibold tabular-nums">
                   {data.current.tempF}°F
                 </span>
-                <span className="text-white/45"> </span>
-                <span className="text-white/75">{headerCity}</span>
+              </span>
+              <span className="text-white/35" aria-hidden>
+                |
+              </span>
+              <span className="max-w-[14rem] min-w-0 text-sm font-medium leading-snug text-white/85 sm:max-w-[18rem]">
+                {data.current.cityLabel}
+              </span>
+              <span className="text-white/35" aria-hidden>
+                |
+              </span>
+              <span className="text-xs text-white/65 sm:text-sm">
+                {data.current.humidity}% humidity
+                <span className="text-white/35"> · </span>
+                <span className="tabular-nums">
+                  {data.current.windArrow ?? "↑"}
+                  {data.current.windMph} mph
+                </span>
               </span>
             </>
           ) : (
@@ -330,24 +342,32 @@ export function HomeWeatherWidget({
 
               <section className="mt-3">
                 <p className="text-[10px] font-bold uppercase tracking-wide text-[#E8C84A]/80">
-                  Next 12 hours (3-hr steps)
+                  Next 5 hours
                 </p>
-                <ul className="mt-2 space-y-1 text-xs text-white/80">
+                <p className="mt-0.5 text-[10px] text-white/40">
+                  Now and each hour through +5 hr (from forecast)
+                </p>
+                <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6">
                   {data.hourly.map((h, i) => (
-                    <li
-                      key={`${h.timeLabel}-${i}`}
-                      className="flex items-center justify-between rounded-md bg-white/[0.04] px-2 py-1"
+                    <div
+                      key={`${h.timeLabel}-${i}-${h.tempF}`}
+                      className="flex flex-col items-center rounded-lg bg-white/[0.06] px-1.5 py-2 text-center"
                     >
-                      <span className="text-white/60">{h.timeLabel}</span>
-                      <span>
-                        <span aria-hidden>{h.iconEmoji}</span>{" "}
-                        <span className="font-medium text-[#E8C84A]">
-                          {h.tempF}°F
-                        </span>
-                      </span>
-                    </li>
+                      <div className="text-[10px] font-medium text-white/60 sm:text-xs">
+                        {h.timeLabel}
+                      </div>
+                      <div
+                        className="my-1 text-lg leading-none sm:text-xl"
+                        aria-hidden
+                      >
+                        {h.iconEmoji}
+                      </div>
+                      <div className="text-xs font-semibold tabular-nums text-[#E8C84A] sm:text-sm">
+                        {h.tempF}°
+                      </div>
+                    </div>
                   ))}
-                </ul>
+                </div>
               </section>
             </>
           ) : loading ? (

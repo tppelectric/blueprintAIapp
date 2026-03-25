@@ -111,22 +111,22 @@ function ProjectBlueprintThumb({ storagePath }: { storagePath: string }) {
 
   if (failed || (!preview && storagePath)) {
     return (
-      <div className="dash-muted mb-4 flex h-24 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] text-xs">
+      <div className="dash-muted mb-2 flex h-28 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] text-[11px]">
         Blueprint
       </div>
     );
   }
   if (!preview) {
     return (
-      <div className="mb-4 h-24 animate-pulse rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)]" />
+      <div className="mb-2 h-28 animate-pulse rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)]" />
     );
   }
   return (
-    <div className="mb-4 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)]">
+    <div className="mb-2 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)]">
       <img
         src={preview}
         alt=""
-        className="h-24 w-full object-cover object-top"
+        className="h-28 w-full object-cover object-top"
       />
     </div>
   );
@@ -476,14 +476,14 @@ export function DashboardClient() {
     <div className="dashboard-root flex min-h-screen flex-col">
       <WideAppHeader active="dashboard" showTppSubtitle />
 
-      <main className="app-page-shell flex-1 py-8 md:py-10">
-        <div className="flex w-full min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+      <main className="app-page-shell mx-auto max-w-5xl flex-1 py-8 md:py-10">
+        <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="min-w-0 shrink-0 sm:max-w-[min(100%,28rem)]">
             <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">
-              My Projects
+              Project Dashboard
             </h1>
             {monthUsage && monthUsage.pages > 0 ? (
-              <p className="app-body mt-2">
+              <p className="mt-1.5 text-sm text-[var(--foreground-muted)]">
                 This month: {monthUsage.pages} page
                 {monthUsage.pages === 1 ? "" : "s"} analyzed —{" "}
                 <span className="font-semibold text-[#E8C84A]">
@@ -493,43 +493,51 @@ export function DashboardClient() {
             ) : null}
           </div>
           <div className="flex min-w-0 w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
-            <Link href="/jobs" className="btn-secondary btn-h-11 shrink-0">
+            <Link
+              href="/jobs"
+              className="btn-secondary shrink-0 rounded-lg px-3 py-2 text-sm"
+            >
               Jobs
             </Link>
-            <Link href="/customers" className="btn-secondary btn-h-11 shrink-0">
+            <Link
+              href="/customers"
+              className="btn-secondary shrink-0 rounded-lg px-3 py-2 text-sm"
+            >
               Customers
             </Link>
           </div>
         </div>
 
         {!loading && !error ? (
-          <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="app-card app-card-pad-lg">
-              <p className="app-muted">Projects</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-[var(--foreground)]">
+          <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="app-card rounded-xl border p-3">
+              <p className="text-xs text-[var(--foreground-muted)]">Projects</p>
+              <p className="mt-0.5 text-xl font-semibold tabular-nums text-[var(--foreground)]">
                 {projects.length}
               </p>
             </div>
             <Link
               href="/jobs"
-              className="app-card app-card-pad-lg block transition-colors hover:border-[#E8C84A]/35"
+              className="app-card block rounded-xl border p-3 transition-colors hover:border-[#E8C84A]/35"
             >
-              <p className="app-muted">Jobs</p>
-              <p className="mt-1 text-base font-semibold text-[var(--foreground)]">
+              <p className="text-xs text-[var(--foreground-muted)]">Jobs</p>
+              <p className="mt-0.5 text-sm font-semibold text-[var(--foreground)]">
                 Open job board
               </p>
-              <p className="app-body mt-2">
-                Track leads, quotes, and field work.
+              <p className="mt-1 text-xs text-[var(--foreground-muted)]">
+                Leads, quotes, field work.
               </p>
             </Link>
-            <div className="app-card app-card-pad-lg">
-              <p className="app-muted">This month (API)</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-[#E8C84A]">
+            <div className="app-card rounded-xl border p-3">
+              <p className="text-xs text-[var(--foreground-muted)]">
+                This month (API)
+              </p>
+              <p className="mt-0.5 text-xl font-semibold tabular-nums text-[#E8C84A]">
                 {monthUsage && monthUsage.pages > 0
                   ? formatUsd(monthUsage.cost)
                   : "—"}
               </p>
-              <p className="app-muted mt-2">
+              <p className="mt-1 text-xs text-[var(--foreground-muted)]">
                 {monthUsage && monthUsage.pages > 0
                   ? `${monthUsage.pages} page${monthUsage.pages === 1 ? "" : "s"}`
                   : "No usage yet"}
@@ -662,7 +670,7 @@ export function DashboardClient() {
         )}
 
         {!loading && !error && projects.length > 0 && (
-          <ul className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {projects.map((p) => {
               const thumbPath = firstSheetStoragePath(p);
               return (
@@ -675,7 +683,7 @@ export function DashboardClient() {
                       editShellRef.current = null;
                     }
                   }}
-                  className="app-card app-card-pad-lg flex h-full flex-col transition-colors hover:border-[#E8C84A]/25"
+                  className="app-card flex h-full flex-col rounded-xl border p-3 transition-colors hover:border-[#E8C84A]/25"
                 >
                   {thumbPath ? (
                     <ProjectBlueprintThumb storagePath={thumbPath} />
@@ -690,7 +698,7 @@ export function DashboardClient() {
                             onChange={(e) => setEditDraft(e.target.value)}
                             disabled={renameSaving}
                             autoFocus
-                            className="min-w-0 flex-1 rounded-lg border border-sky-500/50 bg-[var(--surface-elevated)] px-2.5 py-1.5 text-lg font-semibold text-[var(--foreground)] outline-none focus:ring-2 focus:ring-sky-400/50"
+                            className="min-w-0 flex-1 rounded-lg border border-sky-500/50 bg-[var(--surface-elevated)] px-2 py-1 text-sm font-semibold text-[var(--foreground)] outline-none focus:ring-2 focus:ring-sky-400/50"
                             aria-label="Project name"
                             onKeyDown={(e) => {
                               if (e.key === "Enter") {
@@ -707,7 +715,7 @@ export function DashboardClient() {
                             type="button"
                             onClick={() => void saveRename()}
                             disabled={renameSaving || !editDraft.trim()}
-                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-emerald-500/45 bg-emerald-600/90 text-white shadow-sm transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-45"
+                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-500/45 bg-emerald-600/90 text-white shadow-sm transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-45"
                             aria-label="Save project name"
                             title="Save"
                           >
@@ -722,7 +730,7 @@ export function DashboardClient() {
                           </button>
                         </div>
                       ) : (
-                        <h2 className="text-base font-semibold leading-snug text-[var(--foreground)]">
+                        <h2 className="line-clamp-2 text-sm font-semibold leading-snug text-[var(--foreground)]">
                           {cardTitle(p)}
                         </h2>
                       )}
@@ -737,7 +745,7 @@ export function DashboardClient() {
                         <button
                           type="button"
                           onClick={() => startEdit(p)}
-                          className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] p-2 text-[var(--foreground)] transition-colors hover:border-[#E8C84A]/35"
+                          className="rounded-md border border-[var(--border)] bg-[var(--surface-elevated)] p-1.5 text-[var(--foreground)] transition-colors hover:border-[#E8C84A]/35"
                           aria-label="Edit project name"
                         >
                           <PencilIcon className="h-4 w-4" />
@@ -747,49 +755,27 @@ export function DashboardClient() {
                         type="button"
                         onClick={() => setDeleteTarget(p)}
                         disabled={deleting}
-                        className="rounded-lg border border-red-500/35 bg-red-950/30 p-2 text-red-200 transition-colors hover:bg-red-950/50 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="rounded-md border border-red-500/35 bg-red-950/30 p-1.5 text-red-200 transition-colors hover:bg-red-950/50 disabled:cursor-not-allowed disabled:opacity-40"
                         aria-label="Delete project"
                       >
                         <TrashIcon className="h-4 w-4" />
                       </button>
-                      <span className="ml-1 shrink-0 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-300 ring-1 ring-inset ring-emerald-500/35">
+                      <span className="ml-0.5 shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-300 ring-1 ring-inset ring-emerald-500/35">
                         Uploaded
                       </span>
                     </div>
                   </div>
-                  <dl className="app-body mt-4 space-y-2">
-                    <div className="flex justify-between gap-4">
-                      <dt>Sheets</dt>
-                      <dd className="text-right text-[var(--foreground)]">
-                        {sheetCountLabel(p)}
-                      </dd>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <dt>Total pages</dt>
-                      <dd className="text-right tabular-nums text-[var(--foreground)]">
-                        {totalPagesLabel(p)}
-                      </dd>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <dt>Uploaded</dt>
-                      <dd className="text-right text-[var(--foreground)]">
-                        {formatUploadDate(p.created_at)}
-                      </dd>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <dt>Size</dt>
-                      <dd className="text-right tabular-nums text-[var(--foreground)]">
-                        {formatFileSize(p.file_size)}
-                      </dd>
-                    </div>
-                  </dl>
+                  <p className="mt-2 line-clamp-2 text-[11px] leading-snug text-[var(--foreground-muted)]">
+                    {sheetCountLabel(p)} · {totalPagesLabel(p)} ·{" "}
+                    {formatUploadDate(p.created_at)} · {formatFileSize(p.file_size)}
+                  </p>
                   {scanSummaries[p.id] ? (
-                    <div className="mt-4 space-y-2 border-t border-[var(--border)] pt-4">
-                      <div className="flex flex-wrap gap-2">
+                    <div className="mt-2.5 space-y-1.5 border-t border-[var(--border)] pt-2.5">
+                      <div className="flex flex-wrap gap-1.5">
                         <Link
                           href={`/project/${p.id}?scanFocus=room`}
                           className={[
-                            "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition-colors",
+                            "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset transition-colors",
                             scanSummaries[p.id]!.hasRoomScan
                               ? "bg-emerald-500/15 text-emerald-200 ring-emerald-500/40 hover:bg-emerald-500/25"
                               : "bg-[var(--surface-elevated)] text-[var(--foreground)]/50 ring-[var(--border)]",
@@ -805,7 +791,7 @@ export function DashboardClient() {
                         <Link
                           href={`/project/${p.id}?scanFocus=electrical`}
                           className={[
-                            "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition-colors",
+                            "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset transition-colors",
                             scanSummaries[p.id]!.hasElectricalScan
                               ? "bg-emerald-500/15 text-emerald-200 ring-emerald-500/40 hover:bg-emerald-500/25"
                               : "bg-[var(--surface-elevated)] text-[var(--foreground)]/50 ring-[var(--border)]",
@@ -819,7 +805,7 @@ export function DashboardClient() {
                           ⚡ Electrical Scan
                         </Link>
                       </div>
-                      <p className="app-muted">
+                      <p className="line-clamp-1 text-[11px] text-[var(--foreground-muted)]">
                         Last scan:{" "}
                         {formatPlanScanRelativeDate(
                           scanSummaries[p.id]!.lastScanned,
@@ -827,10 +813,10 @@ export function DashboardClient() {
                       </p>
                     </div>
                   ) : null}
-                  <div className="mt-6 flex flex-1 flex-col justify-end">
+                  <div className="mt-3 flex flex-1 flex-col justify-end">
                     <Link
                       href={`/project/${p.id}`}
-                      className="dash-open-project-btn"
+                      className="dash-open-project-btn !py-2 !text-xs"
                     >
                       Open Project
                     </Link>

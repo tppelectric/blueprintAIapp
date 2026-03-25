@@ -312,7 +312,7 @@ export default function Home() {
                 href="/dashboard"
                 className="text-white/50 transition-colors hover:text-[#E8C84A]"
               >
-                Dashboard
+                Project Dashboard
               </Link>
               <Link
                 href="/tools"

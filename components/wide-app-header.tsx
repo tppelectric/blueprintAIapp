@@ -51,10 +51,10 @@ export function WideAppHeader({
         </Link>
       )}
       {dashActive ? (
-        <span className={NAV_ACTIVE}>Dashboard</span>
+        <span className={NAV_ACTIVE}>Project Dashboard</span>
       ) : (
         <Link href="/dashboard" className={NAV_IDLE}>
-          Dashboard
+          Project Dashboard
         </Link>
       )}
       {jobsActive ? (

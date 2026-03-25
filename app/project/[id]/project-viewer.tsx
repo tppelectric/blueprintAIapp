@@ -12,6 +12,7 @@ import {
   useState,
   type MouseEvent,
   type PointerEvent,
+  type ReactNode,
 } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import type { ElectricalItemRow } from "@/lib/electrical-item-types";
@@ -545,6 +546,79 @@ function PageThumbnail({
   );
 }
 
+type BlueprintToolbarMenuId = "analyze" | "rooms" | "save" | "view";
+
+function BlueprintToolbarMenu({
+  menu,
+  activeMenu,
+  setActiveMenu,
+  label,
+  children,
+}: {
+  menu: BlueprintToolbarMenuId;
+  activeMenu: BlueprintToolbarMenuId | null;
+  setActiveMenu: (m: BlueprintToolbarMenuId | null) => void;
+  label: ReactNode;
+  children: ReactNode;
+}) {
+  const open = activeMenu === menu;
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: Event) => {
+      if (!ref.current?.contains(e.target as Node)) setActiveMenu(null);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open, setActiveMenu]);
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        className="inline-flex items-center gap-1 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm font-semibold text-white hover:bg-white/15"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setActiveMenu(open ? null : menu)}
+      >
+        {label}{" "}
+        <span className="text-xs text-white/55" aria-hidden>
+          ▼
+        </span>
+      </button>
+      {open ? (
+        <div
+          className="absolute left-0 top-[calc(100%+6px)] z-[120] min-w-[15.5rem] overflow-hidden rounded-xl border border-white/15 bg-[#071422] py-1 shadow-2xl ring-1 ring-black/40"
+          role="menu"
+        >
+          {children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function BlueprintToolbarMenuItem({
+  onClick,
+  disabled,
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      disabled={disabled}
+      className="block w-full px-3 py-2.5 text-left text-sm text-white/90 transition-colors hover:bg-[#E8C84A]/15 hover:text-[#E8C84A] disabled:cursor-not-allowed disabled:opacity-40"
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
 const MainPageCanvas = forwardRef<
   HTMLCanvasElement,
   {
@@ -732,6 +806,9 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     new Set(),
   );
   const [markingPagesMode, setMarkingPagesMode] = useState(false);
+  const [toolbarMenuOpen, setToolbarMenuOpen] =
+    useState<BlueprintToolbarMenuId | null>(null);
+  const [keyboardShortcutsOpen, setKeyboardShortcutsOpen] = useState(false);
   const [tradeCtxMenu, setTradeCtxMenu] = useState<{
     page: number;
     x: number;
@@ -5015,7 +5092,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
               href="/dashboard"
               className="shrink-0 rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-white/15"
             >
-              ← Dashboard
+              ← Project Dashboard
             </Link>
             <button
               type="button"
@@ -5756,241 +5833,342 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
               </div>
 
               <div className="flex w-full flex-wrap items-center justify-center gap-2 sm:w-auto">
-                <button
-                  type="button"
-                  onClick={() => {
-                    void runLegendRescan().catch(() => {
-                      /* legend error banner */
-                    });
-                  }}
-                  disabled={legendBusy || symbolToolboxBusy}
-                  title="Run AI symbol legend detection on all pages"
-                  className="rounded-lg border border-amber-500/45 bg-amber-950/40 px-3 py-2 text-sm font-semibold text-amber-100 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-amber-950/55"
-                >
-                  Scan legend
-                </button>
-                <button
-                  type="button"
-                  onClick={() => analyzeThisPage()}
-                  disabled={analyzeBusy || legendBusy || symbolToolboxBusy}
-                  className="rounded-lg border border-sky-500/40 bg-sky-500/20 px-3 py-2 text-sm font-semibold text-sky-100 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-sky-500/30"
-                >
-                  Analyze This Page
-                </button>
-                <button
-                  type="button"
-                  onClick={() => analyzeAllPages()}
-                  disabled={analyzeBusy || legendBusy || symbolToolboxBusy}
-                  className="rounded-lg border border-violet-500/40 bg-violet-500/20 px-3 py-2 text-sm font-semibold text-violet-100 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-violet-500/30"
-                >
-                  Analyze All Pages
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectPagesModalOpen(true)}
-                  disabled={
-                    analyzeBusy ||
-                    legendBusy ||
-                    symbolToolboxBusy ||
-                    numPages < 1
+                <BlueprintToolbarMenu
+                  menu="analyze"
+                  activeMenu={toolbarMenuOpen}
+                  setActiveMenu={setToolbarMenuOpen}
+                  label={
+                    <>
+                      <span aria-hidden>🔍</span> Analyze
+                    </>
                   }
-                  className="rounded-lg border border-violet-400/50 bg-violet-950/30 px-3 py-2 text-sm font-semibold text-violet-100 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-violet-950/45"
                 >
-                  Select Pages
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMarkingPagesMode((m) => !m)}
-                  disabled={analyzeBusy || legendBusy || symbolToolboxBusy}
-                  className={[
-                    "rounded-lg border px-3 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-                    markingPagesMode
-                      ? "border-[#E8C84A] bg-[#E8C84A]/20 text-[#E8C84A] hover:bg-[#E8C84A]/28"
-                      : "border-white/25 bg-white/10 text-white hover:bg-white/15",
-                  ].join(" ")}
-                  title="Click thumbnails to cycle trades · Right-click to clear"
-                >
-                  {markingPagesMode ? "Exit Mark Pages" : "Mark Pages"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void runRoomScanCurrentPage()}
-                  disabled={
-                    analyzeBusy ||
-                    legendBusy ||
-                    symbolToolboxBusy ||
-                    roomScanBusy ||
-                    blockPageNav
-                  }
-                  title="AI scan of current page for room names, dimensions, and square footage"
-                  className="rounded-lg border border-teal-500/45 bg-teal-950/35 px-3 py-2 text-sm font-semibold text-teal-100 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-teal-950/50"
-                >
-                  {roomScanBusy ? "Scanning rooms…" : "Scan Rooms and Sq Footage"}
-                </button>
-                {resumeSnapshot &&
-                resumeSnapshot.projectId === projectId &&
-                !analyzeBusy ? (
-                  <button
-                    type="button"
-                    onClick={() => resumeBatchScan()}
-                    disabled={legendBusy || symbolToolboxBusy}
-                    className="rounded-lg border border-amber-500/45 bg-amber-950/40 px-3 py-2 text-sm font-semibold text-amber-100 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-amber-950/55"
-                    title={`Resume from page ${resumeSnapshot.nextPage}`}
+                  <BlueprintToolbarMenuItem
+                    disabled={
+                      analyzeBusy || legendBusy || symbolToolboxBusy
+                    }
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      analyzeThisPage();
+                    }}
                   >
-                    Resume Scan
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => setScanHistoryOpen(true)}
-                  disabled={analyzeBusy || legendBusy || symbolToolboxBusy}
-                  className="rounded-lg border border-white/25 bg-white/10 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-white/15"
-                >
-                  Scan History
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openLiveRoomScanDialog()}
-                  disabled={
-                    analyzeBusy ||
-                    legendBusy ||
-                    symbolToolboxBusy ||
-                    roomScanBusy
+                    Analyze This Page
+                  </BlueprintToolbarMenuItem>
+                  <BlueprintToolbarMenuItem
+                    disabled={
+                      analyzeBusy || legendBusy || symbolToolboxBusy
+                    }
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      analyzeAllPages();
+                    }}
+                  >
+                    Analyze All Pages
+                  </BlueprintToolbarMenuItem>
+                  <BlueprintToolbarMenuItem
+                    disabled={
+                      analyzeBusy ||
+                      legendBusy ||
+                      symbolToolboxBusy ||
+                      numPages < 1
+                    }
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      setSelectPagesModalOpen(true);
+                    }}
+                  >
+                    Select Pages to Analyze
+                  </BlueprintToolbarMenuItem>
+                  <BlueprintToolbarMenuItem
+                    disabled={legendBusy || symbolToolboxBusy}
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      void runLegendRescan().catch(() => {
+                        /* legend error banner */
+                      });
+                    }}
+                  >
+                    Scan Legend Now
+                  </BlueprintToolbarMenuItem>
+                  <BlueprintToolbarMenuItem
+                    disabled={analyzeBusy || legendBusy || symbolToolboxBusy}
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      setTargetDialogOpen(true);
+                    }}
+                  >
+                    Target Scan
+                  </BlueprintToolbarMenuItem>
+                  {resumeSnapshot &&
+                  resumeSnapshot.projectId === projectId &&
+                  !analyzeBusy ? (
+                    <BlueprintToolbarMenuItem
+                      disabled={legendBusy || symbolToolboxBusy}
+                      onClick={() => {
+                        setToolbarMenuOpen(null);
+                        resumeBatchScan();
+                      }}
+                    >
+                      Resume Scan
+                    </BlueprintToolbarMenuItem>
+                  ) : null}
+                </BlueprintToolbarMenu>
+
+                <BlueprintToolbarMenu
+                  menu="rooms"
+                  activeMenu={toolbarMenuOpen}
+                  setActiveMenu={setToolbarMenuOpen}
+                  label={
+                    <>
+                      <span aria-hidden>📐</span> Rooms
+                    </>
                   }
-                  className="rounded-lg border border-teal-500/40 bg-teal-950/35 px-3 py-2 text-sm font-semibold text-teal-100 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-teal-950/50"
                 >
-                  Scan Rooms and Sq Footage
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRoomScanRecallOpen(true)}
-                  disabled={
-                    analyzeBusy ||
-                    legendBusy ||
-                    symbolToolboxBusy ||
-                    roomScanBusy
+                  <BlueprintToolbarMenuItem
+                    disabled={
+                      analyzeBusy ||
+                      legendBusy ||
+                      symbolToolboxBusy ||
+                      roomScanBusy
+                    }
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      openLiveRoomScanDialog();
+                    }}
+                  >
+                    Scan Rooms and Sq Footage
+                  </BlueprintToolbarMenuItem>
+                  <BlueprintToolbarMenuItem
+                    disabled={
+                      analyzeBusy ||
+                      legendBusy ||
+                      symbolToolboxBusy ||
+                      roomScanBusy
+                    }
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      setRoomScanRecallOpen(true);
+                    }}
+                  >
+                    Recall Room Scan
+                  </BlueprintToolbarMenuItem>
+                  <BlueprintToolbarMenuItem
+                    disabled={
+                      analyzeBusy ||
+                      legendBusy ||
+                      symbolToolboxBusy ||
+                      explicitSaveBusy !== null
+                    }
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      void saveRoomScanToLibrary();
+                    }}
+                  >
+                    {explicitSaveBusy === "room"
+                      ? "Saving…"
+                      : "Save Room Scan"}
+                  </BlueprintToolbarMenuItem>
+                  <BlueprintToolbarMenuItem
+                    disabled={
+                      analyzeBusy || manualMode || legendBusy || symbolToolboxBusy
+                    }
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      setRoomAssignmentView((v) => !v);
+                    }}
+                  >
+                    {roomAssignmentView
+                      ? "Exit room assignment"
+                      : "Room assignment"}
+                  </BlueprintToolbarMenuItem>
+                </BlueprintToolbarMenu>
+
+                <BlueprintToolbarMenu
+                  menu="save"
+                  activeMenu={toolbarMenuOpen}
+                  setActiveMenu={setToolbarMenuOpen}
+                  label={
+                    <>
+                      <span aria-hidden>💾</span> Save
+                    </>
                   }
-                  className="rounded-lg border border-teal-500/35 bg-white/10 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-white/15"
                 >
-                  📋 Recall Room Scan
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTakeoffExportRoom(null);
-                    setTakeoffExportOpen(true);
-                  }}
-                  disabled={
-                    analyzeBusy ||
-                    legendBusy ||
-                    symbolToolboxBusy ||
-                    analysisItems.length === 0
+                  <BlueprintToolbarMenuItem
+                    disabled={
+                      analyzeBusy ||
+                      legendBusy ||
+                      symbolToolboxBusy ||
+                      explicitSaveBusy !== null ||
+                      analysisItems.length === 0
+                    }
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      void saveElectricalTakeoffToLibrary();
+                    }}
+                  >
+                    {explicitSaveBusy === "electrical"
+                      ? "Saving…"
+                      : "Save Electrical Takeoff"}
+                  </BlueprintToolbarMenuItem>
+                  <BlueprintToolbarMenuItem
+                    disabled={
+                      analyzeBusy ||
+                      legendBusy ||
+                      symbolToolboxBusy ||
+                      explicitSaveBusy !== null ||
+                      (analysisItems.length === 0 &&
+                        !roomScanData?.rooms?.length)
+                    }
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      void saveFullPlanScanToLibrary();
+                    }}
+                  >
+                    {explicitSaveBusy === "full"
+                      ? "Saving…"
+                      : "Save Full Plan Scan"}
+                  </BlueprintToolbarMenuItem>
+                  <BlueprintToolbarMenuItem
+                    disabled={pageSummaryExportBusy || numPages < 1}
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      void runPageSummaryPdfExport();
+                    }}
+                  >
+                    {pageSummaryExportBusy
+                      ? "Preparing PDF…"
+                      : "Export Page Summary (PDF)"}
+                  </BlueprintToolbarMenuItem>
+                  <BlueprintToolbarMenuItem
+                    disabled={pageSummaryExportData.rows.length === 0}
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      runPageSummaryCsvExport();
+                    }}
+                  >
+                    Export Page Summary (CSV)
+                  </BlueprintToolbarMenuItem>
+                  <BlueprintToolbarMenuItem
+                    disabled={
+                      analyzeBusy ||
+                      legendBusy ||
+                      symbolToolboxBusy ||
+                      analysisItems.length === 0
+                    }
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      setTakeoffExportRoom(null);
+                      setTakeoffExportOpen(true);
+                    }}
+                  >
+                    Export Takeoff…
+                  </BlueprintToolbarMenuItem>
+                </BlueprintToolbarMenu>
+
+                <BlueprintToolbarMenu
+                  menu="view"
+                  activeMenu={toolbarMenuOpen}
+                  setActiveMenu={setToolbarMenuOpen}
+                  label={
+                    <>
+                      <span aria-hidden>⚙️</span> View
+                    </>
                   }
-                  title={
-                    analysisItems.length === 0
-                      ? "Run analysis first to export a takeoff."
-                      : undefined
-                  }
-                  className="rounded-lg border border-emerald-500/45 bg-emerald-950/35 px-3 py-2 text-sm font-semibold text-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-emerald-950/50"
                 >
-                  Export Takeoff
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTargetDialogOpen(true)}
-                  disabled={analyzeBusy || legendBusy || symbolToolboxBusy}
-                  className="rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/20 px-3 py-2 text-sm font-semibold text-fuchsia-100 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-fuchsia-500/30"
-                >
-                  Target Scan
-                </button>
-                <button
-                  type="button"
-                  disabled={
-                    analyzeBusy ||
-                    legendBusy ||
-                    symbolToolboxBusy ||
-                    explicitSaveBusy !== null
-                  }
-                  onClick={() => void saveRoomScanToLibrary()}
-                  title="Save current AI room scan to the project library"
-                  className="rounded-lg border border-teal-500/50 bg-teal-950/40 px-3 py-2 text-sm font-semibold text-teal-100 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-teal-950/55"
-                >
-                  {explicitSaveBusy === "room" ? "Saving…" : "💾 Save Room Scan"}
-                </button>
-                <button
-                  type="button"
-                  disabled={
-                    analyzeBusy ||
-                    legendBusy ||
-                    symbolToolboxBusy ||
-                    explicitSaveBusy !== null ||
-                    analysisItems.length === 0
-                  }
-                  onClick={() => void saveElectricalTakeoffToLibrary()}
-                  title="Save all electrical takeoff items as a named snapshot"
-                  className="rounded-lg border border-amber-500/50 bg-amber-950/40 px-3 py-2 text-sm font-semibold text-amber-100 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-amber-950/55"
-                >
-                  {explicitSaveBusy === "electrical"
-                    ? "Saving…"
-                    : "💾 Save Electrical Takeoff"}
-                </button>
-                <button
-                  type="button"
-                  disabled={
-                    analyzeBusy ||
-                    legendBusy ||
-                    symbolToolboxBusy ||
-                    explicitSaveBusy !== null ||
-                    (analysisItems.length === 0 && !roomScanData?.rooms?.length)
-                  }
-                  onClick={() => void saveFullPlanScanToLibrary()}
-                  title="Save room + electrical data together"
-                  className="rounded-lg border border-violet-500/50 bg-violet-950/40 px-3 py-2 text-sm font-semibold text-violet-100 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-violet-950/55"
-                >
-                  {explicitSaveBusy === "full"
-                    ? "Saving…"
-                    : "💾 Save Full Plan Scan"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRoomAssignmentView((v) => !v)}
-                  disabled={
-                    analyzeBusy || manualMode || legendBusy || symbolToolboxBusy
-                  }
-                  className={[
-                    "rounded-lg border px-3 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-                    roomAssignmentView
-                      ? "border-cyan-400 bg-cyan-950/50 text-cyan-100 hover:bg-cyan-950/65"
-                      : "border-cyan-500/35 bg-cyan-950/25 text-cyan-100 hover:bg-cyan-950/40",
-                  ].join(" ")}
-                >
-                  {roomAssignmentView
-                    ? "Exit room assignment"
-                    : "Room assignment"}
-                </button>
-                <button
-                  type="button"
-                  onClick={toggleManualMode}
-                  disabled={analyzeBusy || legendBusy || symbolToolboxBusy}
-                  className={[
-                    "rounded-lg border px-3 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-                    manualMode
-                      ? "border-sky-400 bg-sky-500/30 text-sky-50 ring-1 ring-sky-400/50 hover:bg-sky-500/40"
-                      : "border-white/25 bg-white/10 text-white hover:bg-white/15",
-                  ].join(" ")}
-                >
-                  {manualMode ? "Exit Manual Mode" : "Manual Count Mode"}
-                </button>
-                <button
-                  type="button"
-                  onClick={openResetDialog}
-                  disabled={
-                    analyzeBusy || manualMode || legendBusy || symbolToolboxBusy
-                  }
-                  className="rounded-lg border border-amber-500/45 bg-amber-950/35 px-3 py-2 text-sm font-semibold text-amber-100 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-amber-950/50"
-                >
-                  Reset Analysis
-                </button>
+                  <BlueprintToolbarMenuItem
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      setThumbCollapsedDesktop(true);
+                      setResultsCollapsedDesktop(true);
+                    }}
+                  >
+                    Focus mode
+                  </BlueprintToolbarMenuItem>
+                  <BlueprintToolbarMenuItem
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      setThumbCollapsedDesktop(false);
+                      setResultsCollapsedDesktop(false);
+                      setThumbWidthPx(THUMB_SIDEBAR.def);
+                      setResultsWidthPx(RESULTS_SIDEBAR.def);
+                      try {
+                        localStorage.setItem(
+                          LS_VIEWER_THUMB,
+                          JSON.stringify({
+                            collapsed: false,
+                            width: THUMB_SIDEBAR.def,
+                          }),
+                        );
+                        localStorage.setItem(
+                          LS_VIEWER_RESULTS,
+                          JSON.stringify({
+                            collapsed: false,
+                            width: RESULTS_SIDEBAR.def,
+                          }),
+                        );
+                      } catch {
+                        /* ignore */
+                      }
+                    }}
+                  >
+                    Reset layout
+                  </BlueprintToolbarMenuItem>
+                  <BlueprintToolbarMenuItem
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      setKeyboardShortcutsOpen(true);
+                    }}
+                  >
+                    Keyboard shortcuts
+                  </BlueprintToolbarMenuItem>
+                  <BlueprintToolbarMenuItem
+                    disabled={analyzeBusy || legendBusy || symbolToolboxBusy}
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      setMarkingPagesMode((m) => !m);
+                    }}
+                  >
+                    {markingPagesMode ? "Exit Mark Pages" : "Mark Pages"}
+                  </BlueprintToolbarMenuItem>
+                  <BlueprintToolbarMenuItem
+                    disabled={analyzeBusy || legendBusy || symbolToolboxBusy}
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      toggleManualMode();
+                    }}
+                  >
+                    {manualMode ? "Exit Manual Count" : "Manual Count Mode"}
+                  </BlueprintToolbarMenuItem>
+                  <BlueprintToolbarMenuItem
+                    disabled={analyzeBusy || legendBusy || symbolToolboxBusy}
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      setScanHistoryOpen(true);
+                    }}
+                  >
+                    Scan History
+                  </BlueprintToolbarMenuItem>
+                  <BlueprintToolbarMenuItem
+                    disabled={
+                      analyzeBusy || manualMode || legendBusy || symbolToolboxBusy
+                    }
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      openResetDialog();
+                    }}
+                  >
+                    Reset Analysis
+                  </BlueprintToolbarMenuItem>
+                  <BlueprintToolbarMenuItem
+                    disabled={analyzeBusy || legendBusy}
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      void toggleBlueprintFullscreen();
+                    }}
+                  >
+                    {viewerFs ? "Exit full screen" : "Full screen"}
+                  </BlueprintToolbarMenuItem>
+                </BlueprintToolbarMenu>
               </div>
 
               <div className="flex flex-wrap items-center justify-center gap-1.5">
@@ -6029,9 +6207,9 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                   onClick={applyFitPageZoom}
                   disabled={analyzeBusy || legendBusy}
                   className="rounded-lg border border-white/20 bg-white/10 px-2 py-2 text-xs font-semibold text-white/90 disabled:opacity-40 hover:bg-white/15"
-                  title="Fit entire page in viewer"
+                  title="Fit entire page in viewer (screen)"
                 >
-                  Fit page
+                  Fit screen
                 </button>
                 <button
                   type="button"
@@ -6041,57 +6219,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                   title="Reset to default (fit width)"
                 >
                   Reset zoom
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setThumbCollapsedDesktop(true);
-                    setResultsCollapsedDesktop(true);
-                  }}
-                  className="rounded-lg border border-teal-500/35 bg-teal-950/35 px-2 py-2 text-xs font-semibold text-teal-100 hover:bg-teal-950/50"
-                  title="Collapse thumbnails and results for maximum blueprint space"
-                >
-                  Focus mode
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setThumbCollapsedDesktop(false);
-                    setResultsCollapsedDesktop(false);
-                    setThumbWidthPx(THUMB_SIDEBAR.def);
-                    setResultsWidthPx(RESULTS_SIDEBAR.def);
-                    try {
-                      localStorage.setItem(
-                        LS_VIEWER_THUMB,
-                        JSON.stringify({
-                          collapsed: false,
-                          width: THUMB_SIDEBAR.def,
-                        }),
-                      );
-                      localStorage.setItem(
-                        LS_VIEWER_RESULTS,
-                        JSON.stringify({
-                          collapsed: false,
-                          width: RESULTS_SIDEBAR.def,
-                        }),
-                      );
-                    } catch {
-                      /* ignore */
-                    }
-                  }}
-                  className="rounded-lg border border-white/20 bg-white/10 px-2 py-2 text-xs font-semibold text-white/90 hover:bg-white/15"
-                  title="Expand both sidebars and restore default widths (220px / 380px)"
-                >
-                  Reset layout
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void toggleBlueprintFullscreen()}
-                  disabled={analyzeBusy || legendBusy}
-                  className="rounded-lg border border-violet-500/35 bg-violet-950/35 px-2 py-2 text-xs font-semibold text-violet-100 disabled:opacity-40 hover:bg-violet-950/50"
-                  title="Fullscreen blueprint (Escape to exit)"
-                >
-                  {viewerFs ? "Exit full screen" : "Full screen"}
                 </button>
               </div>
             </div>
@@ -7065,6 +7192,61 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {keyboardShortcutsOpen ? (
+        <div
+          className="fixed inset-0 z-[215] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setKeyboardShortcutsOpen(false);
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-white/15 bg-[#0a1628] p-5 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="kbd-shortcuts-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2
+              id="kbd-shortcuts-title"
+              className="text-lg font-semibold text-white"
+            >
+              Keyboard shortcuts
+            </h2>
+            <ul className="mt-4 space-y-2.5 text-sm text-white/85">
+              <li>
+                <kbd className="rounded border border-white/25 bg-white/10 px-1.5 py-0.5 font-mono text-xs">
+                  Ctrl
+                </kbd>{" "}
+                +{" "}
+                <kbd className="rounded border border-white/25 bg-white/10 px-1.5 py-0.5 font-mono text-xs">
+                  F
+                </kbd>{" "}
+                — Focus takeoff search
+              </li>
+              <li>
+                <kbd className="rounded border border-white/25 bg-white/10 px-1.5 py-0.5 font-mono text-xs">
+                  Esc
+                </kbd>{" "}
+                — Close menus / exit fullscreen (when applicable)
+              </li>
+              <li className="text-white/65">
+                Use toolbar <span className="text-white/90">Previous</span> /{" "}
+                <span className="text-white/90">Next</span> or the page
+                selector to change sheets.
+              </li>
+            </ul>
+            <button
+              type="button"
+              className="mt-5 w-full rounded-lg border border-white/20 bg-white/10 py-2.5 text-sm font-semibold text-white hover:bg-white/15"
+              onClick={() => setKeyboardShortcutsOpen(false)}
+            >
+              Close
+            </button>
           </div>
         </div>
       ) : null}

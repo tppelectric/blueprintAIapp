@@ -30,7 +30,7 @@ export function HomeMarketingHeader() {
         </Link>
       )}
       <Link href="/dashboard" className={NAV_IDLE}>
-        Dashboard
+        Project Dashboard
       </Link>
       <Link href="/jobs" className={NAV_IDLE}>
         Jobs

@@ -244,7 +244,7 @@ function MobileMenuPortal({
             className={linkClass(dashActive)}
             onClick={onClose}
           >
-            Dashboard
+            Project Dashboard
           </Link>
           <Link
             href="/jobs"

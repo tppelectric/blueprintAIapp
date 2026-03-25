@@ -15,12 +15,15 @@ export function ScanModeDialog({
   onClose,
   onStart,
   showApiCosts = true,
+  extraHint,
 }: {
   open: boolean;
   pageCount: number;
   onClose: () => void;
   onStart: (mode: ScanModeId) => void;
   showApiCosts?: boolean;
+  /** Optional savings / trade note under estimates */
+  extraHint?: string | null;
 }) {
   const [selected, setSelected] = useState<ScanModeId>("standard");
 
@@ -117,6 +120,12 @@ export function ScanModeDialog({
             </p>
           ) : null}
         </div>
+
+        {extraHint ? (
+          <p className="mt-3 rounded-lg border border-[#E8C84A]/30 bg-[#E8C84A]/10 px-3 py-2 text-xs leading-snug text-[#E8C84A]/95">
+            {extraHint}
+          </p>
+        ) : null}
 
         <div className="mt-6 flex flex-wrap justify-end gap-2">
           <button

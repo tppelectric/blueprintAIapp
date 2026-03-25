@@ -9,7 +9,8 @@ export type TakeoffFilterTab =
   | "panels"
   | "plan_notes"
   | "low_voltage"
-  | "wiring";
+  | "wiring"
+  | "needs_verification";
 
 const RECEPT = /\b(recept|outlet|duplex|gfci|g\.?f\.?c\.?i|dedicated|laundry|washer|dryer)\b/i;
 const SWITCH = /\b(switch|dimmer|3-?way|three-?way|occupancy|motion\s*sensor)\b/i;
@@ -29,11 +30,30 @@ export function inferTakeoffBucket(item: ElectricalItemRow): TakeoffFilterTab {
   return "fixtures";
 }
 
+export function itemNeedsVerificationTab(item: ElectricalItemRow): boolean {
+  if (item.category === "plan_note") return false;
+  const claude = Math.round(Number(item.quantity));
+  const gpt =
+    item.gpt_count != null ? Math.round(Number(item.gpt_count)) : null;
+  const gptDisagree = gpt !== null && gpt !== claude;
+  const lowConf = Number(item.confidence) < 0.75;
+  const st = item.verification_status ?? "pending";
+  const vb = item.verified_by ?? null;
+  const noManual =
+    vb !== "accept" &&
+    vb !== "resolve" &&
+    vb !== "override" &&
+    st !== "confirmed" &&
+    st !== "manual";
+  return gptDisagree || lowConf || noManual;
+}
+
 export function itemMatchesTakeoffTab(
   item: ElectricalItemRow,
   tab: TakeoffFilterTab,
 ): boolean {
   if (tab === "all") return true;
+  if (tab === "needs_verification") return itemNeedsVerificationTab(item);
   if (tab === "plan_notes") return item.category === "plan_note";
   return item.category !== "plan_note" && inferTakeoffBucket(item) === tab;
 }
@@ -44,6 +64,11 @@ export const TAKEOFF_TAB_META: {
   summaryDetail: string;
 }[] = [
   { id: "all", label: "All", summaryDetail: "" },
+  {
+    id: "needs_verification",
+    label: "Needs verification",
+    summaryDetail: "AI/GPT mismatch, low confidence, or not verified",
+  },
   {
     id: "fixtures",
     label: "Fixtures",

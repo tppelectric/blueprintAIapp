@@ -14,6 +14,7 @@ import { buildProjectBreakdownFromTakeoffItems } from "@/lib/takeoff-materials-b
 import {
   inferTakeoffBucket,
   itemMatchesTakeoffTab,
+  itemNeedsVerificationTab,
   TAKEOFF_TAB_META,
   type TakeoffFilterTab,
 } from "@/lib/takeoff-category";
@@ -35,6 +36,88 @@ import {
 import { EmptyState } from "@/components/app-polish";
 
 const ITEM_DRAG_MIME = "application/x-blueprint-item";
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function HighlightSearch({
+  text,
+  query,
+}: {
+  text: string;
+  query: string;
+}) {
+  const q = query.trim();
+  if (!q) return <>{text}</>;
+  const parts = text.split(new RegExp(`(${escapeRegExp(q)})`, "gi"));
+  return (
+    <>
+      {parts.map((part, i) =>
+        i % 2 === 1 ? (
+          <mark
+            key={i}
+            className="rounded bg-yellow-300/95 px-0.5 font-medium text-[#0a1628]"
+          >
+            {part}
+          </mark>
+        ) : (
+          <span key={i}>{part}</span>
+        ),
+      )}
+    </>
+  );
+}
+
+function itemTextMatchesSearch(item: ElectricalItemRow, q: string): boolean {
+  if (!q) return true;
+  const blob = `${item.description} ${item.specification ?? ""} ${displayWhichRoom(item)} ${item.raw_note ?? ""}`.toLowerCase();
+  return blob.includes(q.toLowerCase());
+}
+
+function passesConfidenceTier(
+  item: ElectricalItemRow,
+  tier: ConfidenceTier,
+): boolean {
+  if (tier === "all") return true;
+  const c = Number(item.confidence);
+  if (tier === "90") return c >= 0.9;
+  if (tier === "75") return c >= 0.75;
+  if (tier === "low") return c < 0.75;
+  if (tier === "conflicts") {
+    const cl = Math.round(Number(item.quantity));
+    const g =
+      item.gpt_count != null ? Math.round(Number(item.gpt_count)) : null;
+    return (
+      item.verification_status === "conflict" ||
+      (g !== null && g !== cl)
+    );
+  }
+  return true;
+}
+
+function itemRowVerificationBorder(item: ElectricalItemRow): string {
+  if (item.verification_status === "conflict") {
+    return "border-l-4 border-l-amber-400";
+  }
+  if (Number(item.confidence) < 0.75) {
+    return "border-l-4 border-l-orange-500";
+  }
+  const cl = Math.round(Number(item.quantity));
+  const g =
+    item.gpt_count != null ? Math.round(Number(item.gpt_count)) : null;
+  const ok =
+    item.verified_by === "accept" ||
+    item.verified_by === "resolve" ||
+    item.verification_status === "confirmed" ||
+    item.verification_status === "manual";
+  if (ok && g !== null && cl === g) {
+    return "border-l-4 border-l-emerald-500";
+  }
+  return "";
+}
+
+type ConfidenceTier = "all" | "90" | "75" | "low" | "conflicts";
 
 function suggestedRoomOptionsForItem(
   item: ElectricalItemRow,
@@ -283,6 +366,9 @@ function CompactItemRow({
   onKeepAiCount,
   onRequestVerify,
   onManualVerificationSave,
+  searchHighlightQuery,
+  confidenceMuted,
+  rowBorderClass,
 }: {
   item: ElectricalItemRow;
   manualMode: boolean;
@@ -309,6 +395,9 @@ function CompactItemRow({
   onRequestVerify?: () => void;
   /** Save manual click counts for this page (toolbar parity). */
   onManualVerificationSave?: () => void | Promise<void>;
+  searchHighlightQuery?: string | null;
+  confidenceMuted?: boolean;
+  rowBorderClass?: string;
 }) {
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState(item.description);
@@ -446,12 +535,18 @@ function CompactItemRow({
     ? roomSelectValueForItem(item, roomOpts)
     : "";
 
+  const gptAgrees =
+    gptQty !== null && gptQty === claudeQty && gptQty !== null;
+  const gptConflict = gptQty !== null && gptQty !== claudeQty;
+
   return (
     <div
       className={[
         "rounded-lg border border-white/10 bg-white/[0.03] px-2 py-2 text-xs transition-colors",
+        rowBorderClass ?? "",
         isSelected ? "border-sky-400 ring-1 ring-sky-400/50" : "",
         dragEnabled ? "cursor-default" : "",
+        confidenceMuted ? "opacity-40" : "",
       ].join(" ")}
       onClick={() => {
         if (showManual) onSelectManualItem(item.id);
@@ -522,26 +617,76 @@ function CompactItemRow({
                 setEditingName(true);
               }}
             >
-              {item.description}
+              <HighlightSearch
+                text={item.description}
+                query={searchHighlightQuery ?? ""}
+              />
             </button>
           )}
         </div>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 text-[10px] tabular-nums">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 text-[10px] tabular-nums sm:gap-2">
           <span
-            className="rounded bg-white/[0.06] px-1.5 py-0.5 font-medium text-white/90"
-            title="AI-detected count"
+            className="rounded-md border border-sky-500/40 bg-sky-950/45 px-2 py-1 text-[11px] font-semibold text-sky-100"
+            title="Claude / AI count"
           >
-            AI: <span className="font-bold text-white">{claudeQty}</span>
-            {gptQty !== null && gptQty !== claudeQty ? (
-              <span className="text-violet-300"> ({gptQty} GPT)</span>
-            ) : null}
+            AI:{" "}
+            <span className="text-sm font-bold text-white">{claudeQty}</span>
+          </span>
+          {gptQty !== null ? (
+            <span
+              className="rounded-md border border-violet-500/45 bg-violet-950/40 px-2 py-1 text-[11px] font-semibold text-violet-100"
+              title="GPT verification count"
+            >
+              GPT:{" "}
+              <span className="text-sm font-bold text-white">{gptQty}</span>
+            </span>
+          ) : (
+            <span className="rounded-md border border-white/15 px-2 py-1 text-[10px] text-white/45">
+              GPT: —
+            </span>
+          )}
+          {gptQty !== null ? (
+            <span
+              className="text-sm"
+              title={gptAgrees ? "Counts match" : "Counts differ"}
+              aria-hidden
+            >
+              {gptAgrees ? "✅" : "⚠️"}
+            </span>
+          ) : null}
+          {(item.verified_by === "override" ||
+            item.final_count != null) &&
+          item.category !== "plan_note" ? (
+            <span
+              className="rounded-md border border-[#E8C84A]/50 bg-[#E8C84A]/15 px-2 py-1 text-[11px] font-semibold text-[#E8C84A]"
+              title="Manual override / saved final"
+            >
+              Final:{" "}
+              <span className="text-sm font-bold text-white">
+                {Math.round(
+                  Number(
+                    item.final_count ??
+                      (item.verified_by === "override"
+                        ? item.final_count
+                        : claudeQty),
+                  ),
+                )}
+              </span>
+            </span>
+          ) : null}
+          <span
+            className="rounded-md border border-white/20 bg-white/[0.08] px-2 py-1 text-[11px] font-bold text-white"
+            title="Working / verified quantity"
+          >
+            Σ{" "}
+            <span className="text-sm tabular-nums">{finalPreview}</span>
           </span>
           <span
-            className="rounded bg-white/[0.06] px-1.5 py-0.5 font-medium text-sky-200/90"
+            className="rounded bg-amber-950/35 px-1.5 py-0.5 font-medium text-amber-100/95"
             title={
               showManual
                 ? "Clicks on blueprint this session"
-                : "Saved manual count (after verify)"
+                : "Manual session / saved"
             }
           >
             Manual:{" "}
@@ -950,6 +1095,7 @@ function takeoffBucketCounts(
 ): Record<TakeoffFilterTab, number> {
   const acc: Record<TakeoffFilterTab, number> = {
     all: 0,
+    needs_verification: 0,
     fixtures: 0,
     receptacles: 0,
     switches: 0,
@@ -961,6 +1107,7 @@ function takeoffBucketCounts(
   for (const item of items) {
     const q = effectiveQty(item, manualCounts, manualMode);
     acc.all += q;
+    if (itemNeedsVerificationTab(item)) acc.needs_verification += 1;
     if (item.category === "plan_note") {
       acc.plan_notes += q;
       continue;

@@ -74,6 +74,20 @@ import {
 } from "@/lib/legend-scan-prefs";
 import { TakeoffExportDialog } from "./takeoff-export-dialog";
 import { ScanModeDialog } from "./scan-mode-dialog";
+import {
+  SelectPagesScanModal,
+  type PagePickMeta,
+} from "@/components/select-pages-scan-modal";
+import { inferTakeoffBucket } from "@/lib/takeoff-category";
+import type { PageThumbScanStatus } from "@/lib/blueprint-viewer-thumb-types";
+import {
+  cycleTradeSlug,
+  mergeTradeMapsFromSheets,
+  sheetIndexForGlobalPage,
+  tradeMeta,
+  TRADE_OPTIONS,
+  type TradeDesignationSlug,
+} from "@/lib/sheet-trade-designation";
 import { LinkToJobDialog } from "@/components/link-to-job-dialog";
 import { useUserRole } from "@/hooks/use-user-role";
 import {
@@ -103,8 +117,7 @@ import {
 } from "@/lib/page-summary-export";
 import { runTakeoffExport, type TakeoffExportInclude } from "@/lib/scan-export";
 import type { ProjectScansPayload } from "@/lib/project-scans-types";
-
-type PageThumbScanStatus = "ok" | "warn" | "error" | "spin" | "wait";
+import type { TakeoffFilterTab } from "@/lib/takeoff-category";
 
 const DEFAULT_TAKEOFF_INCLUDE: TakeoffExportInclude = {
   aiCounts: true,
@@ -172,6 +185,19 @@ function batchSlotProgressPct(
   return Math.min(99, Math.round(base + (intra0to100 / 100) * span));
 }
 
+function batchListProgressPct(
+  intra0to100: number,
+  pageIndex: number,
+  totalPages: number,
+): number {
+  if (totalPages <= 0) return 0;
+  const span = 100 / totalPages;
+  return Math.min(
+    99,
+    Math.round(pageIndex * span + (intra0to100 / 100) * span),
+  );
+}
+
 type ProjectRow = {
   id: string;
   project_name: string | null;
@@ -191,6 +217,7 @@ type SheetRow = {
   page_count: number | null;
   sheet_order: number;
   created_at: string;
+  trade_designation?: unknown;
 };
 
 function globalPageToLocal(
@@ -415,6 +442,9 @@ function PageThumbnail({
   disabled,
   scanStatus,
   thumbNote,
+  tradeBadge,
+  tradeFaded,
+  onContextMenu,
 }: {
   pdfDoc: PDFDocumentProxy;
   pageNumber: number;
@@ -426,6 +456,9 @@ function PageThumbnail({
   scanStatus?: PageThumbScanStatus;
   /** Extra line under page number (e.g. recall item count). */
   thumbNote?: string | null;
+  tradeBadge?: string | null;
+  tradeFaded?: boolean;
+  onContextMenu?: (e: MouseEvent<HTMLButtonElement>) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderTaskRef = useRef<RenderTask | null>(null);
@@ -470,6 +503,7 @@ function PageThumbnail({
     <button
       type="button"
       onClick={onSelect}
+      onContextMenu={onContextMenu}
       disabled={disabled}
       className={[
         "relative shrink-0 rounded-lg border p-1 transition-colors",
@@ -477,6 +511,7 @@ function PageThumbnail({
           ? "border-sky-400 bg-sky-500/15 ring-1 ring-sky-400/50"
           : "border-white/15 bg-white/[0.04] hover:border-white/30",
         disabled ? "cursor-not-allowed opacity-50" : "",
+        tradeFaded ? "opacity-40" : "",
       ].join(" ")}
       aria-current={selected ? "page" : undefined}
       aria-label={`Page ${globalPageLabel}`}
@@ -493,6 +528,11 @@ function PageThumbnail({
         </span>
       ) : null}
       <canvas ref={canvasRef} className="block max-h-52 rounded-md bg-white" />
+      {tradeBadge ? (
+        <span className="mt-0.5 block text-center text-[9px] font-semibold text-[#E8C84A]">
+          {tradeBadge}
+        </span>
+      ) : null}
       <span className="mt-1 block text-center text-xs text-white/70">
         {globalPageLabel}
       </span>
@@ -646,6 +686,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const [viewerDesktopLayout, setViewerDesktopLayout] = useState(false);
 
   const [scanModeDialogOpen, setScanModeDialogOpen] = useState(false);
+  const [scanDialogPageCountOverride, setScanDialogPageCountOverride] =
+    useState<number | null>(null);
   const [scanModeDialogTarget, setScanModeDialogTarget] = useState<
     "page" | "all" | null
   >(null);
@@ -683,6 +725,21 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const [pageScanMeta, setPageScanMeta] = useState<
     Record<number, { at: string; modeLabel: string }>
   >({});
+  const pendingBatchPagesRef = useRef<number[] | null>(null);
+  const blueprintSearchInputRef = useRef<HTMLInputElement>(null);
+  const [selectPagesModalOpen, setSelectPagesModalOpen] = useState(false);
+  const [selectedPagesForScan, setSelectedPagesForScan] = useState<Set<number>>(
+    new Set(),
+  );
+  const [markingPagesMode, setMarkingPagesMode] = useState(false);
+  const [tradeCtxMenu, setTradeCtxMenu] = useState<{
+    page: number;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [blueprintToolbarSearch, setBlueprintToolbarSearch] = useState("");
+  const [resultsCategoryJump, setResultsCategoryJump] =
+    useState<TakeoffFilterTab | null>(null);
   const [pageSummaryExportOpen, setPageSummaryExportOpen] = useState(false);
   const [pageSummaryExportBusy, setPageSummaryExportBusy] = useState(false);
   const [resumeSnapshot, setResumeSnapshot] = useState<ResumePayload | null>(
@@ -1454,7 +1511,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         const { data: sheetRows } = await supabase
           .from("sheets")
           .select(
-            "id, project_id, sheet_name, file_url, file_size, page_count, sheet_order, created_at",
+            "id, project_id, sheet_name, file_url, file_size, page_count, sheet_order, created_at, trade_designation",
           )
           .eq("project_id", projectId)
           .order("sheet_order", { ascending: true });
@@ -1664,6 +1721,78 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       cancelled = true;
     };
   }, [projectId, pdfDocs, numPages, pdfLoading]);
+
+  const docPagesPerSheet = useMemo(
+    () =>
+      pdfDocs?.map((d) => d.numPages) ??
+      sheets.map((s) => Math.max(1, s.page_count ?? 1)),
+    [pdfDocs, sheets],
+  );
+
+  const tradeByGlobalPage = useMemo(
+    () => mergeTradeMapsFromSheets(sheets),
+    [sheets],
+  );
+
+  const persistTradeForPage = useCallback(
+    async (globalPage: number, slug: TradeDesignationSlug | null) => {
+      if (!docPagesPerSheet.length) return;
+      const si = sheetIndexForGlobalPage(globalPage, docPagesPerSheet);
+      const row = sheets[si];
+      if (!row?.id) return;
+      const res = await fetch(
+        `/api/sheets/${encodeURIComponent(row.id)}/designation`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pageIndex: globalPage,
+            trade_designation: slug,
+          }),
+        },
+      );
+      const j = (await res.json()) as {
+        trade_designation?: Record<string, string>;
+        error?: string;
+      };
+      if (!res.ok) {
+        window.alert(j.error ?? "Could not save trade designation.");
+        return;
+      }
+      const td = j.trade_designation;
+      setSheets((prev) =>
+        prev.map((s) =>
+          s.id === row.id ? { ...s, trade_designation: td ?? {} } : s,
+        ),
+      );
+    },
+    [sheets, docPagesPerSheet],
+  );
+
+  useEffect(() => {
+    if (numPages < 1) return;
+    setSelectedPagesForScan(new Set(Array.from({ length: numPages }, (_, i) => i + 1)));
+  }, [numPages]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+        const t = e.target as HTMLElement | null;
+        if (
+          t &&
+          (t.tagName === "INPUT" ||
+            t.tagName === "TEXTAREA" ||
+            t.isContentEditable)
+        ) {
+          return;
+        }
+        e.preventDefault();
+        blueprintSearchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const runLegendRescan = useCallback(async (): Promise<number> => {
     const docs = pdfDocsRef.current;
@@ -2577,6 +2706,158 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     [projectId, runOnePageWithMode, dismissScanProgress],
   );
 
+  const runBatchScanPages = useCallback(
+    async (pageList: number[], mode: ScanModeId) => {
+      if (
+        scanProgressOpenRef.current ||
+        analyzePhaseRef.current !== "idle"
+      ) {
+        return;
+      }
+      const unique = [...new Set(pageList)]
+        .filter((p) => p >= 1 && p <= numPagesRef.current)
+        .sort((a, b) => a - b);
+      if (unique.length === 0) return;
+
+      lastScanModeRef.current = mode;
+      if (mode === "manual") {
+        setManualMode(true);
+        return;
+      }
+
+      const meta = scanModeById(mode);
+      scanAbortControllerRef.current = new AbortController();
+      const signal = scanAbortControllerRef.current.signal;
+      scanCancelRequestedRef.current = false;
+      scanStartedAtRef.current = Date.now();
+      lastBatchPageCompletedRef.current = 0;
+      batchCostAccumRef.current = 0;
+
+      const initialRows: ScanProgressPageRow[] = unique.map((pg, i) => ({
+        page: pg,
+        state: i === 0 ? ("running" as const) : ("waiting" as const),
+      }));
+      setScanPageRows(initialRows);
+      setScanProgressSessionKey((k) => k + 1);
+      setScanBatchStartPage(unique[0] ?? 1);
+      setScanProgressVariant("batch");
+      setScanProgressMode(mode);
+      setScanProgressOpen(true);
+      scanProgressOpenRef.current = true;
+      setScanCompleteMessage(null);
+      setScanTotalPages(unique.length);
+      setScanCurrentPage(unique[0] ?? 1);
+      setScanCostSoFar(0);
+      setScanSessionEstimate(totalCostPerPage(meta) * unique.length);
+      setScanProgressPct(0);
+      setScanPhasePrimary("Rendering page image…");
+      setScanPhaseSecondary(
+        mode === "quick" ? null : "Then GPT-4o verifies counts…",
+      );
+      setAnalyzePhase("all");
+      setAnalyzeError(null);
+      setPageScanErrors({});
+      setAnalyzeAllProgress({ current: 1, total: unique.length });
+
+      const batchFailures: string[] = [];
+      let cancelled = false;
+
+      const updateRow = (page: number, patch: Partial<ScanProgressPageRow>) => {
+        setScanPageRows((rows) =>
+          rows.map((r) => (r.page === page ? { ...r, ...patch } : r)),
+        );
+      };
+
+      try {
+        for (let idx = 0; idx < unique.length; idx++) {
+          const p = unique[idx]!;
+          if (scanCancelRequestedRef.current) {
+            cancelled = true;
+            break;
+          }
+          setScanCurrentPage(p);
+          setCurrentPage(p);
+          setAnalyzeAllProgress({ current: idx + 1, total: unique.length });
+          updateRow(p, { state: "running" });
+          setScanProgressPct(batchListProgressPct(0, idx, unique.length));
+
+          const r = await runOnePageWithMode(p, mode, signal, {
+            updateThumb: (pg, s) =>
+              setThumbByPage((prev) => ({ ...prev, [pg]: s })),
+            onProgress: (intra, primary, secondary) => {
+              setScanProgressPct(
+                batchListProgressPct(intra, idx, unique.length),
+              );
+              setScanPhasePrimary(primary);
+              setScanPhaseSecondary(secondary ?? null);
+            },
+          });
+
+          if (signal.aborted || scanCancelRequestedRef.current) {
+            cancelled = true;
+            updateRow(p, { state: "waiting" });
+            break;
+          }
+
+          if (r.outcome === "error") {
+            updateRow(p, { state: "done_error", itemCount: r.itemCount });
+            setPageScanErrors((prev) => ({
+              ...prev,
+              [p]: r.errorMessage ?? "Error",
+            }));
+            batchFailures.push(`Page ${p}: ${r.errorMessage ?? "failed"}`);
+          } else {
+            lastBatchPageCompletedRef.current = p;
+            const rowState: ScanProgressPageRow["state"] =
+              r.outcome === "warn" || r.outcome === "empty"
+                ? "done_empty"
+                : "done_ok";
+            updateRow(p, { state: rowState, itemCount: r.itemCount });
+            batchCostAccumRef.current += totalCostPerPage(meta);
+            setScanCostSoFar(batchCostAccumRef.current);
+          }
+
+          if (idx + 1 < unique.length) {
+            updateRow(unique[idx + 1]!, { state: "running" });
+          }
+        }
+
+        if (cancelled) {
+          dismissScanProgress();
+          setAnalyzePhase("idle");
+          setAnalyzeAllProgress(null);
+          return;
+        }
+
+        setScanProgressPct(100);
+        setScanPhasePrimary("Finished");
+        setScanPhaseSecondary(null);
+        setScanCompleteMessage(
+          `This scan cost ${formatUsd(batchCostAccumRef.current)}`,
+        );
+        try {
+          localStorage.removeItem(RESUME_STORAGE_KEY);
+        } catch {
+          /* ignore */
+        }
+        setResumeSnapshot(null);
+        if (batchFailures.length > 0) {
+          setAnalyzeError(batchFailures.join(" · "));
+        }
+        setScanReloadToken((t) => t + 1);
+      } catch (e) {
+        setAnalyzeError(
+          e instanceof Error ? e.message : "Batch analysis failed.",
+        );
+        dismissScanProgress();
+      } finally {
+        setAnalyzePhase("idle");
+        setAnalyzeAllProgress(null);
+      }
+    },
+    [projectId, runOnePageWithMode, dismissScanProgress],
+  );
+
   const onCancelScanConfirmed = useCallback(() => {
     scanCancelRequestedRef.current = true;
     scanAbortControllerRef.current?.abort();
@@ -2588,6 +2869,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       const target = scanModeDialogTargetRef.current;
       scanModeDialogTargetRef.current = null;
       setScanModeDialogTarget(null);
+      const pendingList = pendingBatchPagesRef.current;
+      pendingBatchPagesRef.current = null;
       lastScanModeRef.current = mode;
       if (mode === "manual") {
         setManualMode(true);
@@ -2602,10 +2885,14 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           /* ignore */
         }
         setResumeSnapshot(null);
-        void runBatchScan(1, numPagesRef.current, mode);
+        if (pendingList && pendingList.length > 0) {
+          void runBatchScanPages(pendingList, mode);
+        } else {
+          void runBatchScan(1, numPagesRef.current, mode);
+        }
       }
     },
-    [runSinglePageScan, runBatchScan],
+    [runSinglePageScan, runBatchScan, runBatchScanPages],
   );
 
   const openScanModeForPage = useCallback(() => {
@@ -2615,6 +2902,16 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   }, []);
 
   const openScanModeForAll = useCallback(() => {
+    pendingBatchPagesRef.current = null;
+    setScanDialogPageCountOverride(null);
+    scanModeDialogTargetRef.current = "all";
+    setScanModeDialogTarget("all");
+    setScanModeDialogOpen(true);
+  }, []);
+
+  const openScanModeForAllWithPendingPages = useCallback((pages: number[]) => {
+    pendingBatchPagesRef.current = pages;
+    setScanDialogPageCountOverride(pages.length);
     scanModeDialogTargetRef.current = "all";
     setScanModeDialogTarget("all");
     setScanModeDialogOpen(true);
@@ -4471,6 +4768,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         thumbNote =
           c === null ? "Not scanned" : `${c} item${c === 1 ? "" : "s"}`;
       }
+      const slug = tradeByGlobalPage[n];
+      const tm = tradeMeta(slug);
       return (
         <PageThumbnail
           key={n}
@@ -4479,6 +4778,11 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           globalPageLabel={n}
           selected={n === currentPage}
           onSelect={() => {
+            if (markingPagesMode) {
+              const next = cycleTradeSlug(slug);
+              void persistTradeForPage(n, next);
+              return;
+            }
             setCurrentPage(n);
             if (
               typeof window !== "undefined" &&
@@ -4490,6 +4794,12 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           disabled={blockPageNav}
           scanStatus={scanStatus}
           thumbNote={thumbNote}
+          tradeBadge={tm ? `${tm.emoji} ${tm.short}` : null}
+          tradeFaded={slug === "not_relevant"}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setTradeCtxMenu({ page: n, x: e.clientX, y: e.clientY });
+          }}
         />
       );
     });
@@ -4501,7 +4811,87 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     thumbByPage,
     takeoffViewMode,
     recallThumbState,
+    markingPagesMode,
+    tradeByGlobalPage,
+    persistTradeForPage,
   ]);
+
+  const pagePickMeta = useMemo(() => {
+    const m: Record<number, PagePickMeta> = {};
+    for (let p = 1; p <= numPages; p++) {
+      m[p] = {
+        scanStatus: thumbByPage[p],
+        itemCount: analysisItems.filter((i) => i.page_number === p).length,
+        lastScan: pageScanMeta[p]?.at ?? null,
+        tradeSlug: tradeByGlobalPage[p] ?? null,
+      };
+    }
+    return m;
+  }, [numPages, thumbByPage, analysisItems, pageScanMeta, tradeByGlobalPage]);
+
+  const selectPagesThumbnailCells = useMemo(() => {
+    if (!pdfDocs?.length || numPages < 1) return [];
+    return Array.from({ length: numPages }, (_, i) => {
+      const n = i + 1;
+      const mapped = globalPageToLocal(n, pdfDocs);
+      if (!mapped) {
+        return (
+          <span key={`sp-${n}`} className="text-[10px] text-white/40">
+            —
+          </span>
+        );
+      }
+      return (
+        <PageThumbnail
+          key={`sp-${n}`}
+          pdfDoc={mapped.doc}
+          pageNumber={mapped.localPage}
+          globalPageLabel={n}
+          selected={false}
+          onSelect={() => {}}
+          disabled
+          scanStatus={thumbByPage[n]}
+        />
+      );
+    });
+  }, [pdfDocs, numPages, thumbByPage]);
+
+  const electricalScanHint = useMemo(() => {
+    if (numPages < 1) return null;
+    let elec = 0;
+    for (let p = 1; p <= numPages; p++) {
+      if (tradeByGlobalPage[p] === "electrical") elec++;
+    }
+    if (elec === 0) return null;
+    const skipped = numPages - elec;
+    if (skipped <= 0) return null;
+    const meta = scanModeById("standard");
+    const saveCost = skipped * totalCostPerPage(meta);
+    const saveMin = Math.max(
+      1,
+      Math.ceil((skipped * meta.estSecondsPerPage) / 60),
+    );
+    return `Electrical pages only: ${elec} of ${numPages} pages · Skipping ${skipped} page${skipped === 1 ? "" : "s"} saves ~${formatUsd(saveCost)} and ~${saveMin} min (Standard est.).`;
+  }, [numPages, tradeByGlobalPage]);
+
+  const toolbarGrandTotals = useMemo(() => {
+    let fixtures = 0;
+    let receptacles = 0;
+    let switches = 0;
+    let notes = 0;
+    for (const i of analysisItems) {
+      const q = Math.round(Number(i.quantity));
+      if (i.category === "plan_note") {
+        notes += q;
+        continue;
+      }
+      const b = inferTakeoffBucket(i);
+      if (b === "fixtures") fixtures += q;
+      else if (b === "receptacles") receptacles += q;
+      else if (b === "switches") switches += q;
+    }
+    return { fixtures, receptacles, switches, notes };
+  }, [analysisItems]);
 
   if (projectLoading) {
     return (
@@ -4707,15 +5097,94 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
 
       <ScanModeDialog
         open={scanModeDialogOpen}
-        pageCount={scanModeDialogTarget === "all" ? numPages : 1}
+        pageCount={
+          scanModeDialogTarget === "all"
+            ? (scanDialogPageCountOverride ?? numPages)
+            : 1
+        }
         onClose={() => {
           setScanModeDialogOpen(false);
           scanModeDialogTargetRef.current = null;
           setScanModeDialogTarget(null);
+          setScanDialogPageCountOverride(null);
+          pendingBatchPagesRef.current = null;
         }}
         onStart={onScanModeChosen}
         showApiCosts={canSeeApiCosts}
+        extraHint={
+          scanModeDialogTarget === "all" ? electricalScanHint : null
+        }
       />
+
+      <SelectPagesScanModal
+        open={selectPagesModalOpen}
+        numPages={numPages}
+        selected={selectedPagesForScan}
+        onChangeSelected={setSelectedPagesForScan}
+        pageMeta={pagePickMeta}
+        thumbnailCells={selectPagesThumbnailCells}
+        onClose={() => setSelectPagesModalOpen(false)}
+        onStartScan={() => {
+          const list = Array.from(selectedPagesForScan).sort((a, b) => a - b);
+          if (list.length === 0) return;
+          setSelectPagesModalOpen(false);
+          openScanModeForAllWithPendingPages(list);
+        }}
+      />
+
+      {tradeCtxMenu ? (
+        <div
+          className="fixed inset-0 z-[270]"
+          role="presentation"
+          onClick={() => setTradeCtxMenu(null)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setTradeCtxMenu(null);
+          }}
+        >
+          <div
+            className="absolute z-[271] min-w-[12rem] overflow-hidden rounded-xl border border-white/15 bg-[#0a1628] py-1 shadow-xl"
+            style={{
+              left: Math.min(
+                tradeCtxMenu.x,
+                typeof window !== "undefined" ? window.innerWidth - 200 : 0,
+              ),
+              top: Math.min(
+                tradeCtxMenu.y,
+                typeof window !== "undefined" ? window.innerHeight - 280 : 0,
+              ),
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="border-b border-white/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-white/45">
+              Trade designation
+            </p>
+            {TRADE_OPTIONS.map((t) => (
+              <button
+                key={t.slug}
+                type="button"
+                className="block w-full px-3 py-2 text-left text-sm text-white/90 hover:bg-white/10"
+                onClick={() => {
+                  void persistTradeForPage(tradeCtxMenu.page, t.slug);
+                  setTradeCtxMenu(null);
+                }}
+              >
+                {t.emoji} {t.label}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="block w-full border-t border-white/10 px-3 py-2 text-left text-sm text-amber-200/90 hover:bg-white/10"
+              onClick={() => {
+                void persistTradeForPage(tradeCtxMenu.page, null);
+                setTradeCtxMenu(null);
+              }}
+            >
+              Clear marking
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {!pdfLoading && !pdfError && pdfDocs && pdfDocs.length > 0 && numPages > 0 && (
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
@@ -5287,6 +5756,33 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setSelectPagesModalOpen(true)}
+                  disabled={
+                    analyzeBusy ||
+                    legendBusy ||
+                    symbolToolboxBusy ||
+                    numPages < 1
+                  }
+                  className="rounded-lg border border-violet-400/50 bg-violet-950/30 px-3 py-2 text-sm font-semibold text-violet-100 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-violet-950/45"
+                >
+                  Select Pages
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMarkingPagesMode((m) => !m)}
+                  disabled={analyzeBusy || legendBusy || symbolToolboxBusy}
+                  className={[
+                    "rounded-lg border px-3 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                    markingPagesMode
+                      ? "border-[#E8C84A] bg-[#E8C84A]/20 text-[#E8C84A] hover:bg-[#E8C84A]/28"
+                      : "border-white/25 bg-white/10 text-white hover:bg-white/15",
+                  ].join(" ")}
+                  title="Click thumbnails to cycle trades · Right-click to clear"
+                >
+                  {markingPagesMode ? "Exit Mark Pages" : "Mark Pages"}
+                </button>
+                <button
+                  type="button"
                   onClick={() => void runRoomScanCurrentPage()}
                   disabled={
                     analyzeBusy ||
@@ -5566,6 +6062,103 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                 >
                   {viewerFs ? "Exit full screen" : "Full screen"}
                 </button>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 flex-col gap-2 border-b border-white/10 bg-[#071422] px-3 py-2 sm:px-4">
+              <div className="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-center gap-2">
+                <label className="flex min-w-0 flex-1 items-center gap-2 sm:max-w-xl">
+                  <span className="shrink-0 text-sm" aria-hidden>
+                    🔍
+                  </span>
+                  <input
+                    ref={blueprintSearchInputRef}
+                    type="search"
+                    placeholder="Search items… (Ctrl+F)"
+                    value={blueprintToolbarSearch}
+                    onChange={(e) =>
+                      setBlueprintToolbarSearch(e.target.value)
+                    }
+                    className="min-w-0 flex-1 rounded-lg border border-white/15 bg-[#0a1628] px-2 py-1.5 text-sm text-white placeholder:text-white/40"
+                    aria-label="Search items in results"
+                  />
+                </label>
+                {blueprintToolbarSearch ? (
+                  <button
+                    type="button"
+                    onClick={() => setBlueprintToolbarSearch("")}
+                    className="shrink-0 rounded border border-white/20 px-2 py-1 text-xs text-white/75 hover:bg-white/10"
+                  >
+                    ✕ Clear
+                  </button>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-white/65">
+                <button
+                  type="button"
+                  className="rounded px-1 transition-colors hover:bg-white/5 hover:text-[#E8C84A]"
+                  onClick={() => setResultsCategoryJump("fixtures")}
+                >
+                  ⚡{" "}
+                  <span className="font-bold text-[#E8C84A] tabular-nums">
+                    {toolbarGrandTotals.fixtures}
+                  </span>{" "}
+                  fixtures
+                </button>
+                <span className="text-white/25" aria-hidden>
+                  |
+                </span>
+                <button
+                  type="button"
+                  className="rounded px-1 transition-colors hover:bg-white/5 hover:text-[#E8C84A]"
+                  onClick={() => setResultsCategoryJump("receptacles")}
+                >
+                  🔌{" "}
+                  <span className="font-bold text-[#E8C84A] tabular-nums">
+                    {toolbarGrandTotals.receptacles}
+                  </span>{" "}
+                  outlets
+                </button>
+                <span className="text-white/25" aria-hidden>
+                  |
+                </span>
+                <button
+                  type="button"
+                  className="rounded px-1 transition-colors hover:bg-white/5 hover:text-[#E8C84A]"
+                  onClick={() => setResultsCategoryJump("switches")}
+                >
+                  💡{" "}
+                  <span className="font-bold text-[#E8C84A] tabular-nums">
+                    {toolbarGrandTotals.switches}
+                  </span>{" "}
+                  switches
+                </button>
+                <span className="text-white/25" aria-hidden>
+                  |
+                </span>
+                <button
+                  type="button"
+                  className="rounded px-1 transition-colors hover:bg-white/5 hover:text-[#E8C84A]"
+                  onClick={() => setResultsCategoryJump("plan_notes")}
+                >
+                  📋{" "}
+                  <span className="font-bold text-[#E8C84A] tabular-nums">
+                    {toolbarGrandTotals.notes}
+                  </span>{" "}
+                  notes
+                </button>
+                <span className="text-white/25" aria-hidden>
+                  |
+                </span>
+                <span>
+                  💰{" "}
+                  <span className="font-bold text-[#E8C84A] tabular-nums">
+                    {canSeeApiCosts && projectUsageTotal != null
+                      ? formatUsd(projectUsageTotal)
+                      : "—"}
+                  </span>{" "}
+                  scan cost
+                </span>
               </div>
             </div>
 

@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import { GlobalNavSearch } from "@/components/global-nav-search";
 import { HeaderAuthMenu } from "@/components/header-auth-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { useUserRole } from "@/hooks/use-user-role";
 
 type AppNavKey = "dashboard" | "jobs" | "customers" | "upload";
 
@@ -44,6 +45,8 @@ function MobileMenuPortal({
   pathname: string;
 }) {
   const [mounted, setMounted] = useState(false);
+  const { role, loading: roleLoading } = useUserRole();
+  const showUserManagement = !roleLoading && role === "super_admin";
   useEffect(() => setMounted(true), []);
 
   const dashActive = pathname.startsWith("/dashboard");
@@ -51,6 +54,7 @@ function MobileMenuPortal({
   const custActive = pathname.startsWith("/customers");
   const uploadActive = pathname === "/upload";
   const toolsActive = pathname.startsWith("/tools");
+  const adminActive = pathname.startsWith("/admin");
   const homeActive = pathname === "/";
 
   if (!mounted || typeof document === "undefined") return null;
@@ -155,6 +159,18 @@ function MobileMenuPortal({
           >
             Upload
           </Link>
+          {showUserManagement ? (
+            <>
+              <div className="my-2 border-t border-white/10" />
+              <Link
+                href="/admin/users"
+                className={linkClass(adminActive)}
+                onClick={onClose}
+              >
+                ⚙️ User Management
+              </Link>
+            </>
+          ) : null}
           {variant === "marketing" ? (
             <>
               <a

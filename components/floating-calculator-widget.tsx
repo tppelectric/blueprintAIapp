@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "@/lib/theme-context";
 
+/** Scroll body of floating calc; keyboard shortcuts apply when focus is inside. */
+const FLOATING_CALC_PANEL_ID = "floating-calc-panel";
+
 type Tab = "calc" | "sci" | "ohm" | "power" | "units";
 
 type CalcOp = "+" | "-" | "×" | "÷";
@@ -39,8 +42,6 @@ function factorialInt(n: number): number {
 }
 
 /** Scientific tab: gold keys, white numbers, navy utilities — matches widget theme. */
-const FLOATING_CALC_PANEL_ID = "floating-calc-panel";
-
 function ScientificCalculatorPanel({ theme }: { theme: "dark" | "light" }) {
   const [angleMode, setAngleMode] = useState<"deg" | "rad">("deg");
   const [memory, setMemory] = useState(0);
@@ -390,6 +391,203 @@ function ScientificCalculatorPanel({ theme }: { theme: "dark" | "light" }) {
     (powPending != null ? `  (${fmtDisplay(powPending)}^□)` : "") +
     (rootPending != null ? `  (${fmtDisplay(rootPending)}^(1/□))` : "");
 
+  const startPowFromKeyboard = () => {
+    resetEE();
+    const b = getN();
+    if (!Number.isNaN(b)) {
+      setPowPending(b);
+      setDisplay("0");
+      setWaiting(true);
+    }
+  };
+
+  const apiRef = useRef({
+    getN,
+    inputDigit,
+    inputOp,
+    equals,
+    clearAll,
+    backspace,
+    openParen,
+    closeParen,
+    applyUnary,
+    insertConst,
+    startPowFromKeyboard,
+    toRad,
+    eeMode,
+  });
+  apiRef.current = {
+    getN,
+    inputDigit,
+    inputOp,
+    equals,
+    clearAll,
+    backspace,
+    openParen,
+    closeParen,
+    applyUnary,
+    insertConst,
+    startPowFromKeyboard,
+    toRad,
+    eeMode,
+  };
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      const shell = document.getElementById(FLOATING_CALC_PANEL_ID);
+      const t = e.target;
+      if (!shell || !(t instanceof Node) || !shell.contains(t)) return;
+      if (
+        t instanceof HTMLElement &&
+        (t.closest("input, textarea, select") || t.isContentEditable)
+      ) {
+        return;
+      }
+
+      const a = apiRef.current;
+      const key = e.key;
+      const code = e.code;
+
+      const numpadDigit: Record<string, string> = {
+        Numpad0: "0",
+        Numpad1: "1",
+        Numpad2: "2",
+        Numpad3: "3",
+        Numpad4: "4",
+        Numpad5: "5",
+        Numpad6: "6",
+        Numpad7: "7",
+        Numpad8: "8",
+        Numpad9: "9",
+      };
+
+      if (/^[0-9]$/.test(key)) {
+        e.preventDefault();
+        a.inputDigit(key);
+        return;
+      }
+      if (code in numpadDigit) {
+        e.preventDefault();
+        a.inputDigit(numpadDigit[code]!);
+        return;
+      }
+      if (key === "." || code === "NumpadDecimal") {
+        e.preventDefault();
+        a.inputDigit(".");
+        return;
+      }
+      if (key === "+" || code === "NumpadAdd") {
+        e.preventDefault();
+        a.inputOp("+", "+");
+        return;
+      }
+      if (
+        key === "-" ||
+        key === "−" ||
+        code === "NumpadSubtract" ||
+        code === "Minus"
+      ) {
+        e.preventDefault();
+        a.inputOp("-", "−");
+        return;
+      }
+      if (key === "*" || code === "NumpadMultiply") {
+        e.preventDefault();
+        a.inputOp("×", "×");
+        return;
+      }
+      if (key === "/" || code === "NumpadDivide") {
+        e.preventDefault();
+        a.inputOp("÷", "÷");
+        return;
+      }
+      if (key === "Enter" || key === "=" || code === "NumpadEnter") {
+        e.preventDefault();
+        a.equals();
+        return;
+      }
+      if (key === "Backspace") {
+        e.preventDefault();
+        a.backspace();
+        return;
+      }
+      if (key === "Escape") {
+        e.preventDefault();
+        a.clearAll();
+        return;
+      }
+      if (key === "(") {
+        e.preventDefault();
+        a.openParen();
+        return;
+      }
+      if (key === ")") {
+        e.preventDefault();
+        a.closeParen();
+        return;
+      }
+      if (key === "^") {
+        e.preventDefault();
+        a.startPowFromKeyboard();
+        return;
+      }
+
+      const lk = key.length === 1 ? key.toLowerCase() : "";
+      if (lk === "s") {
+        e.preventDefault();
+        a.applyUnary((x) => Math.sin(a.toRad(x)), "sin");
+        return;
+      }
+      if (lk === "c") {
+        e.preventDefault();
+        a.applyUnary((x) => Math.cos(a.toRad(x)), "cos");
+        return;
+      }
+      if (lk === "t") {
+        e.preventDefault();
+        a.applyUnary((x) => Math.tan(a.toRad(x)), "tan");
+        return;
+      }
+      if (lk === "l") {
+        e.preventDefault();
+        a.applyUnary((x) => Math.log10(x), "log");
+        return;
+      }
+      if (lk === "n") {
+        e.preventDefault();
+        a.applyUnary((x) => Math.log(x), "ln");
+        return;
+      }
+      if (lk === "r") {
+        e.preventDefault();
+        a.applyUnary((x) => (x < 0 ? NaN : Math.sqrt(x)), "√");
+        return;
+      }
+      if (lk === "p") {
+        e.preventDefault();
+        a.insertConst(Math.PI);
+        return;
+      }
+      if (lk === "e") {
+        if (a.eeMode) return;
+        e.preventDefault();
+        a.insertConst(Math.E);
+        return;
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, []);
+
+  const degRadBtn =
+    theme === "light"
+      ? "border-2 border-[#E8C84A] bg-[#E8C84A] text-[#0a1628] shadow-sm hover:bg-[#f0d56e]"
+      : "border-2 border-[#E8C84A] bg-[#E8C84A]/95 text-[#0a1628] shadow-sm hover:bg-[#f0d56e]";
+
   return (
     <div className="space-y-2">
       <p
@@ -399,8 +597,10 @@ function ScientificCalculatorPanel({ theme }: { theme: "dark" | "light" }) {
             : "text-[10px] text-white/50"
         }
       >
-        PF, 3φ V, Z, f₀ — sin/cos, √, xⁿ, log/ln; Deg/Rad for trig. ( ) add text on
-        the top line for notes; + − × ÷ and = evaluate the number in the result row.
+        PF, 3φ V, Z, f₀ — sin/cos, √, xⁿ, log/ln; use{" "}
+        <strong className="font-semibold text-[#E8C84A]/90">DEG / RAD</strong>{" "}
+        for trig. ( ) add text on the top line; + − × ÷ and = evaluate the result
+        row.
       </p>
       <div
         className={`min-h-[2.25rem] rounded-lg px-2 py-1.5 text-left text-[11px] leading-snug break-all ${screenExpr}`}
@@ -408,10 +608,33 @@ function ScientificCalculatorPanel({ theme }: { theme: "dark" | "light" }) {
       >
         {exprLine.trim() || " "}
       </div>
-      <div
-        className={`min-h-[2.75rem] rounded-lg px-3 py-2 text-right text-xl font-semibold tabular-nums tracking-tight ${screenResult}`}
-      >
-        {display}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() =>
+            setAngleMode((m) => (m === "deg" ? "rad" : "deg"))
+          }
+          className={`absolute right-2 top-2 z-10 min-w-[3.25rem] rounded-md px-2.5 py-1 text-center text-[11px] font-bold uppercase tracking-wide transition-colors ${degRadBtn}`}
+          title={
+            angleMode === "deg"
+              ? "Angles in degrees — click for radians"
+              : "Angles in radians — click for degrees"
+          }
+          role="switch"
+          aria-checked={angleMode === "rad"}
+          aria-label={
+            angleMode === "deg"
+              ? "Angle mode: degrees. Click to switch to radians."
+              : "Angle mode: radians. Click to switch to degrees."
+          }
+        >
+          {angleMode === "deg" ? "DEG" : "RAD"}
+        </button>
+        <div
+          className={`min-h-[2.75rem] rounded-lg px-3 py-2 pr-[4.5rem] text-right text-xl font-semibold tabular-nums tracking-tight ${screenResult}`}
+        >
+          {display}
+        </div>
       </div>
       {history.length > 0 ? (
         <div
@@ -431,15 +654,6 @@ function ScientificCalculatorPanel({ theme }: { theme: "dark" | "light" }) {
       <div className="flex flex-wrap gap-1.5">
         <button type="button" className={utilClass} onClick={copyResult}>
           Copy
-        </button>
-        <button
-          type="button"
-          className={sciClass}
-          onClick={() =>
-            setAngleMode((m) => (m === "deg" ? "rad" : "deg"))
-          }
-        >
-          {angleMode === "deg" ? "Deg" : "Rad"}
         </button>
       </div>
       <p
@@ -709,6 +923,273 @@ function ScientificCalculatorPanel({ theme }: { theme: "dark" | "light" }) {
         <button type="button" className={opClass} onClick={equals}>
           =
         </button>
+      </div>
+
+      <div
+        className={
+          theme === "light"
+            ? "border-t border-slate-200 pt-2"
+            : "border-t border-white/10 pt-2"
+        }
+      >
+        <button
+          type="button"
+          onClick={() => setShortcutsOpen((o) => !o)}
+          className={
+            theme === "light"
+              ? "w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-left text-[10px] font-medium text-slate-600 hover:bg-slate-100"
+              : "w-full rounded-lg border border-white/12 bg-white/[0.04] px-2 py-1.5 text-left text-[10px] font-medium text-white/55 hover:border-[#E8C84A]/35 hover:text-white/80"
+          }
+          aria-expanded={shortcutsOpen}
+        >
+          Keyboard shortcuts available
+          <span className="ml-1 text-[#E8C84A]" aria-hidden>
+            {shortcutsOpen ? "▾" : "▸"}
+          </span>
+        </button>
+        {shortcutsOpen ? (
+          <ul
+            className={
+              theme === "light"
+                ? "mt-2 space-y-1 text-left text-[10px] leading-relaxed text-slate-600"
+                : "mt-2 space-y-1 text-left text-[10px] leading-relaxed text-white/60"
+            }
+          >
+            <li>
+              <kbd
+                className={
+                  theme === "light"
+                    ? "rounded border border-slate-300 bg-slate-100 px-1 font-mono text-slate-800"
+                    : "rounded border border-white/20 px-1 font-mono text-white/80"
+                }
+              >
+                0–9
+              </kbd>{" "}
+              digits ·{" "}
+              <kbd
+                className={
+                  theme === "light"
+                    ? "rounded border border-slate-300 bg-slate-100 px-1 font-mono text-slate-800"
+                    : "rounded border border-white/20 px-1 font-mono text-white/80"
+                }
+              >
+                .
+              </kbd>{" "}
+              decimal
+            </li>
+            <li>
+              <kbd
+                className={
+                  theme === "light"
+                    ? "rounded border border-slate-300 bg-slate-100 px-1 font-mono text-slate-800"
+                    : "rounded border border-white/20 px-1 font-mono text-white/80"
+                }
+              >
+                +
+              </kbd>{" "}
+              <kbd
+                className={
+                  theme === "light"
+                    ? "rounded border border-slate-300 bg-slate-100 px-1 font-mono text-slate-800"
+                    : "rounded border border-white/20 px-1 font-mono text-white/80"
+                }
+              >
+                −
+              </kbd>{" "}
+              <kbd
+                className={
+                  theme === "light"
+                    ? "rounded border border-slate-300 bg-slate-100 px-1 font-mono text-slate-800"
+                    : "rounded border border-white/20 px-1 font-mono text-white/80"
+                }
+              >
+                *
+              </kbd>{" "}
+              <kbd
+                className={
+                  theme === "light"
+                    ? "rounded border border-slate-300 bg-slate-100 px-1 font-mono text-slate-800"
+                    : "rounded border border-white/20 px-1 font-mono text-white/80"
+                }
+              >
+                /
+              </kbd>{" "}
+              operations (numpad too)
+            </li>
+            <li>
+              <kbd
+                className={
+                  theme === "light"
+                    ? "rounded border border-slate-300 bg-slate-100 px-1 font-mono text-slate-800"
+                    : "rounded border border-white/20 px-1 font-mono text-white/80"
+                }
+              >
+                Enter
+              </kbd>{" "}
+              or{" "}
+              <kbd
+                className={
+                  theme === "light"
+                    ? "rounded border border-slate-300 bg-slate-100 px-1 font-mono text-slate-800"
+                    : "rounded border border-white/20 px-1 font-mono text-white/80"
+                }
+              >
+                =
+              </kbd>{" "}
+              calculate
+            </li>
+            <li>
+              <kbd
+                className={
+                  theme === "light"
+                    ? "rounded border border-slate-300 bg-slate-100 px-1 font-mono text-slate-800"
+                    : "rounded border border-white/20 px-1 font-mono text-white/80"
+                }
+              >
+                Backspace
+              </kbd>{" "}
+              delete last digit ·{" "}
+              <kbd
+                className={
+                  theme === "light"
+                    ? "rounded border border-slate-300 bg-slate-100 px-1 font-mono text-slate-800"
+                    : "rounded border border-white/20 px-1 font-mono text-white/80"
+                }
+              >
+                Esc
+              </kbd>{" "}
+              clear (C)
+            </li>
+            <li>
+              <kbd
+                className={
+                  theme === "light"
+                    ? "rounded border border-slate-300 bg-slate-100 px-1 font-mono text-slate-800"
+                    : "rounded border border-white/20 px-1 font-mono text-white/80"
+                }
+              >
+                (
+              </kbd>{" "}
+              <kbd
+                className={
+                  theme === "light"
+                    ? "rounded border border-slate-300 bg-slate-100 px-1 font-mono text-slate-800"
+                    : "rounded border border-white/20 px-1 font-mono text-white/80"
+                }
+              >
+                )
+              </kbd>{" "}
+              parentheses on expression line
+            </li>
+            <li
+              className={
+                theme === "light"
+                  ? "pt-1 font-medium text-amber-800"
+                  : "pt-1 text-[#E8C84A]/90"
+              }
+            >
+              Scientific (click inside calculator first):
+            </li>
+            <li>
+              <kbd
+                className={
+                  theme === "light"
+                    ? "rounded border border-slate-300 bg-slate-100 px-1 font-mono text-slate-800"
+                    : "rounded border border-white/20 px-1 font-mono text-white/80"
+                }
+              >
+                S
+              </kbd>{" "}
+              sin ·{" "}
+              <kbd
+                className={
+                  theme === "light"
+                    ? "rounded border border-slate-300 bg-slate-100 px-1 font-mono text-slate-800"
+                    : "rounded border border-white/20 px-1 font-mono text-white/80"
+                }
+              >
+                C
+              </kbd>{" "}
+              cos ·{" "}
+              <kbd
+                className={
+                  theme === "light"
+                    ? "rounded border border-slate-300 bg-slate-100 px-1 font-mono text-slate-800"
+                    : "rounded border border-white/20 px-1 font-mono text-white/80"
+                }
+              >
+                T
+              </kbd>{" "}
+              tan
+            </li>
+            <li>
+              <kbd
+                className={
+                  theme === "light"
+                    ? "rounded border border-slate-300 bg-slate-100 px-1 font-mono text-slate-800"
+                    : "rounded border border-white/20 px-1 font-mono text-white/80"
+                }
+              >
+                L
+              </kbd>{" "}
+              log ·{" "}
+              <kbd
+                className={
+                  theme === "light"
+                    ? "rounded border border-slate-300 bg-slate-100 px-1 font-mono text-slate-800"
+                    : "rounded border border-white/20 px-1 font-mono text-white/80"
+                }
+              >
+                N
+              </kbd>{" "}
+              ln
+            </li>
+            <li>
+              <kbd
+                className={
+                  theme === "light"
+                    ? "rounded border border-slate-300 bg-slate-100 px-1 font-mono text-slate-800"
+                    : "rounded border border-white/20 px-1 font-mono text-white/80"
+                }
+              >
+                R
+              </kbd>{" "}
+              √ ·{" "}
+              <kbd
+                className={
+                  theme === "light"
+                    ? "rounded border border-slate-300 bg-slate-100 px-1 font-mono text-slate-800"
+                    : "rounded border border-white/20 px-1 font-mono text-white/80"
+                }
+              >
+                ^
+              </kbd>{" "}
+              xⁿ (power)
+            </li>
+            <li>
+              <kbd
+                className={
+                  theme === "light"
+                    ? "rounded border border-slate-300 bg-slate-100 px-1 font-mono text-slate-800"
+                    : "rounded border border-white/20 px-1 font-mono text-white/80"
+                }
+              >
+                P
+              </kbd>{" "}
+              π ·{" "}
+              <kbd
+                className={
+                  theme === "light"
+                    ? "rounded border border-slate-300 bg-slate-100 px-1 font-mono text-slate-800"
+                    : "rounded border border-white/20 px-1 font-mono text-white/80"
+                }
+              >
+                E
+              </kbd>{" "}
+              e (not during EE entry)
+            </li>
+          </ul>
+        ) : null}
       </div>
     </div>
   );
@@ -1565,7 +2046,10 @@ export function FloatingCalculatorWidget() {
               </button>
             ))}
           </div>
-          <div className="max-h-[min(72vh,32rem)] overflow-y-auto p-4 text-sm">
+          <div
+            id={FLOATING_CALC_PANEL_ID}
+            className="max-h-[min(72vh,32rem)] overflow-y-auto p-4 text-sm"
+          >
             {tab === "calc" ? <StandardCalculatorPanel theme={theme} /> : null}
             {tab === "sci" ? <ScientificCalculatorPanel theme={theme} /> : null}
             {tab === "ohm" ? <OhmLawPanel theme={theme} /> : null}

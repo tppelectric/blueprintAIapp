@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { useUserRole } from "@/hooks/use-user-role";
 
 const TOOL_LINKS: { href: string; label: string }[] = [
   { href: "/tools/project-describer", label: "AI Project Describer" },
@@ -25,11 +26,16 @@ export function HeaderToolsMenu({
   activeClassName: string;
 }) {
   const pathname = usePathname() ?? "";
+  const { role, loading: roleLoading } = useUserRole();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
+  const showUserManagement = !roleLoading && role === "super_admin";
+
   const toolsPathActive =
-    pathname.startsWith("/tools") || pathname.startsWith("/customers");
+    pathname.startsWith("/tools") ||
+    pathname.startsWith("/customers") ||
+    pathname.startsWith("/admin");
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -104,6 +110,23 @@ export function HeaderToolsMenu({
         >
           All tools hub →
         </Link>
+        {showUserManagement ? (
+          <>
+            <div className="mx-2 border-t border-white/10" />
+            <Link
+              href="/admin/users"
+              role="menuitem"
+              className={`block px-4 py-2.5 text-sm transition-colors duration-200 hover:bg-white/10 ${
+                pathname.startsWith("/admin")
+                  ? "bg-[#E8C84A]/15 font-semibold text-[#E8C84A]"
+                  : "text-white/90"
+              }`}
+              onClick={() => setOpen(false)}
+            >
+              ⚙️ User Management
+            </Link>
+          </>
+        ) : null}
       </div>
     </div>
   );

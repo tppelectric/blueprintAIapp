@@ -17,6 +17,16 @@ export const metadata: Metadata = {
   title: "Blueprint AI — Electrical Takeoff System",
   description:
     "Blueprint AI helps electrical contractors plan takeoffs from project drawings.",
+  manifest: "/manifest.json",
+  themeColor: "#0a1628",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Blueprint AI",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
 };
 
 export default function RootLayout({

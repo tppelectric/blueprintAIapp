@@ -2,6 +2,7 @@ import Link from "next/link";
 import { HomeMarketingHeader } from "@/components/home-marketing-header";
 import { HomeWeatherWidget } from "@/components/home-weather-widget";
 import { HomepageApiUsageWidget } from "@/components/homepage-api-usage-widget";
+import { PwaInstallBanners } from "@/components/pwa-install-banners";
 
 function LightningIcon({ className }: { className?: string }) {
   return (
@@ -349,6 +350,8 @@ export default function Home() {
           </div>
         </footer>
       </main>
+
+      <PwaInstallBanners />
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { TppLogoPill } from "@/components/tpp-logo-pill";
 import { TPP_COMPANY_FULL, TPP_TAGLINE } from "@/lib/tpp-branding";
 import { AppMobileNavButton } from "@/components/app-mobile-nav";
+import { useUserRole } from "@/hooks/use-user-role";
 
 export type NavKey = "dashboard" | "jobs" | "customers" | "upload";
 
@@ -28,6 +29,8 @@ export function WideAppHeader({
   extraLinks?: ReactNode;
 }) {
   const pathname = usePathname() ?? "";
+  const { role, loading: roleLoading } = useUserRole();
+  const showAdminUsersNav = !roleLoading && role === "super_admin";
 
   const homeActive = pathname === "/";
   const dashActive =
@@ -36,6 +39,7 @@ export function WideAppHeader({
   const custActive =
     active === "customers" || pathname.startsWith("/customers");
   const uploadActive = active === "upload" || pathname === "/upload";
+  const adminUsersActive = pathname.startsWith("/admin");
 
   const navItems = (
     <>
@@ -68,6 +72,15 @@ export function WideAppHeader({
         </Link>
       )}
       <HeaderToolsMenu idleClassName={NAV_IDLE} activeClassName={NAV_ACTIVE} />
+      {showAdminUsersNav ? (
+        adminUsersActive ? (
+          <span className={NAV_ACTIVE}>User Management</span>
+        ) : (
+          <Link href="/admin/users" className={NAV_IDLE}>
+            User Management
+          </Link>
+        )
+      ) : null}
       {uploadActive ? (
         <span className={NAV_ACTIVE}>Upload</span>
       ) : (

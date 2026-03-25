@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "@/lib/theme-context";
 
 type Tab = "calc" | "sci" | "ohm" | "power" | "units";
@@ -39,10 +39,13 @@ function factorialInt(n: number): number {
 }
 
 /** Scientific tab: gold keys, white numbers, navy utilities — matches widget theme. */
+const FLOATING_CALC_PANEL_ID = "floating-calc-panel";
+
 function ScientificCalculatorPanel({ theme }: { theme: "dark" | "light" }) {
   const [angleMode, setAngleMode] = useState<"deg" | "rad">("deg");
   const [memory, setMemory] = useState(0);
   const [history, setHistory] = useState<string[]>([]);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   const [display, setDisplay] = useState("0");
   const [acc, setAcc] = useState<number | null>(null);

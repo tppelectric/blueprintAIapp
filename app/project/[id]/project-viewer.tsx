@@ -67,6 +67,11 @@ import { ScanHistoryPanel } from "./scan-history-panel";
 import { RoomScanRecallModal } from "./room-scan-recall-modal";
 import { ProjectRoomScanDialog } from "@/components/project-room-scan-dialog";
 import { SymbolLegendPanel } from "./symbol-legend-panel";
+import {
+  clearLegendScanPref,
+  getLegendScanPref,
+  setLegendScanPref,
+} from "@/lib/legend-scan-prefs";
 import { TakeoffExportDialog } from "./takeoff-export-dialog";
 import { ScanModeDialog } from "./scan-mode-dialog";
 import { LinkToJobDialog } from "@/components/link-to-job-dialog";
@@ -702,7 +707,12 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const [roomAssignmentView, setRoomAssignmentView] = useState(false);
 
   const [legendStatus, setLegendStatus] = useState<
-    "idle" | "checking" | "scanning" | "ready" | "error"
+    | "idle"
+    | "checking"
+    | "scanning"
+    | "ready"
+    | "error"
+    | "needs_prompt"
   >("idle");
   const [legendMeta, setLegendMeta] = useState<{
     found: boolean;
@@ -713,7 +723,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const [projectSymbols, setProjectSymbols] = useState<ProjectSymbolRow[]>([]);
   const [legendError, setLegendError] = useState<string | null>(null);
   const [legendPanelOpen, setLegendPanelOpen] = useState(false);
-  const [legendRunId, setLegendRunId] = useState(0);
   const [legendManualRescanBusy, setLegendManualRescanBusy] = useState(false);
   const [symbolCaptureSuccessBanner, setSymbolCaptureSuccessBanner] = useState<
     string | null
@@ -825,7 +834,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     setProjectSymbols([]);
     setLegendError(null);
     setLegendPanelOpen(false);
-    setLegendRunId(0);
     setScanHistoryOpen(false);
     setTargetResult(null);
     setTargetDialogOpen(false);
@@ -1622,64 +1630,17 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           return;
         }
 
-        setLegendStatus("scanning");
-        const pageImages: string[] = [];
-        for (let p = 1; p <= numPages; p++) {
-          const mapped = globalPageToLocal(p, pdfDocs);
-          if (!mapped) continue;
-          const { base64: b64 } = await renderPdfPageToPngBase64(
-            mapped.doc,
-            mapped.localPage,
-            LEGEND_PAGE_RENDER,
-          );
-          if (cancelled) return;
-          pageImages.push(b64);
+        const pref = getLegendScanPref(projectId);
+        if (pref === "skip" || pref === "later") {
+          setLegendMeta(null);
+          setProjectSymbols([]);
+          setLegendStatus("idle");
+          return;
         }
 
-        const res = await fetch("/api/detect-legend", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectId, pageImages }),
-        });
-        const json = (await res.json()) as {
-          ok?: boolean;
-          error?: string;
-          primaryLegendPage?: number | null;
-          symbolCount?: number;
-          noteCount?: number;
-          totalRowCount?: number;
-          symbols?: ProjectSymbolRow[];
-        };
-        if (cancelled) return;
-        if (!res.ok) throw new Error(json.error ?? "Legend detection failed.");
-
-        const symRes2 = await fetch(
-          `/api/project-symbols?projectId=${encodeURIComponent(projectId)}`,
-        );
-        const symJson2 = (await symRes2.json()) as {
-          symbols?: ProjectSymbolRow[];
-          error?: string;
-        };
-        if (cancelled) return;
-        const rows = (
-          symRes2.ok && symJson2.symbols?.length
-            ? symJson2.symbols
-            : json.symbols ?? []
-        ) as ProjectSymbolRow[];
-        setProjectSymbols(rows);
-        const sym = rows.filter(isElectricalSymbolRow).length;
-        const notes = rows.length - sym;
-        const found = rows.length > 0;
-        const primary =
-          json.primaryLegendPage ??
-          (rows.length ? Math.min(...rows.map((r) => r.source_page)) : null);
-        setLegendMeta({
-          found,
-          primaryPage: found ? primary : null,
-          symbolCount: json.symbolCount ?? sym,
-          noteCount: json.noteCount ?? notes,
-        });
-        setLegendStatus("ready");
+        setLegendStatus("needs_prompt");
+        setLegendMeta(null);
+        setProjectSymbols([]);
       } catch (e) {
         if (!cancelled) {
           setLegendError(
@@ -1695,7 +1656,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [projectId, pdfDocs, numPages, pdfLoading, legendRunId]);
+  }, [projectId, pdfDocs, numPages, pdfLoading]);
 
   const runLegendRescan = useCallback(async (): Promise<number> => {
     const docs = pdfDocsRef.current;
@@ -1710,6 +1671,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     setSymbolCaptureSuccessBanner(null);
     setLegendManualRescanBusy(true);
     setLegendError(null);
+    setLegendStatus("scanning");
     try {
       const pageImages: string[] = [];
       for (let p = 1; p <= total; p++) {
@@ -1765,6 +1727,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         noteCount: json.noteCount ?? notes,
       });
       setLegendStatus("ready");
+      clearLegendScanPref(projectId);
       return json.totalRowCount ?? rows.length;
     } catch (e) {
       const msg =
@@ -5031,9 +4994,51 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                   className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-sky-300/40 border-t-sky-100"
                   aria-hidden
                 />
-                {legendManualRescanBusy
-                  ? "Re-scanning legend…"
-                  : "Scanning for symbol legend…"}
+                Scanning symbol legend…
+              </div>
+            ) : null}
+            {legendStatus === "needs_prompt" ? (
+              <div
+                className="flex shrink-0 flex-col gap-3 border-b border-amber-500/40 bg-amber-950/50 px-4 py-3 text-sm text-amber-50 sm:flex-row sm:items-center sm:justify-between"
+                role="region"
+                aria-label="Legend scan prompt"
+              >
+                <p className="min-w-0 font-medium">
+                  Blueprint symbol legend not yet scanned.
+                </p>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void runLegendRescan().catch(() => {
+                        /* error state set in runLegendRescan */
+                      });
+                    }}
+                    className="rounded-lg border border-amber-400/60 bg-amber-600/90 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-500"
+                  >
+                    Scan Legend Now
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLegendScanPref(projectId, "later");
+                      setLegendStatus("idle");
+                    }}
+                    className="rounded-lg border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/15"
+                  >
+                    Scan Later
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLegendScanPref(projectId, "skip");
+                      setLegendStatus("idle");
+                    }}
+                    className="rounded-lg border border-white/20 px-3 py-1.5 text-xs font-semibold text-white/80 hover:bg-white/10"
+                  >
+                    Skip
+                  </button>
+                </div>
               </div>
             ) : null}
             {legendStatus === "error" && legendError ? (
@@ -5041,7 +5046,11 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                 <p className="min-w-0">{legendError}</p>
                 <button
                   type="button"
-                  onClick={() => setLegendRunId((n) => n + 1)}
+                  onClick={() => {
+                    void runLegendRescan().catch(() => {
+                      /* handled */
+                    });
+                  }}
                   className="shrink-0 rounded-lg border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/15"
                 >
                   Retry
@@ -5233,6 +5242,19 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
               </div>
 
               <div className="flex w-full flex-wrap items-center justify-center gap-2 sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void runLegendRescan().catch(() => {
+                      /* legend error banner */
+                    });
+                  }}
+                  disabled={legendBusy || symbolToolboxBusy}
+                  title="Run AI symbol legend detection on all pages"
+                  className="rounded-lg border border-amber-500/45 bg-amber-950/40 px-3 py-2 text-sm font-semibold text-amber-100 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-amber-950/55"
+                >
+                  Scan legend
+                </button>
                 <button
                   type="button"
                   onClick={() => analyzeThisPage()}

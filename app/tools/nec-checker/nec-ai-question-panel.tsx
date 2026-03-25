@@ -2,7 +2,9 @@
 
 import { jsPDF } from "jspdf";
 import type { ReactNode } from "react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LinkToJobDialog } from "@/components/link-to-job-dialog";
+import { VoiceInputButton } from "@/components/voice-input-button";
 
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -361,7 +363,21 @@ export function NecAiQuestionPanel({
   const [lastQuestion, setLastQuestion] = useState<string | null>(null);
   const [rawAnswer, setRawAnswer] = useState<string | null>(null);
   const [copyMsg, setCopyMsg] = useState<string | null>(null);
+  const [jobLinkOpen, setJobLinkOpen] = useState(false);
   const askAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = sessionStorage.getItem("blueprint-nec-checker-prefill");
+      if (!raw) return;
+      const j = JSON.parse(raw) as { question?: string };
+      if (j.question?.trim()) setQInput(j.question.trim());
+      sessionStorage.removeItem("blueprint-nec-checker-prefill");
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const parsed = useMemo(() => {
     if (rawAnswer === null) return null;
@@ -417,36 +433,43 @@ export function NecAiQuestionPanel({
   }, [qInput, jurisdiction, necEdition]);
 
   return (
-    <section className="rounded-2xl border border-violet-500/25 bg-violet-950/20 p-6 print:border print:bg-white print:text-black">
-      <h2 className="text-lg font-semibold text-white print:text-black">
-        Ask Any NEC Code Question
-      </h2>
-      <p className="mt-1 text-sm text-violet-200/90 print:text-gray-800">
-        Powered by Claude AI — Always includes NEC article citations
+    <section className="rounded-xl border border-violet-500/30 bg-violet-950/25 p-5 print:border print:bg-white print:text-black md:p-6">
+      <p className="text-xs font-medium text-violet-200/85 print:text-gray-700">
+        Powered by Claude AI — NEC article citations included in answers
       </p>
-      <textarea
-        value={qInput}
-        onChange={(e) => setQInput(e.target.value)}
-        rows={5}
-        placeholder={
-          "Example: Does a bathroom need a dedicated circuit? What GFCI protection is required in a kitchen? What is the minimum service size for a new single family home in NY?"
-        }
-        className="mt-4 w-full resize-y rounded-xl border border-white/15 bg-[#0a1628] px-4 py-3 text-sm text-white placeholder:text-white/35 outline-none focus:ring-2 focus:ring-violet-500/40 print:border-gray-300 print:bg-white print:text-black"
-        disabled={loading}
-      />
-      <div className="mt-4 flex flex-wrap items-center gap-2">
+      <div className="mt-4 flex items-stretch gap-2">
+        <textarea
+          value={qInput}
+          onChange={(e) => setQInput(e.target.value)}
+          rows={4}
+          placeholder={
+            "Example: Does a bathroom need a dedicated circuit? What GFCI protection is required in a kitchen? What is the minimum service size for a new single family home in NY?"
+          }
+          className="min-h-[120px] min-w-0 flex-1 resize-y rounded-xl border-2 border-violet-400/35 bg-[#071422] px-4 py-3 text-sm leading-relaxed text-white placeholder:text-white/35 shadow-inner shadow-black/20 outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/35 print:border-gray-300 print:bg-white print:text-black md:text-base"
+          disabled={loading}
+        />
+        <div className="flex shrink-0 flex-col justify-start pt-1">
+          <VoiceInputButton
+            onAppend
+            placeholder="Voice"
+            disabled={loading}
+            onTranscript={(t) => setQInput((prev) => prev + t)}
+          />
+        </div>
+      </div>
+      <div className="mt-5 flex flex-wrap items-center gap-3">
         <button
           type="button"
           onClick={() => void ask()}
           disabled={loading || !qInput.trim()}
-          className="rounded-lg bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-45 print:bg-violet-800"
+          className="rounded-lg bg-violet-600 px-6 py-3 text-sm font-bold text-white shadow-md hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-45 print:bg-violet-800"
         >
           Ask Question
         </button>
         <button
           type="button"
           onClick={clearAll}
-          className="rounded-lg border border-violet-400/45 bg-transparent px-5 py-2.5 text-sm font-semibold text-violet-100 hover:bg-violet-500/15 print:border-violet-700 print:text-violet-950"
+          className="rounded-lg border border-violet-400/45 bg-transparent px-5 py-3 text-sm font-semibold text-violet-100 hover:bg-violet-500/15 print:border-violet-700 print:text-violet-950"
         >
           Clear
         </button>
@@ -531,6 +554,13 @@ export function NecAiQuestionPanel({
           <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-white/10 pt-4 print:border-gray-200">
             <button
               type="button"
+              onClick={() => setJobLinkOpen(true)}
+              className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-sky-500 print:bg-sky-800"
+            >
+              Save to Job
+            </button>
+            <button
+              type="button"
               onClick={async () => {
                 const text = buildNecAnswerClipboardText({
                   question: lastQuestion,
@@ -565,6 +595,19 @@ export function NecAiQuestionPanel({
             ) : null}
           </div>
         </div>
+      ) : null}
+
+      {lastQuestion && rawAnswer ? (
+        <LinkToJobDialog
+          open={jobLinkOpen}
+          onOpenChange={setJobLinkOpen}
+          necQuestionLink={{
+            question: lastQuestion,
+            answer: rawAnswer,
+            jurisdiction,
+            necEdition,
+          }}
+        />
       ) : null}
     </section>
   );

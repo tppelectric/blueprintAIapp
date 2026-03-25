@@ -85,10 +85,12 @@ export async function POST(request: Request) {
     body.floorCount <= 99
       ? body.floorCount
       : 1;
-  const scanLabel = body.scanLabel?.trim();
-  if (!scanLabel) {
-    return NextResponse.json({ error: "scanLabel is required." }, { status: 400 });
-  }
+  const scanLabel =
+    body.scanLabel?.trim() ||
+    `Room Scan - ${new Date().toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    })}`;
 
   let supabase;
   try {
@@ -114,6 +116,8 @@ export async function POST(request: Request) {
       floor_count: floorCount,
       scan_page: scanPage,
       scan_label: scanLabel,
+      equipment_suggestions_json: [],
+      scan_notes: "",
     })
     .select()
     .maybeSingle();

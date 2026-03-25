@@ -16,6 +16,9 @@ import {
   CLAUDE_OVERLOADED_USER_MESSAGE,
   withClaudeOverloadRetries,
 } from "@/lib/ai-api-retries";
+import { checkAiRouteRateLimit } from "@/lib/rate-limit";
+import { recordAnalyzePageApiUsage } from "@/lib/record-analyze-page-usage";
+import { imageBufferAppearsBlank } from "@/lib/analyze-page-image";
 
 export const maxDuration = 180;
 
@@ -28,6 +31,14 @@ const MODEL = "claude-sonnet-4-6";
 const STRICT_JSON_USER_ADDENDUM = `
 
 IMPORTANT: You MUST respond with valid JSON only: a single JSON object with keys "electrical_items" and "rooms" (both arrays). If the page has no electrical content at all, return {"electrical_items":[],"rooms":[]}. If the page has panel schedules, riser diagrams, specifications, tables, or other electrical text, you MUST extract them into electrical_items per the system instructions — do not return empty electrical_items in that case. Never respond with plain text, apologies, or markdown. Only the JSON object.`;
+
+function stripMarkdownCodeFences(text: string): string {
+  return text
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
 
 function claudeTextLooksLikeJson(text: string): boolean {
   const t = text.trim();
@@ -42,6 +53,122 @@ function tryExtractAnalyzePayload(
   } catch {
     return null;
   }
+}
+
+type ParsedAnalyzePayload = {
+  electrical_items: unknown[];
+  rooms: unknown[];
+};
+
+type ElectricalItemInsertRow = {
+  project_id: string;
+  page_number: number;
+  verification_status: string;
+  category: string;
+  description: string;
+  specification: string;
+  quantity: number;
+  unit: string;
+  confidence: number;
+  which_room: string;
+  raw_note: string | null;
+  gpt_count: null;
+  final_count: null;
+  verified_by: null;
+};
+
+type DetectedRoomInsertRow = {
+  project_id: string;
+  page_number: number;
+  room_name: string;
+  room_type: string;
+  width_ft: number | null;
+  length_ft: number | null;
+  sq_ft: number | null;
+  confidence: number;
+};
+
+function materializeElectricalItemRows(
+  projectId: string,
+  pageNumber: number,
+  payload: ParsedAnalyzePayload,
+): ElectricalItemInsertRow[] {
+  const rows: ElectricalItemInsertRow[] = [];
+  for (const entry of payload.electrical_items) {
+    if (!entry || typeof entry !== "object") continue;
+    const normalized = normalizeAnalysisItem(entry as IncomingItem);
+    if (normalized) {
+      rows.push({
+        project_id: projectId,
+        page_number: pageNumber,
+        ...normalized,
+        verification_status: "pending",
+        gpt_count: null,
+        final_count: null,
+        verified_by: null,
+      });
+    }
+  }
+  return rows;
+}
+
+function materializeRoomRows(
+  projectId: string,
+  pageNumber: number,
+  payload: ParsedAnalyzePayload,
+): DetectedRoomInsertRow[] {
+  const roomRows: DetectedRoomInsertRow[] = [];
+  for (const entry of payload.rooms) {
+    if (!entry || typeof entry !== "object") continue;
+    const nr = normalizeAnalysisRoom(entry as IncomingRoom);
+    if (nr)
+      roomRows.push({
+        project_id: projectId,
+        page_number: pageNumber,
+        ...nr,
+      });
+  }
+  return roomRows;
+}
+
+function aggressiveEmptyRetryUserText(pageNum: number): string {
+  return `I am looking at page ${pageNum} of an electrical blueprint. I need you to find ANYTHING electrical on this page.
+
+Please look for:
+- Any lines or symbols
+- Any text at all
+- Any numbers that could be circuit numbers
+- Any boxes that could be panels or devices
+- ANY marks whatsoever
+
+Even if you cannot identify what something is, describe it as a plan_note.
+
+You MUST return at least one item.
+Return everything you can see.
+
+Respond with ONLY valid JSON: one object with keys "electrical_items" and "rooms" (arrays) as specified in the system instructions.`;
+}
+
+function fallbackUnclearPlanNoteRow(
+  projectId: string,
+  pageNumber: number,
+): ElectricalItemInsertRow {
+  return {
+    project_id: projectId,
+    page_number: pageNumber,
+    verification_status: "pending",
+    category: "plan_note",
+    description: `Page ${pageNumber} - content unclear - please verify manually`,
+    specification: "",
+    quantity: 1,
+    unit: "NOTE",
+    confidence: 0.5,
+    which_room: "UNASSIGNED",
+    raw_note: null,
+    gpt_count: null,
+    final_count: null,
+    verified_by: null,
+  };
 }
 
 const SYSTEM_PROMPT = `You are a licensed electrical estimator with 20 years of experience reading commercial and residential electrical blueprints under NEC 2023. Analyze this blueprint page and identify ALL electrical elements.
@@ -126,6 +253,63 @@ If this page has more text than symbols:
 - Never return empty for a page with
   electrical text content
 
+DIFFICULT PAGE HANDLING:
+If symbols are small or densely packed:
+- Zoom into each quadrant mentally
+- Report items found in each area
+- Never return empty for a page with
+  visible electrical symbols
+
+If page appears to be a schedule:
+- Read every row of the schedule
+- Return each circuit as a plan_note
+- Include circuit number and description
+
+If page has non-standard symbols:
+- Describe what you see
+- Make best guess at item type
+- Flag with a low-but-valid confidence score in the 0.50–0.69 range (never below 0.50 or items may be discarded)
+- Never return empty
+
+If page is very dense:
+- Take multiple passes mentally
+- Report everything you can identify
+- Partial results are better than empty
+
+MINIMUM RESPONSE RULE:
+You must always return at least one item
+in electrical_items if the page contains ANY electrical content
+including text, symbols, schedules, or notes.
+If truly empty (no electrical content anywhere), return:
+{"electrical_items":[],"rooms":[]}
+and you may include an optional top-level "notes" array, e.g.
+["Page appears to have no electrical content"].
+
+ABSOLUTE RULE - NEVER RETURN EMPTY:
+You must return at least one item for
+any page that has electrical content.
+
+For pages with ONLY schedules or tables:
+- Read every single row
+- Each row becomes one plan_note item
+- description: exactly what the row says
+- category: plan_note
+- confidence: 0.90
+
+For pages with ONLY text/notes:
+- Each paragraph or note becomes one item
+- category: plan_note
+- confidence: 0.85
+
+For pages with small or unclear symbols:
+- Describe what you think you see
+- Use confidence 0.50-0.65
+- Include it anyway
+
+The only valid reason to return empty items
+is if the page is completely blank white
+with absolutely no marks whatsoever.
+
 COUNTING RULES - THIS IS CRITICAL:
 - Count every single symbol individually, one by one
 - Do not estimate or guess quantities
@@ -187,6 +371,17 @@ Return your complete response as a single JSON object with this exact shape (no 
 }`;
 
 export async function POST(request: Request) {
+  const rl = checkAiRouteRateLimit(request, "analyze-page");
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again shortly." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rl.retryAfterSeconds) },
+      },
+    );
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
@@ -201,6 +396,8 @@ export async function POST(request: Request) {
     imageBase64?: string;
     /** Client should send image/png or image/jpeg to match payload. */
     imageMediaType?: string;
+    /** Scan mode for api_usage cost row (quick | standard | deep). */
+    scanType?: string;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -234,7 +431,21 @@ export async function POST(request: Request) {
     );
   }
 
-  const decodedBytes = Buffer.from(imageBase64, "base64").length;
+  const imageBuffer = Buffer.from(imageBase64, "base64");
+  const decodedBytes = imageBuffer.length;
+  const b64Compact = imageBase64.replace(/\s/g, "");
+  const base64LooksValid = /^[A-Za-z0-9+/]+=*$/.test(b64Compact);
+  console.log("[analyze-page] image received:", {
+    pageNumber,
+    projectId,
+    decodedBytes,
+    incomingBase64Length: imageBase64.length,
+    base64CharsetOk: base64LooksValid,
+    mediaTypeHeader: body.imageMediaType ?? "(missing)",
+  });
+  if (decodedBytes === 0) {
+    console.warn("[analyze-page] decoded image is 0 bytes:", { pageNumber });
+  }
   if (decodedBytes > MAX_INCOMING_IMAGE_BYTES) {
     return NextResponse.json(
       {
@@ -245,9 +456,32 @@ export async function POST(request: Request) {
     );
   }
 
+  const rasterProbe = await imageBufferAppearsBlank(imageBuffer);
+  console.log("[analyze-page] raster blank check:", {
+    pageNumber,
+    blank: rasterProbe.blank,
+    width: rasterProbe.width,
+    height: rasterProbe.height,
+    sampleMean: rasterProbe.sampleMean,
+    sampleStd: rasterProbe.sampleStd,
+  });
+  if (rasterProbe.blank) {
+    return NextResponse.json(
+      { error: "Page appears to be blank", blankPage: true },
+      { status: 400 },
+    );
+  }
+
   const mediaTypeRaw = body.imageMediaType?.trim().toLowerCase();
   const claudeMediaType =
     mediaTypeRaw === "image/jpeg" ? "image/jpeg" : "image/png";
+  console.log("[analyze-page] Claude image media:", {
+    pageNumber,
+    raw: mediaTypeRaw ?? null,
+    sendingAs: claudeMediaType,
+    isJpeg: claudeMediaType === "image/jpeg",
+    isPng: claudeMediaType === "image/png",
+  });
 
   let legendAppendix = "";
   try {
@@ -280,7 +514,16 @@ No project-specific symbol legend is on file for this project — use standard N
     userText: string,
     imageB64: string,
     media: "image/png" | "image/jpeg",
+    callLabel: string,
   ): Promise<string> {
+    console.log("[analyze-page] Claude API call:", {
+      label: callLabel,
+      pageNumber,
+      projectId,
+      model: MODEL,
+      mediaType: media,
+      imageBase64CharLength: imageB64.length,
+    });
     const msg = await withClaudeOverloadRetries(() =>
       anthropic.messages.create({
         model: MODEL,
@@ -320,8 +563,14 @@ No project-specific symbol legend is on file for this project — use standard N
       baseUserText,
       imageBase64,
       claudeMediaType,
+      "primary",
     );
   } catch (e) {
+    console.error("[analyze-page] Claude primary call failed:", {
+      pageNumber,
+      projectId,
+      error: e instanceof Error ? e.message : String(e),
+    });
     const message =
       e instanceof Error ? e.message : "Claude API request failed.";
     const status =
@@ -329,13 +578,29 @@ No project-specific symbol legend is on file for this project — use standard N
     return NextResponse.json({ error: message }, { status });
   }
 
-  let payload: { electrical_items: unknown[]; rooms: unknown[] } | null = null;
+  console.log("[analyze-page] raw Claude response (first 500 chars):", {
+    pageNumber,
+    preview: assistantText1.slice(0, 500),
+    totalChars: assistantText1.length,
+  });
 
-  if (claudeTextLooksLikeJson(assistantText1)) {
-    payload = tryExtractAnalyzePayload(assistantText1);
+  let payload: { electrical_items: unknown[]; rooms: unknown[] } | null = null;
+  let claudeTurnsUsed = 1;
+
+  const cleanedText1 = stripMarkdownCodeFences(assistantText1);
+  if (claudeTextLooksLikeJson(cleanedText1)) {
+    payload = tryExtractAnalyzePayload(cleanedText1);
+  }
+  if (payload) {
+    console.log("[analyze-page] parsed payload (pre-strict-retry):", {
+      pageNumber,
+      electricalItemsCount: payload.electrical_items.length,
+      roomsCount: payload.rooms.length,
+    });
   }
 
   if (!payload) {
+    claudeTurnsUsed = 2;
     console.error(
       `[analyze-page] Claude response not usable as JSON (project=${projectId} page=${pageNumber}). Full response:\n${assistantText1}`,
     );
@@ -345,8 +610,13 @@ No project-specific symbol legend is on file for this project — use standard N
         baseUserText + STRICT_JSON_USER_ADDENDUM,
         imageBase64,
         claudeMediaType,
+        "strict-json-followup",
       );
     } catch (e) {
+      console.error("[analyze-page] Claude strict-json call failed:", {
+        pageNumber,
+        error: e instanceof Error ? e.message : String(e),
+      });
       const message =
         e instanceof Error ? e.message : "Claude API request failed.";
       const status =
@@ -354,13 +624,25 @@ No project-specific symbol legend is on file for this project — use standard N
       return NextResponse.json({ error: message }, { status });
     }
 
-    if (claudeTextLooksLikeJson(assistantText2)) {
-      payload = tryExtractAnalyzePayload(assistantText2);
+    console.log("[analyze-page] raw Claude response 2 (first 500 chars):", {
+      pageNumber,
+      preview: assistantText2.slice(0, 500),
+    });
+
+    const cleanedText2 = stripMarkdownCodeFences(assistantText2);
+    if (claudeTextLooksLikeJson(cleanedText2)) {
+      payload = tryExtractAnalyzePayload(cleanedText2);
     }
     if (!payload) {
       console.error(
         `[analyze-page] Second Claude attempt still not usable JSON (project=${projectId} page=${pageNumber}). Full response:\n${assistantText2}`,
       );
+      await recordAnalyzePageApiUsage({
+        projectId,
+        pageNumber,
+        scanType: body.scanType,
+        claudeTurns: claudeTurnsUsed,
+      });
       return NextResponse.json({
         items: [],
         rooms: [],
@@ -370,62 +652,123 @@ No project-specific symbol legend is on file for this project — use standard N
     }
   }
 
-  const rows: Array<{
-    project_id: string;
-    page_number: number;
-    verification_status: string;
-    category: string;
-    description: string;
-    specification: string;
-    quantity: number;
-    unit: string;
-    confidence: number;
-    which_room: string;
-    raw_note: string | null;
-    gpt_count: null;
-    final_count: null;
-    verified_by: null;
-  }> = [];
+  let rows = materializeElectricalItemRows(projectId, pageNumber, payload);
+  let roomRows = materializeRoomRows(projectId, pageNumber, payload);
 
-  for (const entry of payload.electrical_items) {
-    if (!entry || typeof entry !== "object") continue;
-    const normalized = normalizeAnalysisItem(entry as IncomingItem);
-    if (normalized) {
-      rows.push({
-        project_id: projectId,
-        page_number: pageNumber,
-        ...normalized,
-        verification_status: "pending",
-        gpt_count: null,
-        final_count: null,
-        verified_by: null,
+  console.log("[analyze-page] materialized rows (after normalize):", {
+    pageNumber,
+    itemRows: rows.length,
+    roomRows: roomRows.length,
+    rawPayloadItems: payload.electrical_items.length,
+    imageBytes: decodedBytes,
+    claudeTurnsUsed,
+  });
+
+  if (rows.length === 0 && !rasterProbe.blank) {
+    const aggressiveUser = aggressiveEmptyRetryUserText(pageNumber);
+    console.log("[analyze-page] starting aggressive empty-items retry:", {
+      pageNumber,
+    });
+    let retryText: string;
+    try {
+      retryText = await runClaudeTurn(
+        aggressiveUser,
+        imageBase64,
+        claudeMediaType,
+        "aggressive-retry",
+      );
+      claudeTurnsUsed += 1;
+    } catch (e) {
+      console.error("[analyze-page] aggressive retry Claude failed:", {
+        pageNumber,
+        error: e instanceof Error ? e.message : String(e),
       });
+      const message =
+        e instanceof Error ? e.message : "Claude API request failed.";
+      const status =
+        message === CLAUDE_OVERLOADED_USER_MESSAGE ? 503 : 502;
+      return NextResponse.json({ error: message }, { status });
+    }
+
+    console.log("[analyze-page] aggressive retry raw (first 500 chars):", {
+      pageNumber,
+      preview: retryText.slice(0, 500),
+    });
+
+    const cleanedRetryText = stripMarkdownCodeFences(retryText);
+    let retryPayload: ParsedAnalyzePayload | null = claudeTextLooksLikeJson(
+      cleanedRetryText,
+    )
+      ? tryExtractAnalyzePayload(cleanedRetryText)
+      : null;
+
+    if (!retryPayload) {
+      let assistantRetry2: string;
+      try {
+        assistantRetry2 = await runClaudeTurn(
+          aggressiveUser + STRICT_JSON_USER_ADDENDUM,
+          imageBase64,
+          claudeMediaType,
+          "aggressive-strict-json",
+        );
+        claudeTurnsUsed += 1;
+      } catch (e) {
+        console.error("[analyze-page] aggressive strict-json failed:", {
+          pageNumber,
+          error: e instanceof Error ? e.message : String(e),
+        });
+        const message =
+          e instanceof Error ? e.message : "Claude API request failed.";
+        const status =
+          message === CLAUDE_OVERLOADED_USER_MESSAGE ? 503 : 502;
+        return NextResponse.json({ error: message }, { status });
+      }
+      console.log("[analyze-page] aggressive strict raw (first 500 chars):", {
+        pageNumber,
+        preview: assistantRetry2.slice(0, 500),
+      });
+      const cleanedRetry2 = stripMarkdownCodeFences(assistantRetry2);
+      if (claudeTextLooksLikeJson(cleanedRetry2)) {
+        retryPayload = tryExtractAnalyzePayload(cleanedRetry2);
+      }
+    }
+
+    if (retryPayload) {
+      payload = retryPayload;
+      rows = materializeElectricalItemRows(projectId, pageNumber, retryPayload);
+      roomRows = materializeRoomRows(projectId, pageNumber, retryPayload);
+    }
+
+    console.log(
+      "[analyze-page] Page",
+      pageNumber + " (aggressive retry, same image):",
+      "items found:",
+      rows.length,
+      "rooms:",
+      roomRows.length,
+      "image size:",
+      decodedBytes,
+      "attempt:",
+      claudeTurnsUsed,
+    );
+
+    if (rows.length === 0) {
+      rows = [fallbackUnclearPlanNoteRow(projectId, pageNumber)];
+      console.log(
+        "[analyze-page] Page",
+        pageNumber + ":",
+        "inserting fallback plan_note (still no items after retry)",
+      );
     }
   }
 
-  const roomRows: Array<{
-    project_id: string;
-    page_number: number;
-    room_name: string;
-    room_type: string;
-    width_ft: number | null;
-    length_ft: number | null;
-    sq_ft: number | null;
-    confidence: number;
-  }> = [];
-
-  for (const entry of payload.rooms) {
-    if (!entry || typeof entry !== "object") continue;
-    const nr = normalizeAnalysisRoom(entry as IncomingRoom);
-    if (nr)
-      roomRows.push({
-        project_id: projectId,
-        page_number: pageNumber,
-        ...nr,
-      });
-  }
-
   if (rows.length === 0 && roomRows.length === 0) {
+    await recordAnalyzePageApiUsage({
+      projectId,
+      pageNumber,
+      scanType: body.scanType,
+      claudeTurns: claudeTurnsUsed,
+    });
     return NextResponse.json({
       items: [],
       rooms: [],
@@ -455,6 +798,10 @@ No project-specific symbol legend is on file for this project — use standard N
     .eq("page_number", pageNumber);
 
   if (delRoomErr) {
+    console.error("[analyze-page] detected_rooms delete failed:", {
+      pageNumber,
+      message: delRoomErr.message,
+    });
     return NextResponse.json(
       {
         error: delRoomErr.message,
@@ -471,6 +818,10 @@ No project-specific symbol legend is on file for this project — use standard N
     .eq("page_number", pageNumber);
 
   if (delItemErr) {
+    console.error("[analyze-page] electrical_items delete failed:", {
+      pageNumber,
+      message: delItemErr.message,
+    });
     return NextResponse.json(
       {
         error: delItemErr.message,
@@ -488,6 +839,10 @@ No project-specific symbol legend is on file for this project — use standard N
       .select();
 
     if (error) {
+      console.error("[analyze-page] electrical_items insert failed:", {
+        pageNumber,
+        message: error.message,
+      });
       return NextResponse.json(
         {
           error: error.message,
@@ -530,6 +885,10 @@ No project-specific symbol legend is on file for this project — use standard N
       rooms_snapshot: insertedRooms,
       total_items: rows.length,
       notes: null,
+      scan_mode:
+        typeof body.scanType === "string" && body.scanType.trim()
+          ? body.scanType.trim()
+          : null,
     });
     if (scanErr) {
       console.error(
@@ -543,6 +902,13 @@ No project-specific symbol legend is on file for this project — use standard N
   } catch (e) {
     console.error("[analyze-page] saved_scans insert exception:", e);
   }
+
+  await recordAnalyzePageApiUsage({
+    projectId,
+    pageNumber,
+    scanType: body.scanType,
+    claudeTurns: claudeTurnsUsed,
+  });
 
   return NextResponse.json({
     items: insertedItems,

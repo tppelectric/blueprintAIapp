@@ -19,10 +19,14 @@ export const JOB_STATUSES = [
 export type JobAttachmentType =
   | "blueprint_project"
   | "wifi_calculation"
+  | "av_calculation"
+  | "smarthome_calculation"
+  | "electrical_calculation"
   | "load_calculation"
   | "nec_checklist"
   | "project_breakdown"
-  | "takeoff";
+  | "takeoff"
+  | "plan_scan_import";
 
 export type CustomerRow = {
   id: string;
@@ -64,18 +68,26 @@ export type JobListRow = {
   status: string;
   job_type: string;
   updated_at: string;
+  created_at?: string;
+  customer_id?: string | null;
   address?: string | null;
   city?: string | null;
   state?: string | null;
   zip?: string | null;
+  description?: string | null;
+  notes?: string | null;
   customers?: Pick<CustomerRow, "company_name" | "contact_name"> | null;
 };
 
 export type JobAttachmentRow = {
   id: string;
-  job_id: string;
+  job_id: string | null;
   attachment_type: string;
   attachment_id: string;
   label: string | null;
   created_at: string;
+  blueprint_project_id?: string | null;
+  tool_slug?: string | null;
+  import_summary?: unknown;
+  imported_at?: string | null;
 };

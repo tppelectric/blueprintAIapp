@@ -4,6 +4,8 @@ import Link from "next/link";
 import { DashboardApiUsageCard } from "@/components/dashboard-api-usage-card";
 import { WideAppHeader } from "@/components/wide-app-header";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ProjectScansSummary } from "@/lib/project-scans-types";
+import { formatPlanScanRelativeDate } from "@/lib/scan-import-from-plans";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { fetchBlueprintSignedUrl } from "@/lib/fetch-blueprint-signed-url";
 import { getPdfjs } from "@/lib/pdfjs-worker";
@@ -227,6 +229,9 @@ export function DashboardClient() {
   const [deleteTarget, setDeleteTarget] = useState<ProjectRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [recentJobs, setRecentJobs] = useState<JobListRow[]>([]);
+  const [scanSummaries, setScanSummaries] = useState<
+    Record<string, ProjectScansSummary>
+  >({});
   const savedTimerRef = useRef<number | null>(null);
   const editShellRef = useRef<HTMLElement | null>(null);
 
@@ -235,6 +240,15 @@ export function DashboardClient() {
     setError(null);
     try {
       const supabase = createBrowserClient();
+
+      await supabase.auth.getSession();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (process.env.NODE_ENV === "development") {
+        console.log("Current user:", user);
+      }
+
       const { data, error: qError } = await supabase
         .from("projects")
         .select(
@@ -243,6 +257,9 @@ export function DashboardClient() {
         .order("created_at", { ascending: false });
 
       if (qError) {
+        if (process.env.NODE_ENV === "development") {
+          console.error("[dashboard] projects query:", qError.message, qError);
+        }
         setError(qError.message);
         setProjects([]);
         return;
@@ -258,13 +275,17 @@ export function DashboardClient() {
           .order("updated_at", { ascending: false })
           .limit(5);
         if (jErr) {
-          console.warn("[dashboard] jobs query:", jErr.message);
+          if (process.env.NODE_ENV === "development") {
+            console.warn("[dashboard] jobs query:", jErr.message);
+          }
           setRecentJobs([]);
         } else {
           setRecentJobs((jData ?? []) as unknown as JobListRow[]);
         }
       } catch (je) {
-        console.warn("[dashboard] jobs load failed:", je);
+        if (process.env.NODE_ENV === "development") {
+          console.warn("[dashboard] jobs load failed:", je);
+        }
         setRecentJobs([]);
       }
     } catch (e) {
@@ -280,6 +301,22 @@ export function DashboardClient() {
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  useEffect(() => {
+    const supabase = createBrowserClient();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (
+        event === "SIGNED_IN" ||
+        event === "SIGNED_OUT" ||
+        event === "USER_UPDATED"
+      ) {
+        void load();
+      }
+    });
+    return () => subscription.unsubscribe();
   }, [load]);
 
   useEffect(() => {
@@ -312,6 +349,31 @@ export function DashboardClient() {
       cancelled = true;
     };
   }, [load]);
+
+  useEffect(() => {
+    if (!projects.length) {
+      setScanSummaries({});
+      return;
+    }
+    let cancelled = false;
+    const ids = projects.map((p) => p.id).join(",");
+    void (async () => {
+      try {
+        const r = await fetch(
+          `/api/project-scans/batch?ids=${encodeURIComponent(ids)}`,
+        );
+        const j = (await r.json()) as {
+          summaries?: Record<string, ProjectScansSummary>;
+        };
+        if (!cancelled) setScanSummaries(j.summaries ?? {});
+      } catch {
+        if (!cancelled) setScanSummaries({});
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projects]);
 
   useEffect(() => {
     if (!flashMessage) return;
@@ -408,7 +470,7 @@ export function DashboardClient() {
     <div className="dashboard-root flex min-h-screen flex-col">
       <WideAppHeader active="dashboard" showTppSubtitle />
 
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 py-10 sm:py-12">
+      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 py-8 sm:px-6 sm:py-12">
         {flashMessage ? (
           <div
             className="flash-banner-ok mt-6 rounded-xl px-4 py-3 text-sm font-medium"
@@ -418,9 +480,9 @@ export function DashboardClient() {
           </div>
         ) : null}
 
-        <div className="flex w-full min-w-0 flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0 shrink-0 lg:max-w-[min(100%,28rem)]">
-            <h1 className="border-l-4 border-[#E8C84A] pl-4 text-3xl font-semibold tracking-tight text-[var(--foreground)] sm:text-4xl">
+        <div className="flex w-full min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+          <div className="min-w-0 shrink-0 sm:max-w-[min(100%,28rem)]">
+            <h1 className="border-l-4 border-[#E8C84A] pl-3 text-2xl font-semibold tracking-tight text-[var(--foreground)] sm:pl-4 sm:text-3xl md:text-4xl">
               My Projects
             </h1>
             {monthUsage && monthUsage.pages > 0 ? (
@@ -433,16 +495,19 @@ export function DashboardClient() {
               </p>
             ) : null}
           </div>
-          <div className="flex min-w-0 flex-1 flex-wrap items-center justify-start gap-2 lg:justify-end">
-            <Link href="/jobs" className="dash-header-btn shrink-0">
+          <div className="grid min-w-0 w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-1 sm:flex-wrap sm:justify-end">
+            <Link href="/jobs" className="dash-header-btn shrink-0 justify-center">
               Jobs
             </Link>
-            <Link href="/customers" className="dash-header-btn shrink-0">
+            <Link
+              href="/customers"
+              className="dash-header-btn shrink-0 justify-center"
+            >
               Customers
             </Link>
             <Link
               href="/tools"
-              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-[#E8C84A]/40 bg-[#E8C84A]/10 px-4 py-2.5 text-sm font-semibold text-[#E8C84A] transition-colors hover:bg-[#E8C84A]/20"
+              className="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-lg border border-[#E8C84A]/40 bg-[#E8C84A]/10 px-4 py-2.5 text-sm font-semibold text-[#E8C84A] transition-colors hover:bg-[#E8C84A]/20"
             >
               Tools
             </Link>
@@ -477,6 +542,30 @@ export function DashboardClient() {
               Wi-Fi Analyzer
             </Link>
             <Link
+              href="/tools/av-analyzer"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-rose-500/45 bg-rose-950/35 px-4 py-2.5 text-sm font-semibold text-rose-100 transition-colors hover:border-[#E8C84A]/60 hover:bg-rose-950/50"
+            >
+              AV Analyzer
+            </Link>
+            <Link
+              href="/tools/smarthome-analyzer"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-cyan-500/45 bg-cyan-950/30 px-4 py-2.5 text-sm font-semibold text-cyan-100 transition-colors hover:border-[#E8C84A]/60 hover:bg-cyan-950/45"
+            >
+              Smart Home
+            </Link>
+            <Link
+              href="/tools/electrical-analyzer"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-lime-500/45 bg-lime-950/25 px-4 py-2.5 text-sm font-semibold text-lime-100 transition-colors hover:border-[#E8C84A]/60 hover:bg-lime-950/40"
+            >
+              Electrical Analyzer
+            </Link>
+            <Link
+              href="/tools/project-describer"
+              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-fuchsia-500/45 bg-fuchsia-950/30 px-4 py-2.5 text-sm font-semibold text-fuchsia-100 transition-colors hover:border-[#E8C84A]/60 hover:bg-fuchsia-950/45"
+            >
+              AI Describer
+            </Link>
+            <Link
               href="/upload"
               className="inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-white px-5 py-2.5 text-sm font-semibold text-[#0a1628] shadow-sm transition-colors hover:border-[#E8C84A] hover:bg-[#f0d56e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/80"
             >
@@ -485,7 +574,9 @@ export function DashboardClient() {
           </div>
         </div>
 
-        <DashboardApiUsageCard />
+        <div className="w-full min-w-0">
+          <DashboardApiUsageCard />
+        </div>
 
         {loading && (
           <div
@@ -562,7 +653,7 @@ export function DashboardClient() {
         )}
 
         {!loading && !error && projects.length > 0 && (
-          <ul className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
             {projects.map((p) => {
               const thumbPath = firstSheetStoragePath(p);
               return (
@@ -622,7 +713,7 @@ export function DashboardClient() {
                           </button>
                         </div>
                       ) : (
-                        <h2 className="text-lg font-semibold leading-snug text-white">
+                        <h2 className="text-lg font-semibold leading-snug text-[var(--foreground)]">
                           {cardTitle(p)}
                         </h2>
                       )}
@@ -657,36 +748,80 @@ export function DashboardClient() {
                       </span>
                     </div>
                   </div>
-                  <dl className="mt-4 space-y-2 text-sm text-white/65">
+                  <dl className="dash-muted mt-4 space-y-2 text-sm">
                     <div className="flex justify-between gap-4">
                       <dt>Sheets</dt>
-                      <dd className="text-right text-white/85">
+                      <dd className="text-right text-[var(--foreground)]">
                         {sheetCountLabel(p)}
                       </dd>
                     </div>
                     <div className="flex justify-between gap-4">
                       <dt>Total pages</dt>
-                      <dd className="text-right tabular-nums text-white/85">
+                      <dd className="text-right tabular-nums text-[var(--foreground)]">
                         {totalPagesLabel(p)}
                       </dd>
                     </div>
                     <div className="flex justify-between gap-4">
                       <dt>Uploaded</dt>
-                      <dd className="text-right text-white/85">
+                      <dd className="text-right text-[var(--foreground)]">
                         {formatUploadDate(p.created_at)}
                       </dd>
                     </div>
                     <div className="flex justify-between gap-4">
                       <dt>Size</dt>
-                      <dd className="text-right tabular-nums text-white/85">
+                      <dd className="text-right tabular-nums text-[var(--foreground)]">
                         {formatFileSize(p.file_size)}
                       </dd>
                     </div>
                   </dl>
+                  {scanSummaries[p.id] ? (
+                    <div className="mt-4 space-y-2 border-t border-[var(--border)] pt-4">
+                      <div className="flex flex-wrap gap-2">
+                        <Link
+                          href={`/project/${p.id}?scanFocus=room`}
+                          className={[
+                            "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition-colors",
+                            scanSummaries[p.id]!.hasRoomScan
+                              ? "bg-emerald-500/15 text-emerald-200 ring-emerald-500/40 hover:bg-emerald-500/25"
+                              : "bg-[var(--surface-elevated)] text-[var(--foreground)]/50 ring-[var(--border)]",
+                          ].join(" ")}
+                          title={
+                            scanSummaries[p.id]!.hasRoomScan
+                              ? "Open room scan"
+                              : "No room scan yet"
+                          }
+                        >
+                          📋 Room Scan
+                        </Link>
+                        <Link
+                          href={`/project/${p.id}?scanFocus=electrical`}
+                          className={[
+                            "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition-colors",
+                            scanSummaries[p.id]!.hasElectricalScan
+                              ? "bg-emerald-500/15 text-emerald-200 ring-emerald-500/40 hover:bg-emerald-500/25"
+                              : "bg-[var(--surface-elevated)] text-[var(--foreground)]/50 ring-[var(--border)]",
+                          ].join(" ")}
+                          title={
+                            scanSummaries[p.id]!.hasElectricalScan
+                              ? "Open electrical scans"
+                              : "No electrical scan yet"
+                          }
+                        >
+                          ⚡ Electrical Scan
+                        </Link>
+                      </div>
+                      <p className="dash-muted text-xs">
+                        Last scan:{" "}
+                        {formatPlanScanRelativeDate(
+                          scanSummaries[p.id]!.lastScanned,
+                        )}
+                      </p>
+                    </div>
+                  ) : null}
                   <div className="mt-6 flex flex-1 flex-col justify-end">
                     <Link
                       href={`/project/${p.id}`}
-                      className="inline-flex w-full items-center justify-center rounded-lg border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/15"
+                      className="dash-open-project-btn"
                     >
                       Open Project
                     </Link>

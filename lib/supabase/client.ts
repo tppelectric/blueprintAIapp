@@ -2,23 +2,19 @@ import { createBrowserClient as createSupabaseSSRBrowserClient } from "@supabase
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * One shared browser client per tab. Creating a new client on every call
- * instantiates multiple GoTrueClient instances and triggers Supabase warnings.
- */
-let browserClient: SupabaseClient | null = null;
-
-/**
  * Browser Supabase client for Client Components. Uses `@supabase/ssr` so the
  * session is stored in cookies — the same source `middleware` and server
  * `createServerClient` read. Plain `@supabase/supabase-js` `createClient` keeps
  * the session only in localStorage, so after sign-in middleware still sees no
  * user and redirects back to `/login`.
  *
+ * We return a **new** client each call so PostgREST requests always attach the
+ * current cookie session. A long-lived singleton can be created before sign-in
+ * and leave queries running as `anon` after login until a full refresh.
+ *
  * Never put `SUPABASE_SERVICE_ROLE_KEY` in `NEXT_PUBLIC_*`.
  */
 export function createBrowserClient(): SupabaseClient {
-  if (browserClient) return browserClient;
-
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -28,6 +24,5 @@ export function createBrowserClient(): SupabaseClient {
     );
   }
 
-  browserClient = createSupabaseSSRBrowserClient(url, anonKey);
-  return browserClient;
+  return createSupabaseSSRBrowserClient(url, anonKey);
 }

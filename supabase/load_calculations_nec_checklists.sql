@@ -70,25 +70,4 @@ drop policy if exists "nec_checklists_delete_all" on public.nec_checklists;
 create policy "nec_checklists_delete_all"
   on public.nec_checklists for delete using (true);
 
--- ── NEC AI questions (/api/nec-question) ───────────────────────────────────
--- Inserts use service role (bypass RLS). Optional SELECT for admin dashboards.
-
-create table if not exists public.nec_questions (
-  id uuid primary key default gen_random_uuid(),
-  question text not null,
-  answer text,
-  jurisdiction text default 'NY',
-  nec_edition text default '2023',
-  created_at timestamptz not null default now()
-);
-
-create index if not exists nec_questions_created_at_idx
-  on public.nec_questions (created_at desc);
-
-comment on table public.nec_questions is 'Claude NEC Q&A from standalone NEC checker tool.';
-
-alter table public.nec_questions enable row level security;
-
-drop policy if exists "nec_questions_select_all" on public.nec_questions;
-create policy "nec_questions_select_all"
-  on public.nec_questions for select using (true);
+-- NEC AI question log (`nec_questions` table): defined in supabase/nec_questions.sql — run that file for DDL + RLS.

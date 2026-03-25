@@ -3,7 +3,14 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnalyzerProjectAssistant } from "@/components/analyzer-project-assistant";
+import {
+  ImportFromPlansCard,
+  type PlanImportApplyEvent,
+} from "@/components/import-from-plans-card";
+import { ToolBlueprintFloorPlanPanel } from "@/components/tool-blueprint-floor-plan-panel";
 import { ToolPageHeader } from "@/components/tool-page-header";
+import { VoiceInputButton } from "@/components/voice-input-button";
 import { LinkToJobDialog } from "@/components/link-to-job-dialog";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { WifiHeatMapCard } from "@/components/wifi-heatmap-card";
@@ -16,6 +23,7 @@ import {
   WIFI_PDF_LOAD_ERROR,
 } from "@/lib/wifi-blueprint-preview";
 import { WIFI_PREFILL_STORAGE_KEY } from "@/lib/room-scan-tool-bridge";
+import { floorPlanScanToWifiRooms } from "@/lib/tool-floor-plan-scan";
 import {
   computeWifiPlan,
   isMeshVendor,
@@ -54,6 +62,17 @@ import {
   generateWifiDocumentNumber,
 } from "@/lib/wifi-field-documents";
 import type { ProposalTierId } from "@/lib/wifi-proposal-tiers";
+import {
+  guessWifiBudgetFromAnalysis,
+  guessWifiBuildingTypeFromAnalysis,
+  guessWifiVendorFromAnalysis,
+  storiesFromAnalysisClamped,
+} from "@/lib/analyzer-description-apply";
+import {
+  analysisToWifiRooms,
+  totalSqFtFromAnalysis,
+} from "@/lib/project-describer-prefill";
+import { boostWifiRoomsFromElectricalItems } from "@/lib/scan-import-from-plans";
 
 const U6_PRO_TIER_OVERRIDE = {
   label: "UniFi U6 Pro ($179 ea.)",
@@ -318,11 +337,103 @@ export function WifiAnalyzerClient() {
   const [woCopyMsg, setWoCopyMsg] = useState<string | null>(null);
   const [propCopyMsg, setPropCopyMsg] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = sessionStorage.getItem(
+      "blueprint-wifi-prefill-from-smarthome",
+    );
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as {
+        rooms?: { roomName: string; expectedDevices: number }[];
+      };
+      const hints = parsed?.rooms;
+      if (!hints?.length) {
+        sessionStorage.removeItem("blueprint-wifi-prefill-from-smarthome");
+        return;
+      }
+      setRooms((prev) =>
+        prev.map((room) => {
+          const match = hints.find(
+            (h) =>
+              h.roomName.trim().toLowerCase() ===
+              room.name.trim().toLowerCase(),
+          );
+          if (!match) return room;
+          return {
+            ...room,
+            expectedDevices: Math.max(
+              0,
+              Math.round(Number(match.expectedDevices)) || 0,
+            ),
+          };
+        }),
+      );
+    } catch {
+      /* ignore malformed payload */
+    }
+    sessionStorage.removeItem("blueprint-wifi-prefill-from-smarthome");
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = sessionStorage.getItem("blueprint-project-describer-wifi");
+    if (!raw) return;
+    try {
+      const j = JSON.parse(raw) as {
+        rooms?: WifiRoomInput[];
+        projectName?: string;
+        totalSqFt?: number;
+        floors?: number;
+      };
+      if (j.rooms?.length) setRooms(j.rooms);
+      if (j.projectName) setProjectName(j.projectName);
+      if (typeof j.totalSqFt === "number" && j.totalSqFt > 0) {
+        setTotalBuildingSqFtInput(String(Math.round(j.totalSqFt)));
+      }
+      if (typeof j.floors === "number" && j.floors >= 1) {
+        const f = Math.min(4, Math.max(1, j.floors)) as StoriesCount;
+        setStories(f);
+      }
+    } catch {
+      /* ignore */
+    }
+    sessionStorage.removeItem("blueprint-project-describer-wifi");
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = sessionStorage.getItem("blueprint-room-scan-wifi");
+    if (!raw) return;
+    try {
+      const j = JSON.parse(raw) as {
+        rooms?: WifiRoomInput[];
+        projectName?: string;
+        totalSqFt?: number;
+        floors?: number;
+      };
+      if (j.rooms?.length) setRooms(j.rooms);
+      if (j.projectName) setProjectName(j.projectName);
+      if (typeof j.totalSqFt === "number" && j.totalSqFt > 0) {
+        setTotalBuildingSqFtInput(String(Math.round(j.totalSqFt)));
+      }
+      if (typeof j.floors === "number" && j.floors >= 1) {
+        setStories(Math.min(4, Math.max(1, j.floors)) as StoriesCount);
+      }
+    } catch {
+      /* ignore */
+    }
+    sessionStorage.removeItem("blueprint-room-scan-wifi");
+  }, []);
+
   const [blueprintProjects, setBlueprintProjects] = useState<
     BlueprintProjectOption[]
   >([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [linkedProjectId, setLinkedProjectId] = useState<string>("");
+  const [planSourceProjectId, setPlanSourceProjectId] = useState<string | null>(
+    null,
+  );
 
   const [totalBuildingSqFtInput, setTotalBuildingSqFtInput] = useState("");
   const [constructionType, setConstructionType] =
@@ -775,6 +886,10 @@ export function WifiAnalyzerClient() {
       if (linkedProjectId) {
         row.project_id = linkedProjectId;
       }
+      const src = planSourceProjectId || linkedProjectId || null;
+      if (src) {
+        row.source_project_id = src;
+      }
       const { data, error } = await sb
         .from("wifi_calculations")
         .insert(row)
@@ -858,26 +973,87 @@ export function WifiAnalyzerClient() {
         title="Wi-Fi Network Analyzer & Planner"
         subtitle="Coverage planning for residential and commercial installations"
       >
-        <Link
-          href="/dashboard"
-          className="text-sm font-medium text-[#E8C84A] hover:text-[#f0d56e]"
-        >
-          ← Dashboard
-        </Link>
+        <div className="flex flex-wrap gap-3 text-sm">
+          <Link
+            href="/dashboard"
+            className="font-medium text-[#E8C84A] hover:text-[#f0d56e]"
+          >
+            ← Dashboard
+          </Link>
+          <Link
+            href="/tools/av-analyzer"
+            className="text-white/70 hover:text-[#E8C84A]"
+          >
+            AV Analyzer
+          </Link>
+          <Link
+            href="/tools/smarthome-analyzer"
+            className="text-white/70 hover:text-[#E8C84A]"
+          >
+            Smart Home Analyzer
+          </Link>
+        </div>
       </ToolPageHeader>
 
-      <main className="mx-auto max-w-3xl px-6 py-8">
+      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="space-y-10 rounded-2xl border border-white/10 bg-white/[0.03] p-6 sm:p-8">
+          <AnalyzerProjectAssistant
+            tool="wifi"
+            hints={["wifi"]}
+            roomSectionId="wifi-analyzer-room-list"
+            onApply={(a) => {
+              const newRooms = analysisToWifiRooms(a, newId);
+              console.log("Setting rooms from assistant:", newRooms);
+              setRooms(newRooms);
+              setTotalBuildingSqFtInput(
+                String(totalSqFtFromAnalysis(a)),
+              );
+              setStories(storiesFromAnalysisClamped(a));
+              setBuildingType(guessWifiBuildingTypeFromAnalysis(a));
+              setVendor(guessWifiVendorFromAnalysis(a));
+              setBudget(guessWifiBudgetFromAnalysis(a));
+            }}
+          />
+          <ImportFromPlansCard
+            tool="wifi"
+            newId={newId}
+            onSourceProjectLinked={(id, name) => {
+              setLinkedProjectId(id);
+              setPlanSourceProjectId(id);
+              if (name.trim()) setProjectName(name);
+            }}
+            onApply={(e: PlanImportApplyEvent) => {
+              if (e.tool !== "wifi") return;
+              if (e.kind === "rooms") {
+                setRooms(e.rooms);
+                setTotalBuildingSqFtInput(String(e.totalSqFt));
+                setStories(e.stories);
+              } else {
+                setRooms((prev) =>
+                  boostWifiRoomsFromElectricalItems(prev, e.items),
+                );
+              }
+            }}
+          />
           <section className="space-y-4">
             <SectionTitle>Project setup</SectionTitle>
             <label className="block text-sm">
               <span className="text-white/70">Project name</span>
-              <input
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-white/15 bg-[#0a1628] px-3 py-2 text-white"
-                placeholder="e.g. Smith residence — Wi-Fi upgrade"
-              />
+              <div className="mt-1 flex items-end gap-2">
+                <input
+                  value={projectName}
+                  onChange={(e) => setProjectName(e.target.value)}
+                  className="min-w-0 flex-1 rounded-lg border border-white/15 bg-[#0a1628] px-3 py-2 text-white"
+                  placeholder="e.g. Smith residence — Wi-Fi upgrade"
+                />
+                <VoiceInputButton
+                  onAppend
+                  placeholder="Voice"
+                  onTranscript={(t) =>
+                    setProjectName((prev) => prev + t)
+                  }
+                />
+              </div>
             </label>
             <label className="block text-sm">
               <span className="text-white/70">Client name (for proposals)</span>
@@ -1137,8 +1313,11 @@ export function WifiAnalyzerClient() {
           <section className="space-y-4">
             <SectionTitle>Blueprint upload (optional)</SectionTitle>
             <p className="text-xs text-white/50">
-              PDFs stay in your browser for heat map overlay — nothing is
-              uploaded to storage.
+              PDFs stay in your browser for the heat map overlay. Use{" "}
+              <strong className="text-white/70">Scan page with AI</strong> below
+              to read room names, approximate sizes, and floors from the
+              selected page (image is sent to our AI for that request only).
+              Manual room entry still works anytime.
             </p>
             {pdfError ? (
               <p className="rounded-lg border border-red-500/40 bg-red-950/35 px-3 py-2 text-sm text-red-200/95">
@@ -1234,6 +1413,27 @@ export function WifiAnalyzerClient() {
                     />
                   </label>
                 ) : null}
+                {pdfArrayBuffer ? (
+                  <div className="mt-4 border-t border-white/10 pt-4">
+                    <ToolBlueprintFloorPlanPanel
+                      tool="wifi"
+                      embedded={{
+                        pdfArrayBuffer,
+                        selectedPage: selectedPdfPage,
+                        pdfPageCount,
+                        previewDataUrl: blueprintDataUrl,
+                      }}
+                      onApplyScan={(res, mode) => {
+                        const mapped = floorPlanScanToWifiRooms(
+                          res.rooms,
+                          newId,
+                        );
+                        if (mode === "replace") setRooms(mapped);
+                        else setRooms((prev) => [...prev, ...mapped]);
+                      }}
+                    />
+                  </div>
+                ) : null}
                 <button
                   type="button"
                   onClick={clearBlueprint}
@@ -1245,7 +1445,10 @@ export function WifiAnalyzerClient() {
             ) : null}
           </section>
 
-          <section className="space-y-4">
+          <section
+            id="wifi-analyzer-room-list"
+            className="space-y-4 scroll-mt-4"
+          >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <SectionTitle>Rooms</SectionTitle>
               <button
@@ -1258,7 +1461,8 @@ export function WifiAnalyzerClient() {
             </div>
             <p className="text-xs text-white/50">
               Enter each space; square footage is length × width. Outdoor rooms
-              add outdoor APs when area ≥ 80 sq ft.
+              add outdoor APs when area ≥ 80 sq ft. After a PDF scan, edit any
+              row to fine-tune names, dimensions, or device counts.
             </p>
             <div className="space-y-4">
               {rooms.map((room) => {

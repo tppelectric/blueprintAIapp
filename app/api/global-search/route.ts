@@ -136,13 +136,18 @@ export async function GET(request: Request) {
           id: `proj-${p.id}`,
           title: p.project_name?.trim() || p.file_name || "Project",
           subtitle: "Blueprint",
-          href: `/dashboard`,
+          href: `/project/${p.id}`,
           category: "project",
         });
       }
     }
-  } catch {
-    /* service key missing or network */
+  } catch (error) {
+    console.error("[global-search] error:", error);
+    return NextResponse.json({
+      results: [],
+      partial: true,
+      error: "Search partially failed",
+    });
   }
 
   return NextResponse.json({ results: results.slice(0, 24) });

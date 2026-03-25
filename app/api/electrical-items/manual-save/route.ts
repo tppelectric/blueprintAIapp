@@ -43,30 +43,43 @@ export async function POST(request: Request) {
   }
 
   if (Array.isArray(byId) && byId.length > 0) {
-    const updated: unknown[] = [];
+    const prepared: { id: string; fc: number }[] = [];
     for (const row of byId) {
       const id = typeof row.id === "string" ? row.id.trim() : "";
       if (!id || !uuidRe.test(id)) {
         return NextResponse.json({ error: "Invalid item id in byId." }, { status: 400 });
       }
       const fc = Math.max(0, Math.round(Number(row.final_count)));
-      const { data, error } = await supabase
-        .from("electrical_items")
-        .update({
-          final_count: fc,
-          verification_status: "manual",
-          verified_by: "manual",
-        })
-        .eq("id", id)
-        .eq("project_id", projectId)
-        .eq("page_number", pageNumber)
-        .select()
-        .maybeSingle();
+      prepared.push({ id, fc });
+    }
 
-      if (error) {
-        return NextResponse.json({ error: error.message, id }, { status: 500 });
+    const outcomes = await Promise.all(
+      prepared.map(({ id, fc }) =>
+        supabase
+          .from("electrical_items")
+          .update({
+            final_count: fc,
+            verification_status: "manual",
+            verified_by: "manual",
+          })
+          .eq("id", id)
+          .eq("project_id", projectId)
+          .eq("page_number", pageNumber)
+          .select()
+          .maybeSingle()
+          .then(({ data, error }) => ({ data, error, id })),
+      ),
+    );
+
+    const updated: unknown[] = [];
+    for (const o of outcomes) {
+      if (o.error) {
+        return NextResponse.json(
+          { error: o.error.message, id: o.id },
+          { status: 500 },
+        );
       }
-      if (data) updated.push(data);
+      if (o.data) updated.push(o.data);
     }
     return NextResponse.json({ items: updated });
   }

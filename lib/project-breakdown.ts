@@ -1,4 +1,7 @@
 import { defaultEquipOptionId } from "@/lib/pb-equipment-options";
+import type { AvResults } from "@/lib/av-analyzer-engine";
+import type { ElectricalResults } from "@/lib/electrical-analyzer-engine";
+import type { ShResults } from "@/lib/smarthome-analyzer-engine";
 import type { PBEquipSlot, ProjectCostSummary } from "@/lib/wifi-project-cost";
 import type { VendorChoice } from "@/lib/wifi-analyzer-engine";
 
@@ -40,6 +43,138 @@ export const MATERIAL_PRESETS: MaterialPreset[] = [
   { id: "smb", label: "Surface Mount Box", unit: "EA", defaultUnitCost: 8 },
   { id: "wall-plate", label: "Keystone Wall Plate", unit: "EA", defaultUnitCost: 3 },
   { id: "custom", label: "Custom Item", unit: "EA", defaultUnitCost: 0 },
+];
+
+/** AV Analyzer — materials dropdown presets */
+export const AV_MATERIAL_PRESETS: MaterialPreset[] = [
+  { id: "sp5", label: `In-ceiling 5.25" (e.g. small Origin/Klipsch)`, unit: "EA", defaultUnitCost: 120 },
+  { id: "sp6", label: `In-ceiling 6.5" (e.g. Origin Director D63 ~$199)`, unit: "EA", defaultUnitCost: 199 },
+  { id: "sp8", label: `In-ceiling 8" (e.g. Klipsch CDT-5800-C II ~$179, Origin D83)`, unit: "EA", defaultUnitCost: 279 },
+  { id: "out-pair", label: "Outdoor speaker pair", unit: "EA", defaultUnitCost: 450 },
+  { id: "out-rock-pair", label: "Rock landscape speaker pair (~$299–599)", unit: "EA", defaultUnitCost: 449 },
+  { id: "out-sat-pair", label: "Outdoor satellite speaker pair (~$199–399)", unit: "EA", defaultUnitCost: 299 },
+  { id: "out-bollard", label: "Bollard speaker (~$599–999)", unit: "EA", defaultUnitCost: 799 },
+  { id: "out-pendant", label: "Outdoor pendant speaker (~$249–499)", unit: "EA", defaultUnitCost: 374 },
+  { id: "out-sub-ig", label: "Outdoor in-ground subwoofer (~$599–999)", unit: "EA", defaultUnitCost: 799 },
+  { id: "out-surf-pair", label: "Outdoor surface mount pair (~$199–399)", unit: "EA", defaultUnitCost: 299 },
+  { id: "out-vol-wp", label: "Weatherproof volume control", unit: "EA", defaultUnitCost: 89 },
+  { id: "sw16", label: "Speaker wire 16/2 CL2", unit: "LF", defaultUnitCost: 0.35 },
+  { id: "sw14", label: "Speaker wire 14/2 CL2", unit: "LF", defaultUnitCost: 0.45 },
+  { id: "sw12", label: "Speaker wire 12/2 CL2", unit: "LF", defaultUnitCost: 0.65 },
+  { id: "hdmi21", label: "HDMI 2.1 cable", unit: "LF", defaultUnitCost: 1.4 },
+  { id: "cat6", label: "Cat6 cable", unit: "LF", defaultUnitCost: 0.28 },
+  { id: "hdbt", label: "HDBaseT extender kit", unit: "EA", defaultUnitCost: 420 },
+  { id: "lvb", label: "Low voltage bracket", unit: "EA", defaultUnitCost: 5 },
+  { id: "vol", label: "Speaker volume control", unit: "EA", defaultUnitCost: 85 },
+  { id: "avr", label: "AV receiver", unit: "EA", defaultUnitCost: 899 },
+  { id: "sonosamp", label: "Sonos Amp (streaming amp)", unit: "EA", defaultUnitCost: 699 },
+  { id: "sonos-era300", label: "Sonos Era 300 (speaker)", unit: "EA", defaultUnitCost: 449 },
+  { id: "sonos-era100", label: "Sonos Era 100 (speaker)", unit: "EA", defaultUnitCost: 249 },
+  { id: "sonos-port", label: "Sonos Port (line-in/stream)", unit: "EA", defaultUnitCost: 449 },
+  { id: "mza", label: "Multi-zone amplifier", unit: "EA", defaultUnitCost: 2499 },
+  { id: "custom", label: "Custom item", unit: "EA", defaultUnitCost: 0 },
+];
+
+export const AV_LABOR_PRESETS: LaborPreset[] = [
+  { id: "sp-rough", label: "Speaker rough-in (per location)", defaultHours: 1.5 },
+  { id: "sp-trim", label: "Speaker trim and aim (each)", defaultHours: 0.5 },
+  { id: "disp-mount", label: "Display mounting", defaultHours: 2 },
+  { id: "proj", label: "Projector installation", defaultHours: 4 },
+  { id: "screen", label: "Screen installation", defaultHours: 2 },
+  { id: "rack", label: "Equipment rack build", defaultHours: 6 },
+  { id: "amp-zone", label: "Amplifier wiring (per zone)", defaultHours: 1 },
+  {
+    id: "prog",
+    label: "System programming (base + per zone in notes)",
+    defaultHours: 2,
+  },
+  { id: "cable-rough", label: "Cable rough-in (per run)", defaultHours: 1 },
+  { id: "test", label: "Testing and demo", defaultHours: 2 },
+  { id: "custom", label: "Custom task", defaultHours: 1 },
+];
+
+export const SMARTHOME_MATERIAL_PRESETS: MaterialPreset[] = [
+  { id: "ra3-dim", label: "Lutron RadioRA3 RRD-6ND dimmer", unit: "EA", defaultUnitCost: 89 },
+  { id: "ra3-sw", label: "Lutron RadioRA3 switch", unit: "EA", defaultUnitCost: 85 },
+  { id: "caseta-dim", label: "Lutron Caseta PD-6WCL dimmer", unit: "EA", defaultUnitCost: 59 },
+  { id: "hw-dim", label: "Lutron HomeWorks HQD7-WBX dimmer", unit: "EA", defaultUnitCost: 149 },
+  { id: "shade", label: "Motorized shade (per shade)", unit: "EA", defaultUnitCost: 1200 },
+  { id: "tstat", label: "Smart thermostat", unit: "EA", defaultUnitCost: 280 },
+  { id: "cam-luma", label: "Luma LUM-500-DOM-IPW camera", unit: "EA", defaultUnitCost: 299 },
+  { id: "cam-ring", label: "Ring Pro 2 camera", unit: "EA", defaultUnitCost: 249 },
+  { id: "cam-nest", label: "Nest Cam with Floodlight", unit: "EA", defaultUnitCost: 279 },
+  { id: "cam-hik", label: "Hikvision DS-2CD2147G2 camera", unit: "EA", defaultUnitCost: 149 },
+  { id: "cam-verkada", label: "Verkada CD61 camera", unit: "EA", defaultUnitCost: 999 },
+  { id: "lock-schlage", label: "Schlage Encode Plus lock", unit: "EA", defaultUnitCost: 299 },
+  { id: "lock-yale", label: "Yale Assure Lock 2", unit: "EA", defaultUnitCost: 249 },
+  { id: "lock-august", label: "August WiFi Smart Lock", unit: "EA", defaultUnitCost: 199 },
+  { id: "mot", label: "Motion sensor", unit: "EA", defaultUnitCost: 85 },
+  { id: "dw", label: "Door/window sensor", unit: "EA", defaultUnitCost: 45 },
+  { id: "ea1", label: "Control4 EA-1 controller", unit: "EA", defaultUnitCost: 599 },
+  { id: "ea3", label: "Control4 EA-3 controller", unit: "EA", defaultUnitCost: 1199 },
+  { id: "ca10", label: "Control4 CA-10 controller", unit: "EA", defaultUnitCost: 2499 },
+  { id: "ssc1", label: "Savant SSC-1 host", unit: "EA", defaultUnitCost: 1999 },
+  { id: "cp4r", label: "Crestron CP4-R processor", unit: "EA", defaultUnitCost: 4999 },
+  { id: "urc-mrx", label: "URC MRX-10 processor", unit: "EA", defaultUnitCost: 1499 },
+  { id: "c4-ts", label: "Control4 touchscreen", unit: "EA", defaultUnitCost: 950 },
+  { id: "josh-micro", label: "Josh.ai Josh Micro", unit: "EA", defaultUnitCost: 399 },
+  { id: "josh-nano", label: "Josh.ai Josh Nano", unit: "EA", defaultUnitCost: 199 },
+  { id: "sw8", label: "Network switch 8-port PoE", unit: "EA", defaultUnitCost: 320 },
+  { id: "sw16", label: "Network switch 16-port PoE", unit: "EA", defaultUnitCost: 520 },
+  { id: "custom", label: "Custom item", unit: "EA", defaultUnitCost: 0 },
+];
+
+export const SMARTHOME_LABOR_PRESETS: LaborPreset[] = [
+  { id: "kp-rough", label: "Keypad/dimmer rough-in (each)", defaultHours: 0.5 },
+  { id: "kp-trim", label: "Keypad/dimmer trim-out (each)", defaultHours: 0.25 },
+  { id: "cam", label: "Camera installation (each)", defaultHours: 1.5 },
+  { id: "ctrl", label: "Controller installation", defaultHours: 2 },
+  { id: "shade", label: "Shade installation (each)", defaultHours: 1.5 },
+  { id: "c4prog", label: "Control4 programming (typical range)", defaultHours: 16 },
+  { id: "lut-prog", label: "Lutron programming", defaultHours: 4 },
+  { id: "hk", label: "HomeKit setup", defaultHours: 2 },
+  { id: "josh", label: "Josh.ai setup", defaultHours: 6 },
+  { id: "net", label: "Network configuration", defaultHours: 2 },
+  { id: "walk", label: "Testing and walkthrough", defaultHours: 2 },
+  { id: "custom", label: "Custom task", defaultHours: 1 },
+];
+
+/** Electrical Project Analyzer — materials dropdown presets */
+export const ELECTRICAL_MATERIAL_PRESETS: MaterialPreset[] = [
+  { id: "nm142", label: "14/2 NM-B wire", unit: "LF", defaultUnitCost: 0.72 },
+  { id: "nm122", label: "12/2 NM-B wire", unit: "LF", defaultUnitCost: 0.95 },
+  { id: "nm102", label: "10/2 NM-B wire", unit: "LF", defaultUnitCost: 1.45 },
+  { id: "nm632", label: "6/3 NM-B wire", unit: "LF", defaultUnitCost: 4.2 },
+  { id: "mc142", label: "14/2 MC Cable", unit: "LF", defaultUnitCost: 1.1 },
+  { id: "mc122", label: "12/2 MC Cable", unit: "LF", defaultUnitCost: 1.35 },
+  { id: "dup15", label: "15A duplex receptacle", unit: "EA", defaultUnitCost: 2.5 },
+  { id: "dup20", label: "20A duplex receptacle", unit: "EA", defaultUnitCost: 4.5 },
+  { id: "gfci15", label: "GFCI receptacle 15A", unit: "EA", defaultUnitCost: 18 },
+  { id: "gfci20", label: "GFCI receptacle 20A", unit: "EA", defaultUnitCost: 22 },
+  { id: "sw1", label: "Single pole switch", unit: "EA", defaultUnitCost: 3.5 },
+  { id: "sw3", label: "3-way switch", unit: "EA", defaultUnitCost: 6 },
+  { id: "dim", label: "Dimmer switch", unit: "EA", defaultUnitCost: 28 },
+  { id: "decora", label: "Decora receptacle", unit: "EA", defaultUnitCost: 4 },
+  { id: "canLed", label: "Recessed light LED", unit: "EA", defaultUnitCost: 42 },
+  { id: "surfFx", label: "Surface mount fixture", unit: "EA", defaultUnitCost: 65 },
+  { id: "br15", label: "Single pole breaker 15A", unit: "EA", defaultUnitCost: 8 },
+  { id: "br20", label: "Single pole breaker 20A", unit: "EA", defaultUnitCost: 9 },
+  { id: "br30", label: "Double pole breaker 30A", unit: "EA", defaultUnitCost: 22 },
+  { id: "br50", label: "Double pole breaker 50A", unit: "EA", defaultUnitCost: 28 },
+  { id: "pan200", label: "200A panel 40 space", unit: "EA", defaultUnitCost: 280 },
+  { id: "custom", label: "Custom item", unit: "EA", defaultUnitCost: 0 },
+];
+
+export const ELECTRICAL_LABOR_PRESETS: LaborPreset[] = [
+  { id: "rough-cct", label: "Rough-in per circuit", defaultHours: 1.5 },
+  { id: "trim-out", label: "Device trim per outlet", defaultHours: 0.25 },
+  { id: "trim-sw", label: "Device trim per switch", defaultHours: 0.25 },
+  { id: "fx", label: "Fixture installation", defaultHours: 0.5 },
+  { id: "panel", label: "Panel installation", defaultHours: 8 },
+  { id: "svc", label: "Service entrance", defaultHours: 4 },
+  { id: "insp", label: "Inspection prep", defaultHours: 2 },
+  { id: "walk", label: "Final walkthrough", defaultHours: 1 },
+  { id: "custom", label: "Custom task", defaultHours: 1 },
 ];
 
 export const LABOR_PRESETS: LaborPreset[] = [
@@ -91,6 +226,8 @@ export type ProjectBreakdownState = {
   wifiVendor: VendorChoice | null;
   materials: PBMaterialLine[];
   labor: PBLaborLine[];
+  /** Optional job notes (voice-friendly). */
+  notes: string;
 };
 
 export const defaultProjectBreakdownState = (): ProjectBreakdownState => ({
@@ -102,6 +239,7 @@ export const defaultProjectBreakdownState = (): ProjectBreakdownState => ({
   wifiVendor: null,
   materials: [],
   labor: [],
+  notes: "",
 });
 
 export function materialLineCost(m: PBMaterialLine): number {
@@ -332,6 +470,7 @@ export function seedProjectBreakdownFromWifi(
   }));
 
   return {
+    ...base,
     materialMarkupPct,
     technicianCount,
     laborRatePerHour,
@@ -341,4 +480,237 @@ export function seedProjectBreakdownFromWifi(
     materials,
     labor,
   };
+}
+
+export function seedProjectBreakdownFromAv(r: AvResults): ProjectBreakdownState {
+  const base = defaultProjectBreakdownState();
+  const materials: PBMaterialLine[] = [];
+  const addM = (
+    description: string,
+    qty: number,
+    unit: string,
+    unitCost: number,
+  ) => {
+    if (qty <= 0) return;
+    materials.push({
+      id: newPbId(),
+      description,
+      qty,
+      unit,
+      unitCost,
+      markupPct: null,
+      bomSlot: null,
+      equipOptionId: null,
+    });
+  };
+
+  const m = r.materials;
+  const od = m.outdoorDetail;
+  addM(`5.25" in-ceiling speaker`, m.speakers525, "EA", 120);
+  addM(`6.5" in-ceiling speaker`, m.speakers65, "EA", 220);
+  addM(`8" in-ceiling speaker`, m.speakers8, "EA", 380);
+  addM("Rock landscape speaker pair (~$299–599)", od.rockLandscapePairs, "EA", 449);
+  addM("Outdoor satellite speaker pair (~$199–399)", od.outdoorSatellitePairs, "EA", 299);
+  addM("Bollard speaker (~$599–999)", od.bollards, "EA", 799);
+  addM("Outdoor pendant speaker (~$249–499)", od.pendants, "EA", 374);
+  addM(
+    "Outdoor surface mount pair (~$199–399)",
+    od.surfaceMountWeatherproofPairs,
+    "EA",
+    299,
+  );
+  addM("Sub + satellite outdoor system (allowance)", od.subSatelliteSystems, "EA", 2400);
+  addM("Outdoor in-ground subwoofer (~$599–999)", od.inGroundSubwoofers, "EA", 799);
+  addM("Outdoor custom/other speakers (allowance)", od.customOtherSpeakers, "EA", 250);
+  addM("Weatherproof volume control", od.weatherproofVolumeControls, "EA", 89);
+  addM(
+    "Outdoor speaker pair (patio / pool — legacy)",
+    m.legacyOutdoorPairs,
+    "EA",
+    450,
+  );
+  addM("Speaker wire 16/2 CL2", m.speakerWire16Lf, "LF", 0.35);
+  addM("Speaker wire 14/2 CL2", m.speakerWire14Lf, "LF", 0.45);
+  addM("Speaker wire 12/2 CL2", m.speakerWire12Lf, "LF", 0.65);
+  addM("HDMI 2.1 cable", m.hdmiLf, "LF", 1.4);
+  addM("Cat6 cable", m.cat6Lf, "LF", 0.28);
+  addM("HDBaseT extender kit", m.hdbasetKits, "EA", 420);
+  addM("Low voltage bracket", m.lvBrackets, "EA", 5);
+  addM("Speaker volume control", m.volumeControls, "EA", 85);
+  addM("AV receiver", m.avReceivers, "EA", 899);
+  addM("Sonos Amp", m.sonosAmps, "EA", 699);
+  addM("Multi-zone amplifier", m.multiZoneAmps, "EA", 2499);
+  for (const d of m.displays) {
+    addM(`Display ~${d.inches}"`, d.qty, "EA", d.inches >= 85 ? 2200 : 1200);
+  }
+  addM("Projector (allowance)", m.projectorQty, "EA", 3500);
+
+  const labor: PBLaborLine[] = [];
+  const addL = (task: string, hours: number) => {
+    if (hours <= 0) return;
+    labor.push({
+      id: newPbId(),
+      task,
+      hours,
+      techs: null,
+      ratePerHour: null,
+    });
+  };
+  if (r.totalSpeakers > 0) {
+    addL("Speaker rough-in (per location)", 1.5 * r.totalSpeakers);
+    addL("Speaker trim and aim (each)", 0.5 * r.totalSpeakers);
+  }
+  if (r.totalDisplays > 0) {
+    addL("Display mounting", 2 * r.totalDisplays);
+  }
+  if (m.projectorQty > 0) {
+    addL("Projector installation", 4 * m.projectorQty);
+    addL("Screen installation", 2 * m.projectorQty);
+  }
+  addL("Equipment rack build", 6);
+  addL("Amplifier wiring (per zone)", 1 * r.ampZones);
+  addL("System programming (base + zones)", 2 + 0.5 * r.ampZones);
+  addL(
+    "Cable rough-in (per run)",
+    r.roomRows.filter((x) => x.speakerQty > 0).length * 2,
+  );
+  addL("Testing and demo", 2);
+
+  return { ...base, materials, labor };
+}
+
+export function seedProjectBreakdownFromSmartHome(
+  r: ShResults,
+): ProjectBreakdownState {
+  const base = defaultProjectBreakdownState();
+  const s = r.summary;
+  const materials: PBMaterialLine[] = [];
+  const addM = (
+    description: string,
+    qty: number,
+    unit: string,
+    unitCost: number,
+  ) => {
+    if (qty <= 0) return;
+    materials.push({
+      id: newPbId(),
+      description,
+      qty,
+      unit,
+      unitCost,
+      markupPct: null,
+      bomSlot: null,
+      equipOptionId: null,
+    });
+  };
+
+  addM("Lutron RadioRA3 dimmer (allowance)", s.lightingPoints, "EA", 185);
+  addM("Motorized shade (allowance)", s.shades, "EA", 1200);
+  addM("Smart thermostat", s.thermostats, "EA", 280);
+  addM("IP camera (blended allowance)", s.cameras, "EA", 400);
+  addM("Smart door lock", s.locks, "EA", 320);
+  addM("Security sensor (blended)", s.securitySensors, "EA", 65);
+  addM("Control4 touchscreen / keypad", s.keypads, "EA", 950);
+  addM(
+    `Network switch (~${r.network.recommendedSwitchPorts} ports PoE)`,
+    1,
+    "EA",
+    520,
+  );
+
+  const labor: PBLaborLine[] = [];
+  const addL = (task: string, hours: number) => {
+    if (hours <= 0) return;
+    labor.push({
+      id: newPbId(),
+      task,
+      hours,
+      techs: null,
+      ratePerHour: null,
+    });
+  };
+
+  addL("Keypad/dimmer rough-in (each)", 0.5 * s.lightingPoints);
+  addL("Keypad/dimmer trim-out (each)", 0.25 * s.lightingPoints);
+  addL("Camera installation (each)", 1.5 * s.cameras);
+  addL("Controller installation", 2);
+  addL("Shade installation (each)", 1.5 * s.shades);
+  addL("Control4 / platform programming", r.controller.programmingHours);
+  addL("Network configuration", 2);
+  addL("Testing and walkthrough", 2);
+
+  return { ...base, materials, labor };
+}
+
+export function seedProjectBreakdownFromElectrical(
+  r: ElectricalResults,
+): ProjectBreakdownState {
+  const base = defaultProjectBreakdownState();
+  const m = r.materials;
+  const materials: PBMaterialLine[] = [];
+  const addM = (
+    description: string,
+    qty: number,
+    unit: string,
+    unitCost: number,
+  ) => {
+    if (qty <= 0) return;
+    materials.push({
+      id: newPbId(),
+      description,
+      qty,
+      unit,
+      unitCost,
+      markupPct: null,
+      bomSlot: null,
+      equipOptionId: null,
+    });
+  };
+
+  addM("14/2 NM-B", m.wire14_2NmLf, "LF", 0.72);
+  addM("12/2 NM-B", m.wire12_2NmLf, "LF", 0.95);
+  addM("10/2 NM-B", m.wire10_2NmLf, "LF", 1.45);
+  addM("6/3 NM-B", m.wire6_3NmLf, "LF", 4.2);
+  addM("14/3 NM-B (3-way homeruns)", m.wire14_3NmLf, "LF", 0.88);
+  addM("15A duplex receptacle", m.duplex15, "EA", 2.5);
+  addM("20A duplex receptacle", m.duplex20, "EA", 4.5);
+  addM("GFCI receptacle (blended)", m.gfci, "EA", 20);
+  addM("Single pole switch (blended)", m.switchSp, "EA", 3.5);
+  addM("3-way switch", m.switch3w, "EA", 6);
+  addM("Dimmer switch", m.dimmer, "EA", 28);
+  addM("Recessed LED fixture", m.recessed, "EA", 42);
+  addM("Surface mount fixture", m.surfaceFixtures, "EA", 65);
+  addM("15A single-pole breaker", m.breaker15Sp, "EA", 8);
+  addM("20A single-pole breaker", m.breaker20Sp, "EA", 9);
+  addM("30A double-pole breaker", m.breaker30Dp, "EA", 22);
+  addM("50A double-pole breaker", m.breaker50Dp, "EA", 28);
+  addM(
+    `${m.panelAmps}A main panel (${m.panelSpaces}-space, allowance)`,
+    1,
+    "EA",
+    m.panelAmps >= 200 ? 280 : 180,
+  );
+
+  const labor: PBLaborLine[] = [];
+  const addL = (task: string, hours: number) => {
+    if (hours <= 0) return;
+    labor.push({
+      id: newPbId(),
+      task,
+      hours,
+      techs: null,
+      ratePerHour: null,
+    });
+  };
+  const L = r.laborHoursHint;
+  addL("Rough-in per circuit", L.roughInPerCircuit);
+  addL("Device trim per outlet", L.trimOutlets);
+  addL("Device trim per switch", L.trimSwitches);
+  addL("Fixture installation", L.fixtures);
+  addL("Panel installation", L.panelInstall);
+  addL("Service entrance", L.serviceEntrance);
+  addL("Inspection prep", L.inspectionPrep);
+  addL("Final walkthrough", L.walkthrough);
+
+  return { ...base, materials, labor };
 }

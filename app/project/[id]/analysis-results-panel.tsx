@@ -1,14 +1,31 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
   useMemo,
   useState,
-  type ReactNode,
 } from "react";
 import type { ElectricalItemRow } from "@/lib/electrical-item-types";
 import type { DetectedRoomRow } from "@/lib/detected-room-types";
+import { createBrowserClient } from "@/lib/supabase/client";
+import { buildProjectBreakdownFromTakeoffItems } from "@/lib/takeoff-materials-breakdown";
+import {
+  inferTakeoffBucket,
+  itemMatchesTakeoffTab,
+  TAKEOFF_TAB_META,
+  type TakeoffFilterTab,
+} from "@/lib/takeoff-category";
+import {
+  pushTakeoffToAvAnalyzer,
+  pushTakeoffToElectricalAnalyzer,
+  pushTakeoffToLoadCalculator,
+  pushTakeoffToNecChecker,
+  pushTakeoffToSmartHomeAnalyzer,
+  takeoffHasAvSignals,
+  takeoffHasSmartHomeSignals,
+} from "@/lib/takeoff-send-tools";
 import {
   displayWhichRoom,
   isItemUnassignedForPage,
@@ -140,41 +157,103 @@ function effectiveQty(
   return Math.round(Number(item.quantity));
 }
 
-function verifyIcon(
-  item: ElectricalItemRow,
-  claudeQty: number,
-  gptQty: number | null,
-): ReactNode {
-  const s = item.verification_status ?? "pending";
-  const v = verifyState(claudeQty, gptQty, s);
-  if (s === "manual") {
+function verificationBreakdown(items: ElectricalItemRow[]) {
+  let accepted = 0;
+  let override = 0;
+  let manual = 0;
+  let unverified = 0;
+  let conflict = 0;
+  let total = 0;
+  for (const i of items) {
+    if (i.category === "plan_note") continue;
+    total++;
+    const st = i.verification_status ?? "pending";
+    const vb = i.verified_by ?? null;
+    if (st === "conflict") {
+      conflict++;
+      continue;
+    }
+    if (st === "manual") {
+      manual++;
+      continue;
+    }
+    if (vb === "override") {
+      override++;
+      continue;
+    }
+    if (vb === "accept" || vb === "resolve") {
+      accepted++;
+      continue;
+    }
+    if (st === "confirmed") {
+      accepted++;
+      continue;
+    }
+    unverified++;
+  }
+  return {
+    total,
+    verifiedCount: accepted + override + manual,
+    accepted,
+    override,
+    manual,
+    unverified,
+    conflict,
+  };
+}
+
+function ItemVerificationBadge({ item }: { item: ElectricalItemRow }) {
+  const claudeQty = Math.round(Number(item.quantity));
+  const gptQty =
+    item.gpt_count != null ? Math.round(Number(item.gpt_count)) : null;
+  const status = item.verification_status ?? "pending";
+  const vb = item.verified_by ?? null;
+
+  if (status === "conflict") {
     return (
-      <span className="text-[10px] font-bold text-sky-300" title="Manual verified">
-        M
+      <span className="shrink-0 rounded border border-red-500/40 bg-red-950/35 px-1.5 py-0.5 text-[9px] font-semibold text-red-100">
+        ⚠️ Conflict
       </span>
     );
   }
-  if (v === "confirmed")
+  if (status === "manual") {
+    const x = Math.round(Number(item.final_count ?? claudeQty));
     return (
-      <span className="text-emerald-300" title="Confirmed">
-        ✓
+      <span className="shrink-0 rounded border border-sky-500/45 bg-sky-950/40 px-1.5 py-0.5 text-[9px] font-semibold text-sky-100">
+        👆 Verified: {x}
       </span>
     );
-  if (v === "verify_needed")
+  }
+  if (vb === "override") {
+    const x = Math.round(Number(item.final_count ?? claudeQty));
     return (
-      <span className="text-amber-300" title="Verify needed">
-        ⚠
+      <span className="shrink-0 rounded border border-amber-500/50 bg-amber-950/40 px-1.5 py-0.5 text-[9px] font-semibold text-amber-100">
+        ✏️ Override: {x}
       </span>
     );
-  if (v === "conflict")
+  }
+  if (
+    vb === "accept" ||
+    vb === "resolve" ||
+    (status === "confirmed" && vb !== "override")
+  ) {
     return (
-      <span className="text-red-300" title="Conflict">
-        ⚑
+      <span className="shrink-0 rounded border border-emerald-500/45 bg-emerald-950/40 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-100">
+        ✅ Accepted
       </span>
     );
+  }
+  const vs = verifyState(claudeQty, gptQty, status);
+  if (vs === "verify_needed") {
+    return (
+      <span className="shrink-0 rounded border border-amber-500/35 bg-amber-950/30 px-1.5 py-0.5 text-[9px] font-semibold text-amber-100">
+        🤖 Verify AI/GPT
+      </span>
+    );
+  }
   return (
-    <span className="text-white/35" title="Awaiting GPT">
-      ○
+    <span className="shrink-0 rounded border border-white/15 bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-semibold text-white/65">
+      🤖 AI Only
     </span>
   );
 }
@@ -201,6 +280,8 @@ function CompactItemRow({
   manualCompareHint,
   onDismissManualCompare,
   onKeepAiCount,
+  onRequestVerify,
+  onManualVerificationSave,
 }: {
   item: ElectricalItemRow;
   manualMode: boolean;
@@ -224,6 +305,9 @@ function CompactItemRow({
   manualCompareHint?: boolean;
   onDismissManualCompare?: (itemId: string) => void;
   onKeepAiCount?: (itemId: string) => void;
+  onRequestVerify?: () => void;
+  /** Save manual click counts for this page (toolbar parity). */
+  onManualVerificationSave?: () => void | Promise<void>;
 }) {
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState(item.description);
@@ -235,10 +319,11 @@ function CompactItemRow({
     if (!editingName) setDraftName(item.description);
   }, [item.description, editingName]);
 
-  const status = item.verification_status ?? "pending";
   const claudeQty = Math.round(Number(item.quantity));
   const gptQty =
     item.gpt_count != null ? Math.round(Number(item.gpt_count)) : null;
+
+  const status = item.verification_status ?? "pending";
   const vState = verifyState(claudeQty, gptQty, status);
   const showManual = manualMode;
   const manualClickCount = Math.round(Number(manualCount ?? 0));
@@ -372,7 +457,10 @@ function CompactItemRow({
       }}
       role={showManual ? "button" : undefined}
     >
-      <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="flex flex-wrap items-start gap-2 border-b border-white/5 pb-2"
+        onClick={(e) => e.stopPropagation()}
+      >
         {dragEnabled ? (
           <span
             role="button"
@@ -384,7 +472,7 @@ function CompactItemRow({
               onDragItemChange?.(item.id);
             }}
             onDragEnd={() => onDragItemChange?.(null)}
-            className="cursor-grab touch-none select-none text-sm leading-none text-white/35 hover:text-cyan-300/90 active:cursor-grabbing"
+            className="mt-0.5 cursor-grab touch-none select-none text-sm leading-none text-white/35 hover:text-cyan-300/90 active:cursor-grabbing"
             aria-label="Drag to move to another room"
             title="Drag into a room"
             onKeyDown={(e) => {
@@ -399,19 +487,16 @@ function CompactItemRow({
             type="checkbox"
             checked={bulkChecked ?? false}
             onChange={() => onBulkToggle?.()}
-            className="h-3.5 w-3.5 shrink-0 rounded border-white/30 bg-[#0a1628]"
+            className="mt-1 h-3.5 w-3.5 shrink-0 rounded border-white/30 bg-[#0a1628]"
             aria-label={`Select ${item.description}`}
             onClick={(e) => e.stopPropagation()}
           />
         ) : null}
         <span
-          className={`h-2.5 w-2.5 shrink-0 rounded-full ${confidenceDotClass(item.confidence)}`}
+          className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${confidenceDotClass(item.confidence)}`}
           title={`Confidence ${Math.round(item.confidence * 100)}%`}
         />
-        <span className="w-4 shrink-0 text-center" title="Verification">
-          {verifyIcon(item, claudeQty, gptQty)}
-        </span>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 basis-[10rem]">
           {editingName ? (
             <input
               value={draftName}
@@ -440,59 +525,118 @@ function CompactItemRow({
             </button>
           )}
         </div>
-        {showManual && item.category !== "plan_note" ? (
-          <div className="flex shrink-0 flex-col items-end gap-0.5 text-end text-[10px] tabular-nums leading-tight">
-            <span className="text-white/55" title="AI count (locked)">
-              AI{" "}
-              <span className="font-semibold text-white">{claudeQty}</span>
-            </span>
-            <span className="text-sky-300/90" title="Your manual clicks">
-              Manual{" "}
-              <span className="font-semibold text-sky-100">
-                {manualClickCount}
-              </span>
-            </span>
-            <span className="text-emerald-300/90" title="Saved preview: manual if &gt; 0, else AI">
-              Final{" "}
-              <span className="font-semibold text-emerald-100">
-                {finalPreview}
-              </span>
-            </span>
-          </div>
-        ) : (
-          <div className="flex shrink-0 items-center gap-1.5 tabular-nums text-white/80">
-            <span title="Claude">{claudeQty}</span>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 text-[10px] tabular-nums">
+          <span
+            className="rounded bg-white/[0.06] px-1.5 py-0.5 font-medium text-white/90"
+            title="AI-detected count"
+          >
+            AI: <span className="font-bold text-white">{claudeQty}</span>
             {gptQty !== null && gptQty !== claudeQty ? (
-              <span className="text-violet-300" title="GPT">
-                /{gptQty}
-              </span>
+              <span className="text-violet-300"> ({gptQty} GPT)</span>
             ) : null}
-          </div>
-        )}
-        <div className="flex shrink-0 items-center gap-0.5">
+          </span>
+          <span
+            className="rounded bg-white/[0.06] px-1.5 py-0.5 font-medium text-sky-200/90"
+            title={
+              showManual
+                ? "Clicks on blueprint this session"
+                : "Saved manual count (after verify)"
+            }
+          >
+            Manual:{" "}
+            <span className="font-bold text-white">
+              {showManual && item.category !== "plan_note"
+                ? manualClickCount
+                : item.verification_status === "manual"
+                  ? Math.round(Number(item.final_count ?? 0))
+                  : "—"}
+            </span>
+          </span>
+          <ItemVerificationBadge item={item} />
+        </div>
+      </div>
+      {item.category !== "plan_note" ? (
+        <div
+          className="mt-2 flex flex-wrap gap-2"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void acceptVerified()}
+            className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/50 bg-emerald-800/35 px-2.5 py-1.5 text-[11px] font-bold text-emerald-50 hover:bg-emerald-800/50 disabled:opacity-40"
+            title="Accept AI count as final verified"
+          >
+            ✅ Accept
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => {
+              setOverrideDraft(
+                String(item.final_count ?? gptQty ?? claudeQty),
+              );
+              setOverrideOpen((o) => !o);
+            }}
+            className="inline-flex items-center gap-1 rounded-lg border border-amber-500/45 bg-amber-950/40 px-2.5 py-1.5 text-[11px] font-bold text-amber-100 hover:bg-amber-950/55 disabled:opacity-40"
+            title="Type the correct count"
+          >
+            ✏️ Override
+          </button>
+          {onRequestVerify ? (
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => onRequestVerify()}
+              className="inline-flex items-center gap-1 rounded-lg border border-sky-500/45 bg-sky-950/40 px-2.5 py-1.5 text-[11px] font-bold text-sky-100 hover:bg-sky-950/55 disabled:opacity-40"
+              title="Click-to-count on blueprint for this item"
+            >
+              👆 Verify
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {showManual && item.category !== "plan_note" ? (
+        <div
+          className="mt-2 flex flex-wrap items-center justify-end gap-2 border-t border-white/5 pt-2"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="mr-auto text-[10px] text-white/50">
+            Session:{" "}
+            <span className="font-semibold text-emerald-200/90">
+              Final preview {finalPreview}
+            </span>
+          </span>
           <button
             type="button"
             aria-label="Decrease"
-            disabled={!showManual}
             onClick={() => onManualCountDelta(item.id, -1)}
-            className="flex h-7 w-7 items-center justify-center rounded border border-white/20 bg-white/10 text-white disabled:opacity-35"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/20 bg-white/10 text-white"
           >
             −
           </button>
-          <span className="min-w-[2rem] text-center font-semibold text-white">
+          <span className="min-w-[2.25rem] text-center text-sm font-bold text-white">
             {manualStepperShown}
           </span>
           <button
             type="button"
             aria-label="Increase"
-            disabled={!showManual}
             onClick={() => onManualCountDelta(item.id, 1)}
-            className="flex h-7 w-7 items-center justify-center rounded border border-white/20 bg-white/10 text-white disabled:opacity-35"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/20 bg-white/10 text-white"
           >
             +
           </button>
+          {isSelected && onManualVerificationSave ? (
+            <button
+              type="button"
+              onClick={() => void onManualVerificationSave()}
+              className="rounded-lg border border-emerald-500/50 bg-emerald-700/40 px-2.5 py-1.5 text-[11px] font-bold text-emerald-50 hover:bg-emerald-600/50"
+            >
+              Done
+            </button>
+          ) : null}
         </div>
-      </div>
+      ) : null}
       {manualCompareHint && item.category !== "plan_note" ? (
         <div
           className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded border border-amber-500/30 bg-amber-950/25 px-2 py-1.5 text-[10px] text-amber-50/95"
@@ -592,14 +736,6 @@ function CompactItemRow({
             Clear manual
           </button>
         ) : null}
-        <button
-          type="button"
-          disabled={saving}
-          onClick={() => void acceptVerified()}
-          className="text-[10px] font-semibold text-emerald-300 hover:underline disabled:opacity-40"
-        >
-          Accept
-        </button>
         {gptQty !== null && status !== "manual" && vState !== "confirmed" ? (
           <button
             type="button"
@@ -610,17 +746,6 @@ function CompactItemRow({
             Use GPT
           </button>
         ) : null}
-        <button
-          type="button"
-          disabled={saving}
-          onClick={() => {
-            setOverrideDraft(String(item.final_count ?? gptQty ?? claudeQty));
-            setOverrideOpen((o) => !o);
-          }}
-          className="text-[10px] text-white/60 hover:underline"
-        >
-          Override
-        </button>
       </div>
         {quickSuggestRooms && quickSuggestRooms.length > 0 ? (
           <div className="mt-1.5 flex flex-wrap gap-1 border-t border-white/5 pt-1.5">
@@ -641,24 +766,22 @@ function CompactItemRow({
           </div>
         ) : null}
         {overrideOpen ? (
-        <div className="mt-2 flex gap-1 rounded border border-violet-500/30 bg-violet-950/20 p-2">
-          <input
-            type="number"
-            min={0}
-            value={overrideDraft}
-            onChange={(e) => setOverrideDraft(e.target.value)}
-            className="w-16 rounded border border-white/20 bg-[#0a1628] px-1 py-0.5 text-xs text-white"
-          />
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() => void submitOverride()}
-            className="rounded bg-violet-600 px-2 py-0.5 text-[10px] text-white"
-          >
-            Save
-          </button>
-        </div>
-      ) : null}
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded border border-amber-500/35 bg-amber-950/25 p-2">
+            <span className="text-[10px] text-amber-100/90">
+              Override (AI stays {claudeQty}) — Enter to save
+            </span>
+            <input
+              type="number"
+              min={0}
+              value={overrideDraft}
+              onChange={(e) => setOverrideDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void submitOverride();
+              }}
+              className="w-20 rounded border border-white/20 bg-[#0a1628] px-1.5 py-1 text-xs text-white"
+            />
+          </div>
+        ) : null}
     </div>
   );
 }
@@ -670,6 +793,7 @@ function RoomHeader({
   deviceTotal,
   onPatchRooms,
   onExportRoom,
+  onAcceptAllInRoom,
 }: {
   room: DetectedRoomRow;
   expanded: boolean;
@@ -677,6 +801,7 @@ function RoomHeader({
   deviceTotal: number;
   onPatchRooms: (updates: DetectedRoomRow[]) => void;
   onExportRoom?: () => void;
+  onAcceptAllInRoom?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(room.room_name);
@@ -757,17 +882,30 @@ function RoomHeader({
         <p className="mt-1 text-[11px] font-medium text-white/70">
           {deviceTotal} total devices
         </p>
+        {onAcceptAllInRoom || onExportRoom ? (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {onAcceptAllInRoom ? (
+              <button
+                type="button"
+                onClick={onAcceptAllInRoom}
+                className="rounded border border-emerald-500/45 bg-emerald-950/35 px-2 py-1 text-[10px] font-semibold text-emerald-100 hover:bg-emerald-950/50"
+              >
+                Accept All in Room
+              </button>
+            ) : null}
+            {onExportRoom ? (
+              <button
+                type="button"
+                onClick={onExportRoom}
+                className="rounded border border-cyan-500/40 bg-cyan-950/35 px-2 py-1 text-[10px] font-semibold text-cyan-100 hover:bg-cyan-950/50"
+              >
+                Export Room
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
-        {onExportRoom ? (
-          <button
-            type="button"
-            onClick={onExportRoom}
-            className="rounded border border-emerald-500/40 bg-emerald-950/40 px-2 py-0.5 text-[10px] font-semibold text-emerald-100 hover:bg-emerald-950/55"
-          >
-            Export
-          </button>
-        ) : null}
         <button
           type="button"
           onClick={onToggle}
@@ -782,75 +920,306 @@ function RoomHeader({
   );
 }
 
-function GrandSummaryTable({
-  items,
+const SUMMARY_ROWS: {
+  tab: TakeoffFilterTab;
+  label: string;
+  detail: string;
+}[] = [
+  { tab: "fixtures", label: "Fixtures", detail: "Recessed, fans, sconces" },
+  {
+    tab: "receptacles",
+    label: "Receptacles",
+    detail: "Standard, GFCI, dedicated",
+  },
+  { tab: "switches", label: "Switches", detail: "Single pole, 3-way, dimmer" },
+  { tab: "panels", label: "Panels", detail: "Breakers, panels" },
+  { tab: "plan_notes", label: "Plan Notes", detail: "Code notes, specs" },
+  {
+    tab: "low_voltage",
+    label: "Low Voltage",
+    detail: "TV, data, speakers",
+  },
+  { tab: "wiring", label: "Wiring", detail: "Homeruns, feeders" },
+];
+
+function takeoffBucketCounts(
+  items: ElectricalItemRow[],
+  manualCounts: Record<string, number>,
+  manualMode: boolean,
+): Record<TakeoffFilterTab, number> {
+  const acc: Record<TakeoffFilterTab, number> = {
+    all: 0,
+    fixtures: 0,
+    receptacles: 0,
+    switches: 0,
+    panels: 0,
+    plan_notes: 0,
+    low_voltage: 0,
+    wiring: 0,
+  };
+  for (const item of items) {
+    const q = effectiveQty(item, manualCounts, manualMode);
+    acc.all += q;
+    if (item.category === "plan_note") {
+      acc.plan_notes += q;
+      continue;
+    }
+    acc[inferTakeoffBucket(item)] += q;
+  }
+  return acc;
+}
+
+function TakeoffSummaryCollapsible({
+  deviceItems,
+  planNotes,
+  pageRooms,
+  manualCounts,
+  manualMode,
+  expanded,
+  onToggleExpanded,
+  onExport,
+}: {
+  deviceItems: ElectricalItemRow[];
+  planNotes: ElectricalItemRow[];
+  pageRooms: DetectedRoomRow[];
+  manualCounts: Record<string, number>;
+  manualMode: boolean;
+  expanded: boolean;
+  onToggleExpanded: () => void;
+  onExport?: () => void;
+}) {
+  const counts = useMemo(
+    () => takeoffBucketCounts([...deviceItems, ...planNotes], manualCounts, manualMode),
+    [deviceItems, planNotes, manualCounts, manualMode],
+  );
+  const grandDevices = deviceItems.reduce(
+    (s, i) => s + effectiveQty(i, manualCounts, manualMode),
+    0,
+  );
+  const planNoteLines = planNotes.reduce(
+    (s, i) => s + effectiveQty(i, manualCounts, manualMode),
+    0,
+  );
+  const grandTotal = grandDevices + planNoteLines;
+  const verification = useMemo(
+    () => verificationBreakdown([...deviceItems, ...planNotes]),
+    [deviceItems, planNotes],
+  );
+
+  return (
+    <section className="mb-4 rounded-xl border border-[#E8C84A]/35 bg-[#050d18] shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-3 py-2.5">
+        <button
+          type="button"
+          onClick={onToggleExpanded}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          aria-expanded={expanded}
+        >
+          <span className="text-white/50" aria-hidden>
+            {expanded ? "▼" : "▶"}
+          </span>
+          <span className="text-sm font-semibold text-[#E8C84A]">
+            Takeoff Summary — {deviceItems.length + planNotes.length} item
+            {deviceItems.length + planNotes.length === 1 ? "" : "s"} |{" "}
+            {pageRooms.length} room{pageRooms.length === 1 ? "" : "s"}
+          </span>
+        </button>
+        {onExport ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onExport();
+            }}
+            className="shrink-0 rounded-lg border border-emerald-500/45 bg-emerald-950/40 px-2.5 py-1 text-[11px] font-semibold text-emerald-100 hover:bg-emerald-950/55"
+          >
+            Export
+          </button>
+        ) : null}
+      </div>
+      {expanded ? (
+        <div className="px-3 py-3">
+          <div className="mb-3 rounded-lg border border-white/12 bg-white/[0.04] px-2.5 py-2 text-[11px] leading-relaxed text-white/85">
+            <p className="font-semibold text-white">
+              Verified: {verification.verifiedCount} / {verification.total} total
+            </p>
+            <p className="mt-1 text-white/65">
+              Accepted: {verification.accepted} | Override:{" "}
+              {verification.override} | Manual: {verification.manual} | Unverified:{" "}
+              {verification.unverified}
+            </p>
+          </div>
+          <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 text-xs sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+            <span className="font-semibold uppercase tracking-wide text-white/50">
+              Category
+            </span>
+            <span className="text-right font-semibold text-white/50">Count</span>
+            <span className="hidden font-semibold text-white/50 sm:block">
+              Details
+            </span>
+            {SUMMARY_ROWS.map((row) => (
+              <div key={row.tab} className="contents">
+                <span className="text-white/90">{row.label}</span>
+                <span className="text-right tabular-nums font-medium text-white">
+                  {counts[row.tab]}
+                </span>
+                <span className="hidden text-white/55 sm:block">{row.detail}</span>
+              </div>
+            ))}
+          </div>
+          <div className="my-3 border-t border-white/15" />
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-white">
+            <span>Grand total (qty)</span>
+            <span className="tabular-nums text-[#E8C84A]">{grandTotal}</span>
+          </div>
+          <button
+            type="button"
+            onClick={onToggleExpanded}
+            className="mt-3 w-full rounded-lg border border-white/15 py-1.5 text-xs text-white/70 hover:bg-white/5"
+          >
+            Collapse summary
+          </button>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function CategoryFilterTabs({
+  active,
+  onChange,
+  deviceItems,
+  planNotes,
   manualCounts,
   manualMode,
 }: {
-  items: ElectricalItemRow[];
+  active: TakeoffFilterTab;
+  onChange: (t: TakeoffFilterTab) => void;
+  deviceItems: ElectricalItemRow[];
+  planNotes: ElectricalItemRow[];
   manualCounts: Record<string, number>;
   manualMode: boolean;
 }) {
-  const rows = useMemo(() => {
-    const m = new Map<
-      string,
-      { description: string; total: number; verified: number }
-    >();
-    for (const item of items) {
-      const desc = item.description.trim();
-      const q = effectiveQty(item, manualCounts, manualMode);
-      const claudeQty = Math.round(Number(item.quantity));
-      const gptQty =
-        item.gpt_count != null ? Math.round(Number(item.gpt_count)) : null;
-      const v = verifyState(
-        claudeQty,
-        gptQty,
-        item.verification_status ?? "pending",
-      );
-      const verified =
-        item.verification_status === "manual" || v === "confirmed" ? q : 0;
-      const cur = m.get(desc) ?? { description: desc, total: 0, verified: 0 };
-      cur.total += q;
-      cur.verified += verified;
-      m.set(desc, cur);
-    }
-    return [...m.values()].sort((a, b) =>
-      a.description.localeCompare(b.description),
-    );
-  }, [items, manualCounts, manualMode]);
-
-  const grandTotal = rows.reduce((s, r) => s + r.total, 0);
-  const grandVerified = rows.reduce((s, r) => s + r.verified, 0);
-
+  const counts = useMemo(
+    () => takeoffBucketCounts([...deviceItems, ...planNotes], manualCounts, manualMode),
+    [deviceItems, planNotes, manualCounts, manualMode],
+  );
+  const tabs = TAKEOFF_TAB_META.filter((t) => t.id !== "all");
   return (
-    <section className="mt-6 rounded-xl border border-white/15 bg-[#050d18] p-4">
-      <h3 className="text-center text-sm font-bold uppercase tracking-wide text-white">
-        Electrical takeoff summary
-      </h3>
-      <div className="my-2 border-t border-white/20" />
-      <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 gap-y-1 text-xs">
-        <span className="font-semibold text-white/60">Category</span>
-        <span className="text-right font-semibold text-white/60">Count</span>
-        <span className="text-right font-semibold text-white/60">Verified</span>
-        {rows.map((r, idx) => (
-          <div key={`${idx}-${r.description}`} className="contents">
-            <span className="text-white/90">{r.description}</span>
-            <span className="text-right tabular-nums text-white">{r.total}</span>
-            <span className="text-right tabular-nums text-emerald-200/90">
-              {r.verified}
-            </span>
-          </div>
-        ))}
-      </div>
-      <div className="my-2 border-t border-white/20" />
-      <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 text-sm font-bold text-white">
-        <span>TOTAL</span>
-        <span className="text-right tabular-nums">{grandTotal}</span>
-        <span className="text-right tabular-nums text-emerald-200">
-          {grandVerified}
+    <div className="mb-4 flex flex-wrap gap-1.5 border-b border-white/10 pb-3">
+      <button
+        type="button"
+        onClick={() => onChange("all")}
+        className={[
+          "rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors",
+          active === "all"
+            ? "border-[#E8C84A] bg-[#E8C84A]/20 text-[#E8C84A]"
+            : "border-white/15 text-white/75 hover:bg-white/5",
+        ].join(" ")}
+      >
+        All
+        <span className="ml-1 rounded-md bg-black/30 px-1.5 tabular-nums text-[10px]">
+          {counts.all}
         </span>
+      </button>
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          onClick={() => onChange(t.id)}
+          className={[
+            "rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors",
+            active === t.id
+              ? "border-sky-400/60 bg-sky-950/45 text-sky-100"
+              : "border-white/15 text-white/75 hover:bg-white/5",
+          ].join(" ")}
+        >
+          {t.label}
+          <span className="ml-1 rounded-md bg-black/30 px-1.5 tabular-nums text-[10px]">
+            {counts[t.id]}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SendToToolsRow({
+  items,
+  rooms,
+  projectLabel,
+}: {
+  items: ElectricalItemRow[];
+  rooms: DetectedRoomRow[];
+  projectLabel: string;
+}) {
+  const router = useRouter();
+  const showAv = takeoffHasAvSignals(items);
+  const showSh = takeoffHasSmartHomeSignals(items);
+  if (items.length === 0) return null;
+  const btn =
+    "rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-colors";
+  return (
+    <section className="mb-4 rounded-xl border border-white/12 bg-white/[0.04] p-3">
+      <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-white/45">
+        Send to tools
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          className={`${btn} border-amber-500/40 bg-amber-950/30 text-amber-100 hover:bg-amber-950/45`}
+          onClick={() => {
+            pushTakeoffToLoadCalculator(items, rooms, projectLabel);
+            router.push("/tools/load-calculator");
+          }}
+        >
+          → Load Calculator
+        </button>
+        <button
+          type="button"
+          className={`${btn} border-yellow-500/35 bg-yellow-950/25 text-yellow-100 hover:bg-yellow-950/40`}
+          onClick={() => {
+            pushTakeoffToElectricalAnalyzer(items, rooms, projectLabel);
+            router.push("/tools/electrical-analyzer");
+          }}
+        >
+          → Electrical Analyzer
+        </button>
+        <button
+          type="button"
+          className={`${btn} border-violet-500/40 bg-violet-950/30 text-violet-100 hover:bg-violet-950/45`}
+          onClick={() => {
+            pushTakeoffToNecChecker(items, projectLabel);
+            router.push("/tools/nec-checker");
+          }}
+        >
+          → NEC Checker
+        </button>
+        {showAv ? (
+          <button
+            type="button"
+            className={`${btn} border-rose-500/40 bg-rose-950/30 text-rose-100 hover:bg-rose-950/45`}
+            onClick={() => {
+              pushTakeoffToAvAnalyzer(rooms, projectLabel);
+              router.push("/tools/av-analyzer");
+            }}
+          >
+            → AV Analyzer
+          </button>
+        ) : null}
+        {showSh ? (
+          <button
+            type="button"
+            className={`${btn} border-cyan-500/40 bg-cyan-950/30 text-cyan-100 hover:bg-cyan-950/45`}
+            onClick={() => {
+              pushTakeoffToSmartHomeAnalyzer(rooms, projectLabel);
+              router.push("/tools/smarthome-analyzer");
+            }}
+          >
+            → Smart Home Analyzer
+          </button>
+        ) : null}
       </div>
-      <div className="mt-2 border-t border-white/20" />
     </section>
   );
 }
@@ -977,6 +1346,13 @@ export function AnalysisResultsPanel({
   onRetryAnalysisPage,
   analyzeBusy,
   onExportRoom,
+  projectId,
+  projectLabel = "Project",
+  onOpenTakeoffExport,
+  onExportAllTakeoffPdf,
+  onExportAllTakeoffCsv,
+  onRequestItemVerify,
+  onManualVerificationSave,
 }: {
   items: ElectricalItemRow[];
   rooms: DetectedRoomRow[];
@@ -996,7 +1372,16 @@ export function AnalysisResultsPanel({
   onRetryAnalysisPage?: () => void;
   analyzeBusy?: boolean;
   onExportRoom?: (room: DetectedRoomRow) => void;
+  /** For materials list + linking (optional). */
+  projectId?: string;
+  projectLabel?: string;
+  onOpenTakeoffExport?: () => void;
+  onExportAllTakeoffPdf?: () => void;
+  onExportAllTakeoffCsv?: () => void;
+  onRequestItemVerify?: (item: ElectricalItemRow) => void;
+  onManualVerificationSave?: () => void | Promise<void>;
 }) {
+  const router = useRouter();
   const patchRooms = onPatchRooms ?? (() => {});
   const [, bump] = useState(0);
   const refresh = useCallback(() => bump((x) => x + 1), []);
@@ -1036,6 +1421,21 @@ export function AnalysisResultsPanel({
     [pageItems],
   );
 
+  const [takeoffSummaryOpen, setTakeoffSummaryOpen] = useState(false);
+  const [categoryTab, setCategoryTab] = useState<TakeoffFilterTab>("all");
+  const [materialsBusy, setMaterialsBusy] = useState(false);
+
+  const filteredDeviceItems = useMemo(() => {
+    if (categoryTab === "all") return deviceItems;
+    if (categoryTab === "plan_notes") return [];
+    return deviceItems.filter((i) => itemMatchesTakeoffTab(i, categoryTab));
+  }, [deviceItems, categoryTab]);
+
+  const visiblePlanNotes = useMemo(() => {
+    if (categoryTab !== "all" && categoryTab !== "plan_notes") return [];
+    return planNotes;
+  }, [planNotes, categoryTab]);
+
   const roomAssignOptions = useMemo(
     () => assignableRoomOptionsWithDisambiguatedLabels(pageRooms),
     [pageRooms],
@@ -1044,7 +1444,7 @@ export function AnalysisResultsPanel({
   const itemsByRoom = useMemo(() => {
     const map = new Map<string, ElectricalItemRow[]>();
     for (const room of pageRooms) {
-      const list = deviceItems.filter(
+      const list = filteredDeviceItems.filter(
         (i) =>
           itemMatchesDetectedRoom(i, room) &&
           !isItemUnassignedForPage(i, pageRooms),
@@ -1052,12 +1452,63 @@ export function AnalysisResultsPanel({
       map.set(room.id, list);
     }
     return map;
-  }, [pageRooms, deviceItems]);
+  }, [pageRooms, filteredDeviceItems]);
 
   const unassignedItems = useMemo(
     () => deviceItems.filter((i) => isItemUnassignedForPage(i, pageRooms)),
     [deviceItems, pageRooms],
   );
+
+  const filteredUnassignedItems = useMemo(
+    () =>
+      filteredDeviceItems.filter((i) =>
+        isItemUnassignedForPage(i, pageRooms),
+      ),
+    [filteredDeviceItems, pageRooms],
+  );
+
+  const convertToMaterialsList = useCallback(async () => {
+    if (!projectId || items.length === 0) return;
+    setMaterialsBusy(true);
+    try {
+      const { state, lineCount } = buildProjectBreakdownFromTakeoffItems(
+        items,
+        manualCounts,
+        manualMode,
+        projectLabel,
+      );
+      const sb = createBrowserClient();
+      const { data, error } = await sb
+        .from("project_breakdowns")
+        .insert({
+          name: `${projectLabel} — Takeoff materials`,
+          state_json: state as unknown as Record<string, unknown>,
+        })
+        .select("id")
+        .single();
+      if (error) throw error;
+      const id = data?.id ? String(data.id) : null;
+      if (id) {
+        window.alert(
+          `Materials list created from scan — ${lineCount} line item${lineCount === 1 ? "" : "s"}.`,
+        );
+        router.push(`/tools/project-breakdown?id=${encodeURIComponent(id)}`);
+      }
+    } catch (e) {
+      window.alert(
+        e instanceof Error ? e.message : "Could not create materials list.",
+      );
+    } finally {
+      setMaterialsBusy(false);
+    }
+  }, [
+    projectId,
+    items,
+    manualCounts,
+    manualMode,
+    projectLabel,
+    router,
+  ]);
 
   const assignItemToRoom = useCallback(
     async (itemId: string, roomName: string) => {
@@ -1140,6 +1591,7 @@ export function AnalysisResultsPanel({
   const [assignAllRoomId, setAssignAllRoomId] = useState("");
   const [dragOverRoomId, setDragOverRoomId] = useState<string | null>(null);
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
+  const [acceptAllBusy, setAcceptAllBusy] = useState(false);
 
   useEffect(() => {
     if (!bulkMode) setBulkSelected(new Set());
@@ -1248,6 +1700,45 @@ export function AnalysisResultsPanel({
     },
     [onPatchItems, dismissManualCompareHint],
   );
+
+  const acceptItemsByList = useCallback(
+    async (targets: ElectricalItemRow[]) => {
+      const list = targets.filter((i) => i.category !== "plan_note");
+      if (list.length === 0) return;
+      setAcceptAllBusy(true);
+      try {
+        for (const it of list) {
+          const res = await fetch("/api/electrical-items/accept-verified", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ itemId: it.id }),
+          });
+          const json = (await res.json()) as {
+            item?: ElectricalItemRow;
+            error?: string;
+          };
+          if (!res.ok) throw new Error(json.error ?? "Accept failed.");
+          if (json.item) onPatchItems([json.item]);
+        }
+      } catch (e) {
+        window.alert(e instanceof Error ? e.message : "Accept failed.");
+      } finally {
+        setAcceptAllBusy(false);
+      }
+    },
+    [onPatchItems],
+  );
+
+  const acceptAllInRoom = useCallback(
+    async (roomItems: ElectricalItemRow[]) => {
+      await acceptItemsByList(roomItems);
+    },
+    [acceptItemsByList],
+  );
+
+  const acceptAllPageItems = useCallback(async () => {
+    await acceptItemsByList(deviceItems);
+  }, [acceptItemsByList, deviceItems]);
 
   const manualCompareHintFor = useCallback(
     (row: ElectricalItemRow) => {
@@ -1368,6 +1859,37 @@ export function AnalysisResultsPanel({
           </p>
         ) : null}
 
+        {deviceItems.length > 0 && !manualMode && !assignmentOpen ? (
+          <div className="mb-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={acceptAllBusy}
+              onClick={() => void acceptAllPageItems()}
+              className="rounded-lg border border-emerald-500/45 bg-emerald-950/40 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-100 hover:bg-emerald-950/55 disabled:opacity-45"
+            >
+              {acceptAllBusy ? "Accepting…" : "Accept All Items"}
+            </button>
+            {onExportAllTakeoffPdf ? (
+              <button
+                type="button"
+                onClick={() => onExportAllTakeoffPdf()}
+                className="rounded-lg border border-sky-500/45 bg-sky-950/40 px-2.5 py-1.5 text-[11px] font-semibold text-sky-100 hover:bg-sky-950/55"
+              >
+                Export All as PDF
+              </button>
+            ) : null}
+            {onExportAllTakeoffCsv ? (
+              <button
+                type="button"
+                onClick={() => onExportAllTakeoffCsv()}
+                className="rounded-lg border border-white/20 bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-white/15"
+              >
+                Export All as CSV
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
         {pageAnalysisWarning ? (
           <div className="mb-3 rounded-lg border border-amber-500/40 bg-amber-950/30 px-3 py-3 text-sm text-amber-50/95">
             <p>{pageAnalysisWarning}</p>
@@ -1405,6 +1927,60 @@ export function AnalysisResultsPanel({
           />
         ) : (
           <>
+            {pageItems.length > 0 ? (
+              <TakeoffSummaryCollapsible
+                deviceItems={deviceItems}
+                planNotes={planNotes}
+                pageRooms={pageRooms}
+                manualCounts={manualCounts}
+                manualMode={manualMode}
+                expanded={takeoffSummaryOpen}
+                onToggleExpanded={() =>
+                  setTakeoffSummaryOpen((o) => !o)
+                }
+                onExport={onOpenTakeoffExport}
+              />
+            ) : null}
+            {pageItems.length > 0 ? (
+              <CategoryFilterTabs
+                active={categoryTab}
+                onChange={setCategoryTab}
+                deviceItems={deviceItems}
+                planNotes={planNotes}
+                manualCounts={manualCounts}
+                manualMode={manualMode}
+              />
+            ) : null}
+            {items.length > 0 ? (
+              <SendToToolsRow
+                items={items}
+                rooms={rooms}
+                projectLabel={projectLabel}
+              />
+            ) : null}
+            {items.length > 0 && projectId ? (
+              <div className="mb-4">
+                <button
+                  type="button"
+                  disabled={materialsBusy}
+                  onClick={() => void convertToMaterialsList()}
+                  className="w-full rounded-lg border border-[#E8C84A]/50 bg-[#E8C84A]/15 px-3 py-2 text-xs font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/25 disabled:opacity-50"
+                >
+                  {materialsBusy
+                    ? "Creating materials list…"
+                    : "Convert to Materials List"}
+                </button>
+              </div>
+            ) : null}
+            {pageItems.length > 0 &&
+            categoryTab !== "plan_notes" &&
+            filteredDeviceItems.length === 0 &&
+            visiblePlanNotes.length === 0 ? (
+              <p className="mb-3 rounded-lg border border-dashed border-white/15 px-3 py-4 text-center text-xs text-white/50">
+                No items in this category on this page.
+              </p>
+            ) : null}
+            {categoryTab !== "plan_notes" ? (
             <div className="space-y-3">
               {pageRooms.map((room) => {
                 const list = itemsByRoom.get(room.id) ?? [];
@@ -1457,6 +2033,11 @@ export function AnalysisResultsPanel({
                       onExportRoom={
                         onExportRoom ? () => onExportRoom(room) : undefined
                       }
+                      onAcceptAllInRoom={
+                        !manualMode && list.length > 0
+                          ? () => void acceptAllInRoom(list)
+                          : undefined
+                      }
                     />
                     {expanded ? (
                       <div className="space-y-2 px-3 py-3">
@@ -1495,6 +2076,12 @@ export function AnalysisResultsPanel({
                               manualCompareHint={manualCompareHintFor(item)}
                               onDismissManualCompare={dismissManualCompareHint}
                               onKeepAiCount={(id) => void keepAiCountForItem(id)}
+                              onRequestVerify={
+                                !manualMode && onRequestItemVerify
+                                  ? () => onRequestItemVerify(item)
+                                  : undefined
+                              }
+                              onManualVerificationSave={onManualVerificationSave}
                             />
                           ))
                         )}
@@ -1508,13 +2095,15 @@ export function AnalysisResultsPanel({
                 );
               })}
             </div>
+            ) : null}
 
-            {unassignedItems.length > 0 ? (
+            {categoryTab !== "plan_notes" &&
+            filteredUnassignedItems.length > 0 ? (
               <section className="mt-5 rounded-xl border border-amber-500/35 bg-amber-950/20 p-3">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
                     <h3 className="text-sm font-bold text-amber-100">
-                      UNASSIGNED ITEMS ({unassignedItems.length})
+                      UNASSIGNED ITEMS ({filteredUnassignedItems.length})
                     </h3>
                     <p className="mt-1 text-xs text-amber-100/80">
                       Drag to a room, use the room menu, quick buttons, or assign
@@ -1535,7 +2124,7 @@ export function AnalysisResultsPanel({
                   ) : null}
                 </div>
                 <div className="mt-3 space-y-2">
-                  {unassignedItems.map((item) => (
+                  {filteredUnassignedItems.map((item) => (
                     <CompactItemRow
                       key={item.id}
                       item={item}
@@ -1569,19 +2158,19 @@ export function AnalysisResultsPanel({
                       manualCompareHint={manualCompareHintFor(item)}
                       onDismissManualCompare={dismissManualCompareHint}
                       onKeepAiCount={(id) => void keepAiCountForItem(id)}
+                      onRequestVerify={
+                        !manualMode && onRequestItemVerify
+                          ? () => onRequestItemVerify(item)
+                          : undefined
+                      }
+                      onManualVerificationSave={onManualVerificationSave}
                     />
                   ))}
                 </div>
               </section>
             ) : null}
 
-            <GrandSummaryTable
-              items={deviceItems}
-              manualCounts={manualCounts}
-              manualMode={manualMode}
-            />
-
-            {planNotes.length > 0 ? (
+            {visiblePlanNotes.length > 0 ? (
               <details
                 open={planOpen}
                 className="mt-5 rounded-xl border border-emerald-500/35 bg-emerald-950/20"
@@ -1590,10 +2179,11 @@ export function AnalysisResultsPanel({
                 }
               >
                 <summary className="cursor-pointer px-3 py-2.5 text-sm font-semibold text-emerald-100">
-                  Plan Notes &amp; Specifications ({planNotes.length} notes)
+                  Plan Notes &amp; Specifications ({visiblePlanNotes.length}{" "}
+                  notes)
                 </summary>
                 <div className="space-y-2 border-t border-emerald-500/20 px-3 py-3">
-                  {planNotes.map((item) => (
+                  {visiblePlanNotes.map((item) => (
                     <CompactItemRow
                       key={item.id}
                       item={item}

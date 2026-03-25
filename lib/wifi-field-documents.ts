@@ -583,6 +583,7 @@ export function buildClientProposalText(
     `Total Investment:         ${formatUsd(totalLow)} – ${formatUsd(totalHigh)}`,
     "",
     "[Note: Final pricing subject to site conditions. This proposal is based on provided room dimensions.]",
+    "[When priced in Project Breakdown: sales tax applies to materials customer price only — labor is not taxed.]",
     "",
     "TIMELINE:",
     `Estimated installation time: ${r.laborHours.totalLaborHours} hours`,

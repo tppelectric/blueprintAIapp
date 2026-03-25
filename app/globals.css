@@ -16,7 +16,7 @@
 [data-theme="light"] {
   --background: #f0f4f8;
   --surface-card: #ffffff;
-  --surface-elevated: #ffffff;
+  --surface-elevated: #f8fafc;
   --foreground: #0a1628;
   --foreground-muted: #4a5568;
   --border: #e2e8f0;
@@ -37,8 +37,69 @@ body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
+/* Mobile-first touch & readability (≤767px) */
+@media (max-width: 767.98px) {
+  html {
+    font-size: 17px;
+  }
+
+  .touch-target {
+    min-height: 44px;
+  }
+
+  .touch-target-sm {
+    min-height: 40px;
+    min-width: 40px;
+  }
+
+  .touch-target-md {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .card-pad-mobile {
+    padding: 0.875rem 1rem;
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .app-mobile-main-pad {
+    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (min-width: 768px) {
+  .app-mobile-main-pad {
+    padding-bottom: 0;
+  }
+}
+
+.table-scroll-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* Nav headers: navy in both themes (FIX 3) */
+/* Mobile nav menu (portaled to body; z-index above headers) */
+.app-mobile-menu-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 999999 !important;
+}
+.app-mobile-menu-panel {
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  height: 100% !important;
+  z-index: 999999 !important;
+}
+
 .app-header-wide {
+  position: relative;
+  z-index: 30;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   background: #0a1628;
 }
@@ -92,6 +153,8 @@ body {
 }
 
 .app-tool-header {
+  position: relative;
+  z-index: 30;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   background: #0a1628;
 }
@@ -140,6 +203,17 @@ body {
   color: #f1f5f9;
 }
 
+.app-nav-search-trigger {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+[data-theme="light"] .app-nav-search-trigger {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+
 .tool-surface-card {
   border-radius: 1rem;
   border: 1px solid var(--border);
@@ -179,6 +253,38 @@ body {
 }
 [data-theme="light"] .dash-surface {
   box-shadow: 0 1px 3px rgba(10, 22, 40, 0.08);
+}
+
+.dash-open-project-btn {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--surface-elevated);
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--foreground);
+  transition:
+    border-color 0.15s,
+    background-color 0.15s,
+    color 0.15s;
+}
+.dash-open-project-btn:hover {
+  border-color: rgba(232, 200, 74, 0.35);
+}
+[data-theme="light"] .dash-open-project-btn {
+  background: #f0f4f8;
+}
+[data-theme="dark"] .dash-open-project-btn {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+[data-theme="dark"] .dash-open-project-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .dash-muted {

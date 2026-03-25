@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { ProjectRoomScanRow } from "@/lib/project-room-scan-types";
+import type { ProjectRoomScanRow } from "@/lib/project-room-scans";
 
 function formatScanDate(iso: string): string {
   const d = new Date(iso);

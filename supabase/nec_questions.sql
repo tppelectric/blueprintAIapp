@@ -1,4 +1,4 @@
--- NEC AI Q&A log (also appended to load_calculations_nec_checklists.sql).
+-- NEC AI Q&A log (canonical DDL for `nec_questions`; paired tools use load_calculations_nec_checklists.sql for other tables).
 -- Inserts from /api/nec-question use the Supabase service role (bypasses RLS).
 
 CREATE TABLE IF NOT EXISTS public.nec_questions (
@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS public.nec_questions (
   answer TEXT,
   jurisdiction TEXT DEFAULT 'NY',
   nec_edition TEXT DEFAULT '2023',
+  job_id UUID REFERENCES public.jobs (id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -20,3 +21,7 @@ ALTER TABLE public.nec_questions ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "nec_questions_select_all" ON public.nec_questions;
 CREATE POLICY "nec_questions_select_all"
   ON public.nec_questions FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "nec_questions_insert_all" ON public.nec_questions;
+CREATE POLICY "nec_questions_insert_all"
+  ON public.nec_questions FOR INSERT WITH CHECK (true);

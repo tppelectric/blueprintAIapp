@@ -5,6 +5,7 @@ import {
   withClaudeOverloadRetries,
 } from "@/lib/ai-api-retries";
 import { createServiceRoleClient } from "@/lib/supabase/service";
+import { checkAiRouteRateLimit } from "@/lib/rate-limit";
 
 export const maxDuration = 120;
 
@@ -36,6 +37,17 @@ function extractAssistantText(msg: Anthropic.Messages.Message): string {
 }
 
 export async function POST(request: Request) {
+  const rl = checkAiRouteRateLimit(request, "nec-question");
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again shortly." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rl.retryAfterSeconds) },
+      },
+    );
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return NextResponse.json(

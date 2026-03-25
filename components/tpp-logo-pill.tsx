@@ -2,13 +2,20 @@
 
 import { TPP_LOGO_PATH } from "@/lib/tpp-branding";
 
-/** Width tokens: hero 128px, dashboard header 96px, tool headers 80px, compact 64px. */
 const SIZES = {
-  hero: "w-32",
-  header: "w-24",
-  tool: "w-20",
-  compact: "w-16",
+  hero: "w-28 sm:w-36 md:w-44",
+  header: "w-36",
+  tool: "w-28",
+  compact: "w-24",
 } as const;
+
+/** Background-size % auto — tune per variant for visual balance. */
+const BG_SIZE: Record<keyof typeof SIZES, string> = {
+  hero: "80% auto",
+  header: "80% auto",
+  tool: "80% auto",
+  compact: "80% auto",
+};
 
 export function TppLogoPill({
   size,
@@ -19,16 +26,16 @@ export function TppLogoPill({
 }) {
   return (
     <span
-      className={`flex shrink-0 items-center justify-center rounded-xl bg-white p-2 ${SIZES[size]} ${className}`}
-    >
-      <span className="flex h-full min-h-0 w-full min-w-0 items-center justify-center">
-        {/* eslint-disable-next-line @next/next/no-img-element -- public asset */}
-        <img
-          src={TPP_LOGO_PATH}
-          alt="TPP Electric"
-          className="max-h-full max-w-full object-contain"
-        />
-      </span>
-    </span>
+      role="img"
+      aria-label="TPP Electric"
+      className={`block aspect-square shrink-0 rounded-full bg-[#0d1f3c] shadow-md ring-1 ring-[#E8C84A]/25 ${SIZES[size]} ${className}`}
+      style={{
+        backgroundColor: "#0d1f3c",
+        backgroundImage: `url('${TPP_LOGO_PATH}')`,
+        backgroundSize: BG_SIZE[size],
+        backgroundPosition: "center center",
+        backgroundRepeat: "no-repeat",
+      }}
+    />
   );
 }

@@ -3,6 +3,10 @@ import type { DetectedRoomRow } from "@/lib/detected-room-types";
 import type { SavedScanRow } from "@/lib/saved-scan-types";
 import { parseScanItems, parseScanRooms } from "@/lib/saved-scan-types";
 import {
+  filterItemsByExportScopes,
+  type TakeoffCategoryExportScope,
+} from "@/lib/takeoff-category";
+import {
   displayWhichRoom,
   itemMatchesDetectedRoom,
   normalizeRoomLabel,
@@ -187,7 +191,14 @@ export function downloadTextFile(filename: string, content: string, mime: string
 
 // --- Full project takeoff export ---
 
-export type TakeoffExportFormat = "pdf" | "csv" | "both";
+export type TakeoffExportFormat =
+  | "pdf"
+  | "csv"
+  | "both"
+  /** Printable HTML table styled like a panel schedule */
+  | "pdf_schedule"
+  /** Grouped quantities by unique line (estimating BOM) */
+  | "csv_materials";
 export type TakeoffOrganizeBy = "room_floor" | "category" | "page";
 
 export type TakeoffExportInclude = {
@@ -799,29 +810,162 @@ ${summaryFooter}
   setTimeout(() => w.print(), 300);
 }
 
+/** Grouped material-style CSV (unique description/spec/unit, summed qty). */
+export function buildMaterialsTakeoffCsv(
+  input: TakeoffExportProjectInput,
+): string {
+  const { items } = filterTakeoffData(input);
+  const qty = (i: ElectricalItemRow) =>
+    exportEffectiveQty(i, input.manualCounts, input.manualMode);
+  const map = new Map<
+    string,
+    {
+      cat: string;
+      desc: string;
+      spec: string;
+      unit: string;
+      qty: number;
+    }
+  >();
+  for (const i of items) {
+    if (i.category === "plan_note") continue;
+    const k = `${i.category}\u0001${i.description}\u0001${i.specification ?? ""}\u0001${i.unit ?? ""}`;
+    const cur = map.get(k);
+    const add = qty(i);
+    if (cur) cur.qty += add;
+    else
+      map.set(k, {
+        cat: String(i.category ?? ""),
+        desc: String(i.description ?? ""),
+        spec: String(i.specification ?? ""),
+        unit: String(i.unit ?? "EA"),
+        qty: add,
+      });
+  }
+  const lines = [
+    [
+      "Category",
+      "Description",
+      "Specification",
+      "Unit",
+      "Total_Qty",
+    ].join(","),
+  ];
+  const rows = [...map.values()].sort((a, b) =>
+    a.desc.localeCompare(b.desc),
+  );
+  for (const v of rows) {
+    lines.push(
+      [
+        csvEscape(v.cat),
+        csvEscape(v.desc),
+        csvEscape(v.spec),
+        csvEscape(v.unit),
+        String(v.qty),
+      ].join(","),
+    );
+  }
+  return lines.join("\r\n");
+}
+
+/** Simplified schedule-style printable report (browser print → PDF). */
+export function openScheduleTakeoffPrintReport(
+  input: TakeoffExportProjectInput,
+  organizeBy: TakeoffOrganizeBy,
+): void {
+  const { items, pageIndex } = prepareTakeoffRows(input, organizeBy);
+  const q = (i: ElectricalItemRow) =>
+    exportEffectiveQty(i, input.manualCounts, input.manualMode);
+  const rows = items
+    .map((i) => {
+      const meta = pageIndex.get(i.page_number);
+      const sheet = meta ? `Sheet ${meta.sheetNumber}` : "—";
+      return `<tr><td>${escapeHtml(String(i.category ?? ""))}</td><td>${escapeHtml(i.description)}</td><td>${escapeHtml(displayWhichRoom(i))}</td><td class="num">${q(i)}</td><td class="num">${i.page_number}</td><td>${escapeHtml(sheet)}</td></tr>`;
+    })
+    .join("");
+  const title = escapeHtml(`${input.projectName} — Schedule-style takeoff`);
+  const when = escapeHtml(input.analyzedAt.toLocaleString());
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${title}</title>
+<style>
+body{font-family:system-ui,sans-serif;color:#111;margin:16px}
+h1{font-size:1.2rem} .meta{color:#555;font-size:0.9rem}
+table{width:100%;border-collapse:collapse;font-size:0.85rem}
+th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}
+th{background:#f0f0f0}
+.num{text-align:right}
+</style></head><body>
+<h1>Electrical schedule export</h1>
+<p class="meta"><strong>Project:</strong> ${escapeHtml(input.projectName)}<br/><strong>Generated:</strong> ${when}</p>
+<table><thead><tr><th>Category</th><th>Description</th><th>Location</th><th>Qty</th><th>Page</th><th>Sheet</th></tr></thead><tbody>${rows || "<tr><td colspan='6'>No items</td></tr>"}</tbody></table>
+<footer style="margin-top:16px;font-size:0.75rem;color:#666">${escapeHtml(FOOTER)}</footer>
+<script>window.onload=function(){ window.focus(); }</script>
+</body></html>`;
+  const w = window.open("", "_blank");
+  if (!w) {
+    window.alert("Pop-up blocked. Allow pop-ups to print the schedule.");
+    return;
+  }
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  setTimeout(() => w.print(), 250);
+}
+
+export type TakeoffExportOptions = {
+  categoryScopes?: TakeoffCategoryExportScope[];
+};
+
 export function runTakeoffExport(
   input: TakeoffExportProjectInput,
   format: TakeoffExportFormat,
   organizeBy: TakeoffOrganizeBy,
   include: TakeoffExportInclude,
+  options?: TakeoffExportOptions,
 ): void {
-  const stamp = input.analyzedAt.toISOString().slice(0, 10);
-  const safeName = input.projectName.replace(/[^\w\- ]+/g, "").trim() || "project";
-  if (format === "csv" || format === "both") {
-    const csv = buildProjectTakeoffCsv(input, organizeBy, include);
-    downloadTextFile(
-      `takeoff-${safeName}-${stamp}.csv`,
-      csv,
-      "text/csv;charset=utf-8",
-    );
+  const scopedInput =
+    options?.categoryScopes &&
+    options.categoryScopes.length > 0 &&
+    !options.categoryScopes.includes("all")
+      ? {
+          ...input,
+          items: filterItemsByExportScopes(input.items, options.categoryScopes),
+        }
+      : input;
+
+  const stamp = scopedInput.analyzedAt.toISOString().slice(0, 10);
+  const safeName =
+    scopedInput.projectName.replace(/[^\w\- ]+/g, "").trim() || "project";
+  if (
+    format === "csv" ||
+    format === "both" ||
+    format === "csv_materials"
+  ) {
+    if (format === "csv_materials") {
+      const csv = buildMaterialsTakeoffCsv(scopedInput);
+      downloadTextFile(
+        `takeoff-materials-${safeName}-${stamp}.csv`,
+        csv,
+        "text/csv;charset=utf-8",
+      );
+    } else if (format === "csv" || format === "both") {
+      const csv = buildProjectTakeoffCsv(scopedInput, organizeBy, include);
+      downloadTextFile(
+        `takeoff-${safeName}-${stamp}.csv`,
+        csv,
+        "text/csv;charset=utf-8",
+      );
+    }
   }
   if (format === "pdf" || format === "both") {
     void import("@/lib/takeoff-pdf-report").then(
       async ({ downloadTakeoffPdfReport }) => {
-        await downloadTakeoffPdfReport(input, organizeBy, include, {
+        await downloadTakeoffPdfReport(scopedInput, organizeBy, include, {
           filename: `takeoff-${safeName}-${stamp}.pdf`,
         });
       },
     );
+  }
+  if (format === "pdf_schedule") {
+    openScheduleTakeoffPrintReport(scopedInput, organizeBy);
   }
 }

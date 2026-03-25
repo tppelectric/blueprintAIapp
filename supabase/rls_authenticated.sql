@@ -75,6 +75,21 @@ create policy "wifi_calculations_update_auth" on public.wifi_calculations
 create policy "wifi_calculations_delete_auth" on public.wifi_calculations
   for delete to authenticated using (true);
 
+-- ── electrical_projects ───────────────────────────────────────────────────
+drop policy if exists "electrical_projects_select_all" on public.electrical_projects;
+drop policy if exists "electrical_projects_insert_all" on public.electrical_projects;
+drop policy if exists "electrical_projects_update_all" on public.electrical_projects;
+drop policy if exists "electrical_projects_delete_all" on public.electrical_projects;
+
+create policy "electrical_projects_select_auth" on public.electrical_projects
+  for select to authenticated using (true);
+create policy "electrical_projects_insert_auth" on public.electrical_projects
+  for insert to authenticated with check (true);
+create policy "electrical_projects_update_auth" on public.electrical_projects
+  for update to authenticated using (true) with check (true);
+create policy "electrical_projects_delete_auth" on public.electrical_projects
+  for delete to authenticated using (true);
+
 -- ── sheets (if created via projects_sheets_migration.sql) ─────────────────
 drop policy if exists "sheets_select_all" on public.sheets;
 drop policy if exists "sheets_insert_all" on public.sheets;
@@ -90,6 +105,52 @@ create policy "sheets_update_auth" on public.sheets
 create policy "sheets_delete_auth" on public.sheets
   for delete to authenticated using (true);
 
+-- ── projects ──────────────────────────────────────────────────────────────
+-- Any signed-in user can see ALL projects (shared contractor workspace).
+-- If you need per-user isolation later, replace `using (true)` with
+-- e.g. `using (auth.uid() = owner_id)` and backfill `owner_id`.
+
+alter table public.projects enable row level security;
+
+drop policy if exists "projects_select_all" on public.projects;
+drop policy if exists "projects_insert_all" on public.projects;
+drop policy if exists "projects_update_all" on public.projects;
+drop policy if exists "projects_delete_all" on public.projects;
+drop policy if exists "projects_select_auth" on public.projects;
+drop policy if exists "projects_insert_auth" on public.projects;
+drop policy if exists "projects_update_auth" on public.projects;
+drop policy if exists "projects_delete_auth" on public.projects;
+
+create policy "projects_select_auth" on public.projects
+  for select to authenticated using (true);
+create policy "projects_insert_auth" on public.projects
+  for insert to authenticated with check (true);
+create policy "projects_update_auth" on public.projects
+  for update to authenticated using (true) with check (true);
+create policy "projects_delete_auth" on public.projects
+  for delete to authenticated using (true);
+
+-- ── nec_questions ─────────────────────────────────────────────────────────
+drop policy if exists "nec_questions_select_all" on public.nec_questions;
+drop policy if exists "nec_questions_insert_all" on public.nec_questions;
+
+create policy "nec_questions_select_auth" on public.nec_questions
+  for select to authenticated using (true);
+create policy "nec_questions_insert_auth" on public.nec_questions
+  for insert to authenticated with check (true);
+
 -- Note: `api_usage` is written only via service-role API routes; leave RLS off or
--- add service-only policies as needed. `projects` / `electrical_items` / scan tables:
+-- add service-only policies as needed. `electrical_items` / scan tables:
 -- apply the same `to authenticated` pattern if they currently use `using (true)`.
+
+-- ── project_room_scans (see also supabase/project_room_scans.sql) ────────────
+drop policy if exists "project_room_scans_select_auth" on public.project_room_scans;
+drop policy if exists "project_room_scans_insert_auth" on public.project_room_scans;
+drop policy if exists "project_room_scans_delete_auth" on public.project_room_scans;
+
+create policy "project_room_scans_select_auth" on public.project_room_scans
+  for select to authenticated using (true);
+create policy "project_room_scans_insert_auth" on public.project_room_scans
+  for insert to authenticated with check (true);
+create policy "project_room_scans_delete_auth" on public.project_room_scans
+  for delete to authenticated using (true);

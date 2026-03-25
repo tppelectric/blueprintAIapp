@@ -170,7 +170,7 @@ export function ElectricalReferenceClient() {
         </div>
       </ToolPageHeader>
 
-      <main className="mx-auto max-w-4xl space-y-8 px-6 py-8">
+      <main className="mx-auto max-w-4xl space-y-8 px-4 py-6 sm:px-6 sm:py-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="tool-muted max-w-xl text-sm">
             Rule-based math only — not a substitute for the NEC in force or

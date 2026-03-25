@@ -33,10 +33,34 @@ const tools = [
     tone: "border-[#E8C84A]/50 text-[#E8C84A]",
   },
   {
+    href: "/tools/av-analyzer",
+    title: "AV Analyzer",
+    desc: "Distributed audio, theater & display planning",
+    tone: "border-rose-500/45 text-rose-100",
+  },
+  {
+    href: "/tools/smarthome-analyzer",
+    title: "Smart Home Analyzer",
+    desc: "Automation, lighting & control design",
+    tone: "border-cyan-500/45 text-cyan-100",
+  },
+  {
+    href: "/tools/electrical-analyzer",
+    title: "Electrical Project Analyzer",
+    desc: "Room-by-room circuits, panel & NEC-style estimates",
+    tone: "border-lime-500/45 text-lime-100",
+  },
+  {
     href: "/tools/project-breakdown",
     title: "Project breakdown",
     desc: "Cost, markup, sell price, and profit",
     tone: "border-amber-500/45 text-amber-100",
+  },
+  {
+    href: "/tools/project-describer",
+    title: "AI Project Describer",
+    desc: "Voice or text → scope, BOM, proposals, analyzer pre-fill",
+    tone: "border-fuchsia-500/45 text-fuchsia-100",
   },
   {
     href: "/dashboard/symbols",
@@ -49,14 +73,38 @@ const tools = [
 export default function ToolsHubPage() {
   return (
     <div className="flex min-h-screen flex-col">
-      <ToolPageHeader title="Tools" subtitle="Calculators, checklists & planners" />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-12">
+      <ToolPageHeader
+        title="Tools"
+        subtitle="Calculators, checklists & planners"
+        showToolsBackLink={false}
+      />
+      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8 sm:px-6 sm:py-12">
+        <nav
+          className="mb-10 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm font-medium"
+          aria-label="Leave tools hub"
+        >
+          <Link
+            href="/dashboard"
+            className="text-[#E8C84A] transition-colors hover:text-[#f0d56e]"
+          >
+            ← Dashboard
+          </Link>
+          <span className="text-white/30" aria-hidden>
+            |
+          </span>
+          <Link
+            href="/"
+            className="text-white/75 transition-colors hover:text-[#E8C84A]"
+          >
+            🏠 Home
+          </Link>
+        </nav>
         <ul className="space-y-4">
           {tools.map((t) => (
             <li key={t.href}>
               <Link
                 href={t.href}
-                className={`tool-surface-card block border p-6 transition-opacity hover:opacity-95 ${t.tone}`}
+                className={`tool-surface-card card-pad-mobile block border p-5 transition-opacity hover:opacity-95 sm:p-6 ${t.tone}`}
               >
                 <h2 className="text-lg font-semibold text-[var(--foreground)]">
                   {t.title}

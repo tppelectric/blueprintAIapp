@@ -4802,6 +4802,10 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           tradeFaded={slug === "not_relevant"}
           onContextMenu={(e) => {
             e.preventDefault();
+            if (markingPagesMode) {
+              void persistTradeForPage(n, null);
+              return;
+            }
             setTradeCtxMenu({ page: n, x: e.clientX, y: e.clientY });
           }}
         />
@@ -4845,6 +4849,9 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           </span>
         );
       }
+      const pm = pagePickMeta[n];
+      const tm = tradeMeta(pm?.tradeSlug ?? null);
+      const ic = pm?.itemCount ?? 0;
       return (
         <PageThumbnail
           key={`sp-${n}`}
@@ -4855,10 +4862,13 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           onSelect={() => {}}
           disabled
           scanStatus={thumbByPage[n]}
+          thumbNote={ic > 0 ? `${ic} scanned` : null}
+          tradeBadge={tm ? `${tm.emoji} ${tm.short}` : null}
+          tradeFaded={pm?.tradeSlug === "not_relevant"}
         />
       );
     });
-  }, [pdfDocs, numPages, thumbByPage]);
+  }, [pdfDocs, numPages, thumbByPage, pagePickMeta]);
 
   const electricalScanHint = useMemo(() => {
     if (numPages < 1) return null;
@@ -4896,6 +4906,23 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     }
     return { fixtures, receptacles, switches, notes };
   }, [analysisItems]);
+
+  /** During multi-page scan, show live session cost in the stats bar; otherwise project total. */
+  const toolbarStatsCostLabel = useMemo(() => {
+    if (!canSeeApiCosts) return "—";
+    if (analyzePhase === "all" && scanCostSoFar > 0) {
+      return formatUsd(scanCostSoFar);
+    }
+    if (projectUsageTotal != null && Number.isFinite(projectUsageTotal)) {
+      return formatUsd(projectUsageTotal);
+    }
+    return "—";
+  }, [
+    canSeeApiCosts,
+    analyzePhase,
+    scanCostSoFar,
+    projectUsageTotal,
+  ]);
 
   if (projectLoading) {
     return (
@@ -6069,22 +6096,26 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
               </div>
             </div>
 
-            <div className="flex shrink-0 flex-col gap-2 border-b border-white/10 bg-[#071422] px-3 py-2 sm:px-4">
-              <div className="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-center gap-2">
+            <div className="flex shrink-0 flex-col border-b border-white/10 bg-[#071422]">
+              <div className="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-center gap-2 px-3 py-2 sm:px-4">
                 <label className="flex min-w-0 flex-1 items-center gap-2 sm:max-w-xl">
+                  <span className="sr-only">
+                    Search items; press Ctrl+F to focus from anywhere
+                  </span>
                   <span className="shrink-0 text-sm" aria-hidden>
                     🔍
                   </span>
                   <input
                     ref={blueprintSearchInputRef}
                     type="search"
-                    placeholder="Search items… (Ctrl+F)"
+                    placeholder="🔍 Search items…"
+                    title="Ctrl+F focuses this field"
                     value={blueprintToolbarSearch}
                     onChange={(e) =>
                       setBlueprintToolbarSearch(e.target.value)
                     }
                     className="min-w-0 flex-1 rounded-lg border border-white/15 bg-[#0a1628] px-2 py-1.5 text-sm text-white placeholder:text-white/40"
-                    aria-label="Search items in results"
+                    aria-label="Search items in takeoff (Ctrl+F)"
                   />
                 </label>
                 {blueprintToolbarSearch ? (
@@ -6092,12 +6123,17 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                     type="button"
                     onClick={() => setBlueprintToolbarSearch("")}
                     className="shrink-0 rounded border border-white/20 px-2 py-1 text-xs text-white/75 hover:bg-white/10"
+                    aria-label="Clear search"
                   >
-                    ✕ Clear
+                    ✕
                   </button>
                 ) : null}
               </div>
-              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-white/65">
+              <div
+                className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t border-[#E8C84A]/15 bg-[#050d18] px-3 py-1.5 text-[10px] text-white/55 sm:gap-x-4 sm:text-[11px]"
+                role="status"
+                aria-label="Running totals for this project"
+              >
                 <button
                   type="button"
                   className="rounded px-1 transition-colors hover:bg-white/5 hover:text-[#E8C84A]"
@@ -6109,7 +6145,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                   </span>{" "}
                   fixtures
                 </button>
-                <span className="text-white/25" aria-hidden>
+                <span className="text-white/20" aria-hidden>
                   |
                 </span>
                 <button
@@ -6123,7 +6159,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                   </span>{" "}
                   outlets
                 </button>
-                <span className="text-white/25" aria-hidden>
+                <span className="text-white/20" aria-hidden>
                   |
                 </span>
                 <button
@@ -6137,7 +6173,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                   </span>{" "}
                   switches
                 </button>
-                <span className="text-white/25" aria-hidden>
+                <span className="text-white/20" aria-hidden>
                   |
                 </span>
                 <button
@@ -6151,15 +6187,13 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                   </span>{" "}
                   notes
                 </button>
-                <span className="text-white/25" aria-hidden>
+                <span className="text-white/20" aria-hidden>
                   |
                 </span>
-                <span>
+                <span className="tabular-nums">
                   💰{" "}
-                  <span className="font-bold text-[#E8C84A] tabular-nums">
-                    {canSeeApiCosts && projectUsageTotal != null
-                      ? formatUsd(projectUsageTotal)
-                      : "—"}
+                  <span className="font-bold text-[#E8C84A]">
+                    {toolbarStatsCostLabel}
                   </span>{" "}
                   scan cost
                 </span>

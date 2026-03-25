@@ -66,8 +66,9 @@ export const TAKEOFF_TAB_META: {
   { id: "all", label: "All", summaryDetail: "" },
   {
     id: "needs_verification",
-    label: "Needs verification",
-    summaryDetail: "AI/GPT mismatch, low confidence, or not verified",
+    label: "Needs Verification",
+    summaryDetail:
+      "AI vs GPT disagree, confidence under 75%, or not manually verified",
   },
   {
     id: "fixtures",

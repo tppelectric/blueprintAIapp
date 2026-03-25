@@ -100,24 +100,34 @@ function itemRowVerificationBorder(item: ElectricalItemRow): string {
   if (item.verification_status === "conflict") {
     return "border-l-4 border-l-amber-400";
   }
-  if (Number(item.confidence) < 0.75) {
-    return "border-l-4 border-l-orange-500";
-  }
-  const cl = Math.round(Number(item.quantity));
-  const g =
-    item.gpt_count != null ? Math.round(Number(item.gpt_count)) : null;
-  const ok =
+  const verified =
     item.verified_by === "accept" ||
     item.verified_by === "resolve" ||
+    item.verified_by === "override" ||
     item.verification_status === "confirmed" ||
     item.verification_status === "manual";
-  if (ok && g !== null && cl === g) {
+  if (verified) {
     return "border-l-4 border-l-emerald-500";
+  }
+  if (Number(item.confidence) < 0.75) {
+    return "border-l-4 border-l-orange-500";
   }
   return "";
 }
 
 type ConfidenceTier = "all" | "90" | "75" | "low" | "conflicts";
+
+const CONFIDENCE_TIERS: ConfidenceTier[] = [
+  "all",
+  "90",
+  "75",
+  "low",
+  "conflicts",
+];
+
+function confidenceTierSliderIndex(t: ConfidenceTier): number {
+  return CONFIDENCE_TIERS.indexOf(t);
+}
 
 function suggestedRoomOptionsForItem(
   item: ElectricalItemRow,
@@ -621,66 +631,78 @@ function CompactItemRow({
               />
             </button>
           )}
+          {item.specification?.trim() ? (
+            <p className="mt-1 text-[10px] leading-snug text-white/55">
+              <HighlightSearch
+                text={item.specification}
+                query={searchHighlightQuery ?? ""}
+              />
+            </p>
+          ) : null}
         </div>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 text-[10px] tabular-nums sm:gap-2">
+        <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-2 text-[10px] tabular-nums sm:w-auto sm:max-w-[22rem] sm:justify-end">
           <span
-            className="rounded-md border border-sky-500/40 bg-sky-950/45 px-2 py-1 text-[11px] font-semibold text-sky-100"
+            className="inline-flex items-center gap-1 rounded-lg border-2 border-blue-400/55 bg-blue-950/70 px-2.5 py-1.5 text-xs font-bold text-blue-100 shadow-sm"
             title="Claude / AI count"
           >
-            AI:{" "}
-            <span className="text-sm font-bold text-white">{claudeQty}</span>
+            <span className="text-[10px] uppercase tracking-wide text-blue-200/90">
+              AI
+            </span>
+            <span className="text-base font-black leading-none text-white">
+              {claudeQty}
+            </span>
           </span>
           {gptQty !== null ? (
             <span
-              className="rounded-md border border-violet-500/45 bg-violet-950/40 px-2 py-1 text-[11px] font-semibold text-violet-100"
+              className="inline-flex items-center gap-1 rounded-lg border-2 border-violet-400/55 bg-violet-950/65 px-2.5 py-1.5 text-xs font-bold text-violet-100 shadow-sm"
               title="GPT verification count"
             >
-              GPT:{" "}
-              <span className="text-sm font-bold text-white">{gptQty}</span>
+              <span className="text-[10px] uppercase tracking-wide text-violet-200/90">
+                GPT
+              </span>
+              <span className="text-base font-black leading-none text-white">
+                {gptQty}
+              </span>
             </span>
           ) : (
-            <span className="rounded-md border border-white/15 px-2 py-1 text-[10px] text-white/45">
+            <span className="rounded-lg border border-white/20 px-2.5 py-1.5 text-[11px] text-white/45">
               GPT: —
             </span>
           )}
           {gptQty !== null ? (
             <span
-              className="text-sm"
-              title={gptAgrees ? "Counts match" : "Counts differ"}
+              className={`flex h-8 min-w-[2rem] items-center justify-center rounded-lg border px-1 text-lg font-bold ${
+                gptAgrees
+                  ? "border-emerald-500/50 bg-emerald-950/40 text-emerald-300"
+                  : "border-amber-500/50 bg-amber-950/35 text-amber-200"
+              }`}
+              title={gptAgrees ? "AI and GPT counts match" : "Counts differ — review"}
               aria-hidden
             >
               {gptAgrees ? "✅" : "⚠️"}
             </span>
           ) : null}
-          {(item.verified_by === "override" || item.final_count != null) &&
-          item.category !== "plan_note" ? (
-            <span
-              className="rounded-md border border-[#E8C84A]/50 bg-[#E8C84A]/15 px-2 py-1 text-[11px] font-semibold text-[#E8C84A]"
-              title="Manual override / saved final count"
-            >
-              Final:{" "}
-              <span className="text-sm font-bold text-white">
-                {Math.round(Number(item.final_count ?? claudeQty))}
-              </span>
-            </span>
-          ) : null}
           <span
-            className="rounded-md border border-white/20 bg-white/[0.08] px-2 py-1 text-[11px] font-bold text-white"
-            title="Working / verified quantity"
+            className="inline-flex min-w-[3.25rem] flex-col items-center justify-center rounded-lg border-2 border-white/25 bg-white/[0.08] px-2 py-1"
+            title="Final / working quantity used for takeoff"
           >
-            Σ{" "}
-            <span className="text-sm tabular-nums">{finalPreview}</span>
+            <span className="text-[9px] font-semibold uppercase tracking-wide text-white/50">
+              Final
+            </span>
+            <span className="text-base font-black tabular-nums text-white">
+              {finalPreview}
+            </span>
           </span>
           <span
-            className="rounded bg-amber-950/35 px-1.5 py-0.5 font-medium text-amber-100/95"
+            className="inline-flex items-center gap-1 rounded-lg border-2 border-[#E8C84A]/55 bg-[#E8C84A]/18 px-2.5 py-1.5 text-xs font-bold text-[#E8C84A]"
             title={
               showManual
                 ? "Clicks on blueprint this session"
-                : "Manual session / saved"
+                : "Manual / override count"
             }
           >
-            Manual:{" "}
-            <span className="font-bold text-white">
+            <span className="text-[10px] text-[#E8C84A]/90">Manual</span>
+            <span className="text-base font-black text-white">
               {showManual && item.category !== "plan_note"
                 ? manualClickCount
                 : item.verification_status === "manual"
@@ -688,6 +710,18 @@ function CompactItemRow({
                   : "—"}
             </span>
           </span>
+          {(item.verified_by === "override" || item.final_count != null) &&
+          item.category !== "plan_note" ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-lg border border-amber-400/45 bg-amber-950/30 px-2 py-1 text-[10px] font-semibold text-amber-100"
+              title="Saved override final count"
+            >
+              Override{" "}
+              <span className="text-sm font-black text-white">
+                {Math.round(Number(item.final_count ?? claudeQty))}
+              </span>
+            </span>
+          ) : null}
           <ItemVerificationBadge item={item} />
         </div>
       </div>
@@ -1268,9 +1302,12 @@ function CategoryFilterTabs({
           className={[
             "rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors",
             active === t.id
-              ? "border-sky-400/60 bg-sky-950/45 text-sky-100"
+              ? t.id === "needs_verification"
+                ? "border-amber-400/70 bg-amber-950/50 text-amber-100"
+                : "border-sky-400/60 bg-sky-950/45 text-sky-100"
               : "border-white/15 text-white/75 hover:bg-white/5",
           ].join(" ")}
+          title={t.summaryDetail || undefined}
         >
           {t.label}
           <span className="ml-1 rounded-md bg-black/30 px-1.5 tabular-nums text-[10px]">
@@ -2139,10 +2176,29 @@ export function AnalysisResultsPanel({
                         </button>
                       ) : null}
                     </div>
-                    <ul className="mt-1 space-y-0.5 text-white/70">
+                    <ul className="mt-1 space-y-1 text-white/70">
                       {hits.slice(0, 4).map((h) => (
-                        <li key={h.id}>
-                          <HighlightSearch text={h.description} query={searchQ} />
+                        <li key={h.id} className="leading-snug">
+                          <HighlightSearch
+                            text={h.description}
+                            query={searchQ}
+                          />
+                          {h.specification?.trim() ? (
+                            <span className="mt-0.5 block text-[10px] text-white/50">
+                              <HighlightSearch
+                                text={h.specification}
+                                query={searchQ}
+                              />
+                            </span>
+                          ) : null}
+                          {h.raw_note?.trim() ? (
+                            <span className="mt-0.5 block text-[10px] text-white/40">
+                              <HighlightSearch
+                                text={h.raw_note}
+                                query={searchQ}
+                              />
+                            </span>
+                          ) : null}
                         </li>
                       ))}
                       {hits.length > 4 ? (
@@ -2208,30 +2264,58 @@ export function AnalysisResultsPanel({
               />
             ) : null}
             {pageItems.length > 0 ? (
-              <div className="mb-3 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
-                <label className="flex flex-wrap items-center gap-2 text-[11px] text-white/70">
-                  <span>Show items:</span>
-                  <select
-                    value={confidenceTier}
-                    onChange={(e) =>
-                      setConfidenceTier(e.target.value as ConfidenceTier)
-                    }
-                    className="rounded-lg border border-white/15 bg-[#0a1628] px-2 py-1 text-xs text-white"
-                  >
-                    <option value="all">All items</option>
-                    <option value="90">High confidence (90%+)</option>
-                    <option value="75">Good confidence (75%+)</option>
-                    <option value="low">Review needed (under 75%)</option>
-                    <option value="conflicts">Conflicts only</option>
-                  </select>
-                </label>
-                <p className="text-[11px] text-white/50">
-                  Showing {confidenceTierCounts.x} of {confidenceTierCounts.y}{" "}
-                  items
-                  {confidenceTier !== "all"
-                    ? " (others dimmed, still exported)"
-                    : ""}
-                </p>
+              <div className="mb-3 flex flex-col gap-2">
+                <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
+                  <label className="flex flex-wrap items-center gap-2 text-[11px] text-white/70">
+                    <span>Show items:</span>
+                    <select
+                      value={confidenceTier}
+                      onChange={(e) =>
+                        setConfidenceTier(e.target.value as ConfidenceTier)
+                      }
+                      className="rounded-lg border border-white/15 bg-[#0a1628] px-2 py-1 text-xs text-white"
+                    >
+                      <option value="all">All items</option>
+                      <option value="90">High confidence (90%+)</option>
+                      <option value="75">Good confidence (75%+)</option>
+                      <option value="low">Review needed (under 75%)</option>
+                      <option value="conflicts">Conflicts only</option>
+                    </select>
+                  </label>
+                  <p className="text-[11px] text-white/50">
+                    Showing {confidenceTierCounts.x} of {confidenceTierCounts.y}{" "}
+                    items
+                    {confidenceTier !== "all"
+                      ? " (others dimmed, still exported)"
+                      : ""}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-1 px-0.5">
+                  <label className="text-[10px] font-medium text-white/50">
+                    Confidence threshold
+                  </label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={CONFIDENCE_TIERS.length - 1}
+                    step={1}
+                    value={confidenceTierSliderIndex(confidenceTier)}
+                    onChange={(e) => {
+                      const i = Number(e.target.value);
+                      const next = CONFIDENCE_TIERS[i];
+                      if (next) setConfidenceTier(next);
+                    }}
+                    className="h-2 w-full max-w-md cursor-pointer accent-[#E8C84A]"
+                    aria-valuetext={confidenceTier}
+                  />
+                  <div className="flex max-w-md justify-between text-[9px] text-white/35">
+                    <span>All</span>
+                    <span>90%+</span>
+                    <span>75%+</span>
+                    <span>&lt;75%</span>
+                    <span>Conflict</span>
+                  </div>
+                </div>
               </div>
             ) : null}
             {items.length > 0 ? (

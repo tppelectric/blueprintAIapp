@@ -3,6 +3,7 @@
 import { jsPDF } from "jspdf";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ToolResultsSkeleton } from "@/components/app-polish";
 import { LinkToJobDialog } from "@/components/link-to-job-dialog";
 import { VoiceInputButton } from "@/components/voice-input-button";
 
@@ -476,13 +477,12 @@ export function NecAiQuestionPanel({
       </div>
 
       {loading ? (
-        <p
-          className="mt-4 text-sm font-medium text-violet-200/95"
-          role="status"
-          aria-live="polite"
-        >
-          Looking up NEC code…
-        </p>
+        <div className="mt-6" role="status" aria-live="polite">
+          <p className="app-muted mb-3 text-sm font-medium text-violet-200/95">
+            Looking up NEC code…
+          </p>
+          <ToolResultsSkeleton rows={5} />
+        </div>
       ) : null}
       {error ? (
         <p className="mt-4 rounded-lg border border-red-500/40 bg-red-950/40 px-3 py-2 text-sm text-red-100">

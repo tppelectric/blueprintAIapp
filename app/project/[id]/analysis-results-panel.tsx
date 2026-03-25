@@ -32,6 +32,7 @@ import {
   itemMatchesDetectedRoom,
   normalizeRoomLabel,
 } from "@/lib/room-item-match";
+import { EmptyState } from "@/components/app-polish";
 
 const ITEM_DRAG_MIME = "application/x-blueprint-item";
 
@@ -1907,9 +1908,13 @@ export function AnalysisResultsPanel({
         ) : null}
 
         {pageItems.length === 0 && !pageAnalysisWarning ? (
-          <p className="rounded-lg border border-dashed border-white/15 px-4 py-8 text-center text-sm text-white/45">
-            No items for this page. Run analysis to populate results.
-          </p>
+          <EmptyState
+            icon={<span aria-hidden>🔍</span>}
+            title="No items found yet"
+            description="Run analysis on this page to populate takeoff results."
+            actionLabel={onRetryAnalysisPage ? "Run analysis" : undefined}
+            onAction={onRetryAnalysisPage}
+          />
         ) : pageItems.length === 0 && pageAnalysisWarning ? (
           <p className="rounded-lg border border-dashed border-white/10 px-4 py-4 text-center text-xs text-white/40">
             No line items were added for this page on the last run. Use Retry Page

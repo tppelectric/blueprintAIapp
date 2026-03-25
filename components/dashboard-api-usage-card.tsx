@@ -68,7 +68,7 @@ export function DashboardApiUsageCard() {
   if (roleLoading || !canSeeApiCosts) return null;
 
   return (
-    <section className="mt-10 rounded-2xl border border-white/10 bg-white/[0.03]">
+    <section className="app-card app-card-pad-lg !p-0 overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

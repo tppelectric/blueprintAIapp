@@ -334,3 +334,199 @@ body {
   color: rgb(6, 78, 59);
   border-color: rgba(16, 185, 129, 0.5);
 }
+
+/* --- App polish: cards, buttons, page shell, section titles --- */
+.app-card {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 1rem;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+[data-theme="light"] .app-card {
+  background: var(--surface-card);
+  border-color: var(--border);
+}
+.app-card:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+[data-theme="light"] .app-card:hover {
+  background: var(--surface-elevated);
+}
+
+.app-card-pad-lg {
+  padding: 1.5rem;
+}
+
+.app-page-shell {
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  max-width: 72rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+@media (min-width: 768px) {
+  .app-page-shell {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
+
+.app-section-title {
+  display: block;
+  width: 100%;
+  font-size: 1.125rem;
+  font-weight: 600;
+  padding-bottom: 0.5rem;
+  margin-bottom: 0;
+  border-bottom: 2px solid rgba(232, 200, 74, 0.45);
+  color: var(--foreground);
+}
+
+.app-body {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.8);
+}
+[data-theme="light"] .app-body {
+  color: var(--foreground-muted);
+}
+
+.app-muted {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+[data-theme="light"] .app-muted {
+  color: rgba(10, 22, 40, 0.5);
+}
+
+.app-input {
+  margin-top: 0.25rem;
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: #0a1628;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: #ffffff;
+}
+[data-theme="light"] .app-input {
+  background: var(--surface-elevated);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+
+.btn-primary,
+a.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  height: 2.5rem;
+  padding: 0 1.25rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: #e8c84a;
+  color: #0a1628;
+  border: 1px solid transparent;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+  box-sizing: border-box;
+}
+.btn-primary:hover,
+a.btn-primary:hover {
+  background: #f0d56e;
+}
+.btn-primary:disabled,
+a.btn-primary[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-secondary,
+a.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  height: 2.5rem;
+  padding: 0 1.25rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.88);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+  box-sizing: border-box;
+}
+.btn-secondary:hover,
+a.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(232, 200, 74, 0.45);
+}
+[data-theme="light"] .btn-secondary,
+[data-theme="light"] a.btn-secondary {
+  border-color: rgba(10, 22, 40, 0.22);
+  color: #0a1628;
+}
+[data-theme="light"] .btn-secondary:hover,
+[data-theme="light"] a.btn-secondary:hover {
+  background: rgba(10, 22, 40, 0.06);
+}
+
+.btn-danger-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  height: 2.5rem;
+  padding: 0 1.25rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  background: transparent;
+  color: rgb(254, 202, 202);
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+  box-sizing: border-box;
+}
+.btn-danger-outline:hover {
+  background: rgba(127, 29, 29, 0.35);
+}
+.btn-danger-outline:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-h-11,
+a.btn-h-11 {
+  min-height: 2.75rem;
+  height: 2.75rem;
+}
+
+[data-theme="dark"] .dashboard-root {
+  background: linear-gradient(
+    180deg,
+    #050a14 0%,
+    var(--background) 35%,
+    #060d1a 100%
+  );
+}

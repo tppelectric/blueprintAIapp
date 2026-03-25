@@ -2,7 +2,12 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import {
+  CustomerListSkeleton,
+  EmptyState,
+} from "@/components/app-polish";
 import { WideAppHeader } from "@/components/wide-app-header";
+import { useAppToast } from "@/components/toast-provider";
 import { createBrowserClient } from "@/lib/supabase/client";
 import type { CustomerRow } from "@/lib/jobs-types";
 
@@ -21,6 +26,7 @@ const emptyForm = {
 };
 
 export function CustomersClient() {
+  const { showToast } = useAppToast();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +35,6 @@ export function CustomersClient() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [formMsg, setFormMsg] = useState<string | null>(null);
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CustomerRow | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -66,12 +71,6 @@ export function CustomersClient() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    if (!toastMsg) return;
-    const t = window.setTimeout(() => setToastMsg(null), 3200);
-    return () => window.clearTimeout(t);
-  }, [toastMsg]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -119,11 +118,11 @@ export function CustomersClient() {
           .update(payload)
           .eq("id", editingId);
         if (ue) throw ue;
-        setToastMsg("Customer updated.");
+        showToast({ message: "Customer updated.", variant: "success" });
       } else {
         const { error: ie } = await sb.from("customers").insert(payload);
         if (ie) throw ie;
-        setToastMsg("Customer saved.");
+        showToast({ message: "Customer saved.", variant: "success" });
       }
       setModalOpen(false);
       void load();
@@ -145,17 +144,19 @@ export function CustomersClient() {
         .eq("id", deleteTarget.id);
       if (de) throw de;
       setDeleteTarget(null);
-      setToastMsg("Customer deleted.");
+      showToast({ message: "Customer deleted.", variant: "success" });
       void load();
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : "Delete failed.");
+      showToast({
+        message: e instanceof Error ? e.message : "Delete failed.",
+        variant: "error",
+      });
     } finally {
       setDeleting(false);
     }
   };
 
-  const inp =
-    "mt-1 w-full rounded-lg border border-white/15 bg-[#0a1628] px-3 py-2 text-sm text-white";
+  const inp = "app-input";
 
   const escapeCsvField = (v: string) => {
     const s = String(v ?? "");
@@ -206,33 +207,25 @@ export function CustomersClient() {
   return (
     <div className="flex min-h-screen flex-col">
       <WideAppHeader active="customers" showTppSubtitle />
-      {toastMsg ? (
-        <div
-          className="fixed bottom-20 left-4 right-4 z-[250] mx-auto max-w-sm rounded-xl border border-emerald-500/40 bg-emerald-950/95 px-4 py-3 text-sm font-medium text-emerald-100 shadow-lg sm:bottom-6 sm:left-auto sm:right-6"
-          role="status"
-        >
-          {toastMsg}
-        </div>
-      ) : null}
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8 sm:px-6 sm:py-10">
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
-          <h1 className="text-2xl font-semibold text-white sm:text-3xl">
+      <main className="app-page-shell max-w-6xl flex-1 py-8 md:py-10">
+        <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+          <h1 className="text-2xl font-semibold text-white">
             Customers
           </h1>
           <div className="flex flex-col gap-2 sm:ml-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
             <button
               type="button"
               onClick={openCreate}
-              className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-[#E8C84A] px-6 py-3 text-base font-bold text-[#0a1628] shadow-md hover:bg-[#f0d56e] sm:w-auto"
+              className="btn-primary btn-h-11 inline-flex w-full items-center justify-center gap-2 sm:w-auto"
             >
-              <span className="text-xl leading-none" aria-hidden>
+              <span className="text-lg leading-none" aria-hidden>
                 +
               </span>
-              Add Customer
+              Add customer
             </button>
             <Link
               href="/jobs"
-              className="flex min-h-[44px] w-full items-center justify-center rounded-lg border border-white/20 px-4 py-2.5 text-sm font-medium text-[#E8C84A] hover:bg-white/5 sm:w-auto"
+              className="btn-secondary btn-h-11 w-full justify-center sm:w-auto"
             >
               Jobs →
             </Link>
@@ -240,39 +233,45 @@ export function CustomersClient() {
               type="button"
               disabled={rows.length === 0}
               onClick={exportJobTreadCsv}
-              className="min-h-[44px] w-full rounded-lg border border-[#E8C84A]/50 px-4 py-2.5 text-sm font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
+              className="btn-secondary btn-h-11 w-full border-[#E8C84A]/45 text-[#E8C84A] disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
             >
               Export for JobTread
             </button>
           </div>
         </div>
         {loading ? (
-          <p className="mt-10 text-white/60">Loading…</p>
+          <CustomerListSkeleton />
         ) : error ? (
-          <p className="mt-10 text-red-200">{error}</p>
+          <p className="app-body mt-6 text-red-200">{error}</p>
         ) : rows.length === 0 ? (
-          <p className="mt-10 text-white/55">No customers yet.</p>
+          <EmptyState
+            icon={<span aria-hidden>👤</span>}
+            title="No customers yet"
+            description="Add customers to link jobs, quotes, and export to JobTread."
+            actionLabel="Add customer"
+            onAction={openCreate}
+          />
         ) : (
-          <ul className="mt-8 space-y-3">
+          <ul className="space-y-3">
             {rows.map((c) => (
               <li
                 key={c.id}
-                className="w-full rounded-xl border border-white/10 bg-white/[0.04] p-3 sm:p-4"
+                className="app-card app-card-pad-lg w-full"
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
                   <Link
                     href={`/customers/${c.id}`}
                     className="min-w-0 flex-1 hover:text-[#E8C84A]"
                   >
-                    <p className="font-semibold text-white">
+                    <p className="text-base font-semibold text-white">
                       {c.company_name || c.contact_name || "Customer"}
                     </p>
-                    <p className="text-xs text-white/55 sm:text-sm">
+                    <p className="app-body mt-0.5">
                       <span className="block sm:inline">{c.phone}</span>
                       <span className="hidden sm:inline"> · </span>
                       <span className="block sm:inline">{c.email}</span>
                     </p>
-                    <p className="mt-0.5 text-[11px] text-white/40 sm:mt-1 sm:text-xs">
+                    <p className="app-muted mt-0.5 sm:mt-1">
                       {c.job_count ?? 0} job
                       {(c.job_count ?? 0) === 1 ? "" : "s"}
                     </p>
@@ -281,14 +280,14 @@ export function CustomersClient() {
                     <button
                       type="button"
                       onClick={() => openEdit(c)}
-                      className="rounded-lg border border-white/25 px-3 py-1.5 text-xs font-semibold text-white/90 hover:bg-white/10"
+                      className="btn-secondary !h-9 min-h-0 !px-3 !text-xs"
                     >
                       Edit
                     </button>
                     <button
                       type="button"
                       onClick={() => setDeleteTarget(c)}
-                      className="rounded-lg border border-red-500/40 px-3 py-1.5 text-xs font-semibold text-red-200 hover:bg-red-950/40"
+                      className="btn-danger-outline !h-9 min-h-0 !px-3 !text-xs"
                     >
                       Delete
                     </button>
@@ -328,7 +327,7 @@ export function CustomersClient() {
                 type="button"
                 disabled={deleting}
                 onClick={() => void confirmDeleteCustomer()}
-                className="rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+                className="btn-danger-outline disabled:opacity-50"
               >
                 Delete
               </button>
@@ -336,7 +335,7 @@ export function CustomersClient() {
                 type="button"
                 disabled={deleting}
                 onClick={() => setDeleteTarget(null)}
-                className="rounded-lg border border-white/20 px-4 py-2.5 text-sm text-white/80 hover:bg-white/5"
+                className="btn-secondary disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -457,14 +456,14 @@ export function CustomersClient() {
                 type="button"
                 disabled={saving}
                 onClick={() => void saveCustomer()}
-                className="rounded-lg bg-[#E8C84A] px-4 py-2.5 text-sm font-semibold text-[#0a1628] disabled:opacity-50"
+                className="btn-primary disabled:opacity-50"
               >
                 Save
               </button>
               <button
                 type="button"
                 onClick={() => setModalOpen(false)}
-                className="rounded-lg border border-white/20 px-4 py-2.5 text-sm text-white/80 hover:bg-white/5"
+                className="btn-secondary"
               >
                 Cancel
               </button>

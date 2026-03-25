@@ -91,7 +91,7 @@ export function DashboardProjectSkeletonGrid() {
 
 export function JobListSkeleton() {
   return (
-    <ul className="mt-8 space-y-3">
+    <ul className="space-y-3">
       {Array.from({ length: 5 }).map((_, i) => (
         <li
           key={i}
@@ -113,7 +113,7 @@ export function JobListSkeleton() {
 
 export function CustomerListSkeleton() {
   return (
-    <ul className="mt-8 space-y-3">
+    <ul className="space-y-3">
       {Array.from({ length: 4 }).map((_, i) => (
         <li key={i} className="app-card animate-pulse p-4">
           <div className="h-4 w-56 rounded bg-white/10" />

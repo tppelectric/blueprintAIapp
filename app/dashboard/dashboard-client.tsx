@@ -1,8 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import {
+  DashboardProjectSkeletonGrid,
+  EmptyState,
+  SectionTitle,
+} from "@/components/app-polish";
 import { DashboardApiUsageCard } from "@/components/dashboard-api-usage-card";
 import { WideAppHeader } from "@/components/wide-app-header";
+import { useAppToast } from "@/components/toast-provider";
 import { useUserRole } from "@/hooks/use-user-role";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProjectScansSummary } from "@/lib/project-scans-types";
@@ -215,6 +221,7 @@ function CheckSaveIcon({ className }: { className?: string }) {
 }
 
 export function DashboardClient() {
+  const { showToast } = useAppToast();
   const { canSeeApiCosts, loading: roleLoading } = useUserRole();
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -223,7 +230,6 @@ export function DashboardClient() {
     pages: number;
     cost: number;
   } | null>(null);
-  const [flashMessage, setFlashMessage] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [renameSaving, setRenameSaving] = useState(false);
@@ -382,12 +388,6 @@ export function DashboardClient() {
   }, [projects]);
 
   useEffect(() => {
-    if (!flashMessage) return;
-    const t = window.setTimeout(() => setFlashMessage(null), 4500);
-    return () => window.clearTimeout(t);
-  }, [flashMessage]);
-
-  useEffect(() => {
     return () => {
       if (savedTimerRef.current) window.clearTimeout(savedTimerRef.current);
     };
@@ -466,33 +466,24 @@ export function DashboardClient() {
       }
       setProjects((prev) => prev.filter((x) => x.id !== deleteTarget.id));
       setDeleteTarget(null);
-      setFlashMessage("Project deleted");
+      showToast({ message: "Project deleted", variant: "success" });
     } finally {
       setDeleting(false);
     }
-  }, [deleteTarget]);
+  }, [deleteTarget, showToast]);
 
   return (
     <div className="dashboard-root flex min-h-screen flex-col">
       <WideAppHeader active="dashboard" showTppSubtitle />
 
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 py-8 sm:px-6 sm:py-12">
-        {flashMessage ? (
-          <div
-            className="flash-banner-ok mt-6 rounded-xl px-4 py-3 text-sm font-medium"
-            role="status"
-          >
-            {flashMessage}
-          </div>
-        ) : null}
-
-        <div className="flex w-full min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+      <main className="app-page-shell flex-1 py-8 md:py-10">
+        <div className="flex w-full min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
           <div className="min-w-0 shrink-0 sm:max-w-[min(100%,28rem)]">
-            <h1 className="border-l-4 border-[#E8C84A] pl-3 text-2xl font-semibold tracking-tight text-[var(--foreground)] sm:pl-4 sm:text-3xl md:text-4xl">
+            <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">
               My Projects
             </h1>
             {monthUsage && monthUsage.pages > 0 ? (
-              <p className="dash-muted mt-2 text-sm">
+              <p className="app-body mt-2">
                 This month: {monthUsage.pages} page
                 {monthUsage.pages === 1 ? "" : "s"} analyzed —{" "}
                 <span className="font-semibold text-[#E8C84A]">
@@ -501,103 +492,122 @@ export function DashboardClient() {
               </p>
             ) : null}
           </div>
-          <div className="grid min-w-0 w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-1 sm:flex-wrap sm:justify-end">
-            <Link href="/jobs" className="dash-header-btn shrink-0 justify-center">
+          <div className="flex min-w-0 w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
+            <Link href="/jobs" className="btn-secondary btn-h-11 shrink-0">
               Jobs
             </Link>
-            <Link
-              href="/customers"
-              className="dash-header-btn shrink-0 justify-center"
-            >
+            <Link href="/customers" className="btn-secondary btn-h-11 shrink-0">
               Customers
-            </Link>
-            <Link
-              href="/tools"
-              className="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-lg border border-[#E8C84A]/40 bg-[#E8C84A]/10 px-4 py-2.5 text-sm font-semibold text-[#E8C84A] transition-colors hover:bg-[#E8C84A]/20"
-            >
-              Tools
-            </Link>
-            <Link
-              href="/tools/load-calculator"
-              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-sky-500/45 bg-sky-950/40 px-4 py-2.5 text-sm font-semibold text-sky-100 transition-colors hover:border-[#E8C84A]/60 hover:bg-sky-950/55"
-            >
-              Load Calculator
-            </Link>
-            <Link
-              href="/tools/nec-checker"
-              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-violet-500/45 bg-violet-950/35 px-4 py-2.5 text-sm font-semibold text-violet-100 transition-colors hover:border-[#E8C84A]/60 hover:bg-violet-950/50"
-            >
-              NEC Checker
-            </Link>
-            <Link
-              href="/tools/electrical-reference"
-              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-emerald-500/45 bg-emerald-950/35 px-4 py-2.5 text-sm font-semibold text-emerald-100 transition-colors hover:border-[#E8C84A]/60 hover:bg-emerald-950/50"
-            >
-              Electrical Reference
-            </Link>
-            <Link
-              href="/tools/motor-hvac-calculator"
-              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-amber-500/45 bg-amber-950/35 px-4 py-2.5 text-sm font-semibold text-amber-100 transition-colors hover:border-[#E8C84A]/60 hover:bg-amber-950/50"
-            >
-              Motor / HVAC
-            </Link>
-            <Link
-              href="/tools/wifi-analyzer"
-              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-[#E8C84A]/50 bg-[#E8C84A]/10 px-4 py-2.5 text-sm font-semibold text-[#E8C84A] transition-colors hover:border-[#E8C84A] hover:bg-[#E8C84A]/25"
-            >
-              Wi-Fi Analyzer
-            </Link>
-            <Link
-              href="/tools/av-analyzer"
-              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-rose-500/45 bg-rose-950/35 px-4 py-2.5 text-sm font-semibold text-rose-100 transition-colors hover:border-[#E8C84A]/60 hover:bg-rose-950/50"
-            >
-              AV Analyzer
-            </Link>
-            <Link
-              href="/tools/smarthome-analyzer"
-              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-cyan-500/45 bg-cyan-950/30 px-4 py-2.5 text-sm font-semibold text-cyan-100 transition-colors hover:border-[#E8C84A]/60 hover:bg-cyan-950/45"
-            >
-              Smart Home
-            </Link>
-            <Link
-              href="/tools/electrical-analyzer"
-              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-lime-500/45 bg-lime-950/25 px-4 py-2.5 text-sm font-semibold text-lime-100 transition-colors hover:border-[#E8C84A]/60 hover:bg-lime-950/40"
-            >
-              Electrical Analyzer
-            </Link>
-            <Link
-              href="/tools/project-describer"
-              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-fuchsia-500/45 bg-fuchsia-950/30 px-4 py-2.5 text-sm font-semibold text-fuchsia-100 transition-colors hover:border-[#E8C84A]/60 hover:bg-fuchsia-950/45"
-            >
-              AI Describer
-            </Link>
-            <Link
-              href="/upload"
-              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-white px-5 py-2.5 text-sm font-semibold text-[#0a1628] shadow-sm transition-colors hover:border-[#E8C84A] hover:bg-[#f0d56e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/80"
-            >
-              Upload New Blueprint
             </Link>
           </div>
         </div>
+
+        {!loading && !error ? (
+          <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="app-card app-card-pad-lg">
+              <p className="app-muted">Projects</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-[var(--foreground)]">
+                {projects.length}
+              </p>
+            </div>
+            <Link
+              href="/jobs"
+              className="app-card app-card-pad-lg block transition-colors hover:border-[#E8C84A]/35"
+            >
+              <p className="app-muted">Jobs</p>
+              <p className="mt-1 text-base font-semibold text-[var(--foreground)]">
+                Open job board
+              </p>
+              <p className="app-body mt-2">
+                Track leads, quotes, and field work.
+              </p>
+            </Link>
+            <div className="app-card app-card-pad-lg">
+              <p className="app-muted">This month (API)</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-[#E8C84A]">
+                {monthUsage && monthUsage.pages > 0
+                  ? formatUsd(monthUsage.cost)
+                  : "—"}
+              </p>
+              <p className="app-muted mt-2">
+                {monthUsage && monthUsage.pages > 0
+                  ? `${monthUsage.pages} page${monthUsage.pages === 1 ? "" : "s"}`
+                  : "No usage yet"}
+              </p>
+            </div>
+          </section>
+        ) : null}
+
+        <section className="app-card app-card-pad-lg">
+          <SectionTitle className="mb-4">Quick actions</SectionTitle>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <Link href="/tools" className="btn-secondary btn-h-11 w-full">
+              Tools hub
+            </Link>
+            <Link
+              href="/tools/load-calculator"
+              className="btn-secondary btn-h-11 w-full"
+            >
+              Load calculator
+            </Link>
+            <Link href="/tools/nec-checker" className="btn-secondary btn-h-11 w-full">
+              NEC checker
+            </Link>
+            <Link
+              href="/tools/electrical-reference"
+              className="btn-secondary btn-h-11 w-full"
+            >
+              Electrical reference
+            </Link>
+            <Link
+              href="/tools/motor-hvac-calculator"
+              className="btn-secondary btn-h-11 w-full"
+            >
+              Motor / HVAC
+            </Link>
+            <Link href="/tools/wifi-analyzer" className="btn-secondary btn-h-11 w-full">
+              Wi‑Fi analyzer
+            </Link>
+            <Link href="/tools/av-analyzer" className="btn-secondary btn-h-11 w-full">
+              AV analyzer
+            </Link>
+            <Link
+              href="/tools/smarthome-analyzer"
+              className="btn-secondary btn-h-11 w-full"
+            >
+              Smart home
+            </Link>
+            <Link
+              href="/tools/electrical-analyzer"
+              className="btn-secondary btn-h-11 w-full"
+            >
+              Electrical analyzer
+            </Link>
+            <Link
+              href="/tools/project-describer"
+              className="btn-secondary btn-h-11 w-full"
+            >
+              AI describer
+            </Link>
+            <Link
+              href="/upload"
+              className="btn-primary btn-h-11 col-span-1 w-full sm:col-span-2 lg:col-span-3"
+            >
+              Upload new blueprint
+            </Link>
+          </div>
+        </section>
 
         <div className="w-full min-w-0">
           <DashboardApiUsageCard />
         </div>
 
-        {loading && (
-          <div
-            className="mt-16 flex flex-col items-center justify-center gap-4"
-            role="status"
-            aria-live="polite"
-            aria-busy="true"
-          >
-            <div
-              className="h-10 w-10 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--foreground)]"
-              aria-hidden
-            />
-            <p className="dash-muted text-sm">Loading projects…</p>
+        {loading ? (
+          <div className="mt-4" role="status" aria-live="polite" aria-busy="true">
+            <p className="app-muted mb-4 text-sm">Loading projects…</p>
+            <DashboardProjectSkeletonGrid />
           </div>
-        )}
+        ) : null}
 
         {!loading && error && (
           <div
@@ -609,10 +619,10 @@ export function DashboardClient() {
         )}
 
         {!loading && !error && recentJobs.length > 0 && (
-          <section className="dash-surface mt-10 p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          <section className="app-card app-card-pad-lg">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b-2 border-[#E8C84A]/45 pb-2">
               <h2 className="text-lg font-semibold text-[var(--foreground)]">
-                Recent jobs
+                Recent activity
               </h2>
               <Link
                 href="/jobs"
@@ -621,17 +631,17 @@ export function DashboardClient() {
                 View all →
               </Link>
             </div>
-            <ul className="mt-4 space-y-2">
+            <ul className="space-y-2">
               {recentJobs.map((j) => (
                 <li key={j.id}>
                   <Link
                     href={`/jobs/${j.id}`}
-                    className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 text-sm hover:border-[#E8C84A]/35"
+                    className="app-card flex flex-wrap items-baseline justify-between gap-2 !p-3 text-sm hover:border-[#E8C84A]/35"
                   >
-                    <span className="font-medium text-[var(--foreground)]">
+                    <span className="text-base font-semibold text-[var(--foreground)]">
                       {j.job_number} · {j.job_name}
                     </span>
-                    <span className="dash-muted text-xs">
+                    <span className="app-muted">
                       {j.status} · {j.job_type}
                     </span>
                   </Link>
@@ -642,24 +652,17 @@ export function DashboardClient() {
         )}
 
         {!loading && !error && projects.length === 0 && (
-          <div className="dash-surface mt-16 px-8 py-14 text-center">
-            <p className="text-lg font-medium text-[var(--foreground)]">
-              No projects yet — upload your first blueprint
-            </p>
-            <p className="dash-muted mt-2 text-sm">
-              Upload a blueprint PDF to create your first project.
-            </p>
-            <Link
-              href="/upload"
-              className="mt-6 inline-flex items-center justify-center rounded-lg bg-[#E8C84A] px-5 py-2.5 text-sm font-semibold text-[#0a1628] shadow-sm transition-colors hover:bg-[#f0d56e]"
-            >
-              Go to upload
-            </Link>
-          </div>
+          <EmptyState
+            icon={<span aria-hidden>📐</span>}
+            title="No projects yet — upload your first blueprint"
+            description="Upload a blueprint PDF to create your first project."
+            actionLabel="Go to upload"
+            actionHref="/upload"
+          />
         )}
 
         {!loading && !error && projects.length > 0 && (
-          <ul className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
+          <ul className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {projects.map((p) => {
               const thumbPath = firstSheetStoragePath(p);
               return (
@@ -672,7 +675,7 @@ export function DashboardClient() {
                       editShellRef.current = null;
                     }
                   }}
-                  className="dash-surface flex h-full flex-col p-5 transition-colors hover:border-[#E8C84A]/25"
+                  className="app-card app-card-pad-lg flex h-full flex-col transition-colors hover:border-[#E8C84A]/25"
                 >
                   {thumbPath ? (
                     <ProjectBlueprintThumb storagePath={thumbPath} />
@@ -719,7 +722,7 @@ export function DashboardClient() {
                           </button>
                         </div>
                       ) : (
-                        <h2 className="text-lg font-semibold leading-snug text-[var(--foreground)]">
+                        <h2 className="text-base font-semibold leading-snug text-[var(--foreground)]">
                           {cardTitle(p)}
                         </h2>
                       )}
@@ -754,7 +757,7 @@ export function DashboardClient() {
                       </span>
                     </div>
                   </div>
-                  <dl className="dash-muted mt-4 space-y-2 text-sm">
+                  <dl className="app-body mt-4 space-y-2">
                     <div className="flex justify-between gap-4">
                       <dt>Sheets</dt>
                       <dd className="text-right text-[var(--foreground)]">
@@ -816,7 +819,7 @@ export function DashboardClient() {
                           ⚡ Electrical Scan
                         </Link>
                       </div>
-                      <p className="dash-muted text-xs">
+                      <p className="app-muted">
                         Last scan:{" "}
                         {formatPlanScanRelativeDate(
                           scanSummaries[p.id]!.lastScanned,
@@ -863,7 +866,7 @@ export function DashboardClient() {
                   type="button"
                   disabled={deleting}
                   onClick={() => setDeleteTarget(null)}
-                  className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-4 py-2 text-sm font-semibold text-[var(--foreground)] hover:border-[#E8C84A]/35 disabled:opacity-50"
+                  className="btn-secondary"
                 >
                   Cancel
                 </button>
@@ -871,7 +874,7 @@ export function DashboardClient() {
                   type="button"
                   disabled={deleting}
                   onClick={() => void confirmDelete()}
-                  className="inline-flex items-center gap-2 rounded-lg border border-red-500/50 bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+                  className="btn-danger-outline inline-flex items-center gap-2 disabled:opacity-50"
                 >
                   {deleting ? (
                     <>

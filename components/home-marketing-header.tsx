@@ -9,7 +9,6 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { TppLogoPill } from "@/components/tpp-logo-pill";
 import { TPP_COMPANY_FULL, TPP_TAGLINE } from "@/lib/tpp-branding";
 import { AppMobileNavButton } from "@/components/app-mobile-nav";
-import { HomeWeatherWidget } from "@/components/home-weather-widget";
 
 const NAV_IDLE =
   "text-white/80 transition-colors hover:text-[#E8C84A] rounded-md px-1 py-0.5";
@@ -78,7 +77,6 @@ export function HomeMarketingHeader() {
           </Link>
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-            <HomeWeatherWidget />
             <div className="max-lg:!hidden flex items-center gap-2 sm:gap-3">
               <GlobalNavSearch className="w-64 xl:w-80" />
               <ThemeToggle />

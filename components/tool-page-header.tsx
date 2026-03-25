@@ -21,7 +21,7 @@ export function ToolPageHeader({
   return (
     <header className="app-tool-header border-b">
       {showToolsBackLink ? (
-        <div className="mx-auto max-w-5xl px-6 pt-4">
+        <div className="mx-auto max-w-6xl px-4 pt-4 md:px-8">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium sm:text-sm">
             <Link
               href="/dashboard"
@@ -41,15 +41,17 @@ export function ToolPageHeader({
           </div>
         </div>
       ) : null}
-      <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-4 sm:px-6 sm:py-5 md:flex-row md:flex-wrap md:items-center md:justify-between">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-5 md:px-8 md:py-6 md:flex-row md:flex-wrap md:items-center md:justify-between">
         <div className="flex min-w-0 flex-1 items-start gap-3 sm:gap-4">
           <TppLogoPill size="tool" />
           <div className="min-w-0 border-l border-[#E8C84A]/35 pl-3 sm:pl-4">
-            <h1 className="text-lg font-semibold tracking-tight sm:text-xl">
+            <h1 className="text-2xl font-semibold tracking-tight text-white">
               {title}
             </h1>
             {subtitle ? (
-              <p className="tool-subtitle mt-1 text-sm">{subtitle}</p>
+              <p className="tool-subtitle mt-2 text-sm text-white/80">
+                {subtitle}
+              </p>
             ) : null}
           </div>
         </div>

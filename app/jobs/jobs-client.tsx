@@ -2,7 +2,12 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import {
+  EmptyState,
+  JobListSkeleton,
+} from "@/components/app-polish";
 import { WideAppHeader } from "@/components/wide-app-header";
+import { useAppToast } from "@/components/toast-provider";
 import { useUserRole } from "@/hooks/use-user-role";
 import { createBrowserClient } from "@/lib/supabase/client";
 import {
@@ -88,6 +93,7 @@ const emptyJobForm: JobFormState = {
 };
 
 export function JobsClient() {
+  const { showToast } = useAppToast();
   const {
     canCreateOrEditJobs,
     canDeleteJobs,
@@ -105,7 +111,6 @@ export function JobsClient() {
   const [form, setForm] = useState<JobFormState>(emptyJobForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<JobListRow | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -199,12 +204,6 @@ export function JobsClient() {
       cancelled = true;
     };
   }, [modalOpen, canAssignJobs]);
-
-  useEffect(() => {
-    if (!toastMsg) return;
-    const t = window.setTimeout(() => setToastMsg(null), 3200);
-    return () => window.clearTimeout(t);
-  }, [toastMsg]);
 
   const customerLabel = (j: JobListRow) => {
     const raw = j.customers;
@@ -319,11 +318,11 @@ export function JobsClient() {
           .update(payload)
           .eq("id", editingId);
         if (ue) throw ue;
-        setToastMsg("Job updated.");
+        showToast({ message: "Job updated.", variant: "success" });
       } else {
         const { error: ie } = await sb.from("jobs").insert(payload);
         if (ie) throw ie;
-        setToastMsg("Job saved.");
+        showToast({ message: "Job saved.", variant: "success" });
       }
       setModalOpen(false);
       void load();
@@ -345,22 +344,25 @@ export function JobsClient() {
         .eq("id", deleteTarget.id);
       if (de) throw de;
       setDeleteTarget(null);
-      setToastMsg("Job deleted.");
+      showToast({ message: "Job deleted.", variant: "success" });
       void load();
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : "Delete failed.");
+      showToast({
+        message: e instanceof Error ? e.message : "Delete failed.",
+        variant: "error",
+      });
     } finally {
       setDeleting(false);
     }
   };
 
   const JobCard = ({ j }: { j: JobListRow }) => (
-    <div className="w-full rounded-xl border border-white/10 bg-white/[0.04] text-sm transition-colors hover:border-[#E8C84A]/45">
-      <Link href={`/jobs/${j.id}`} className="block p-3 sm:p-3">
-        <p className="font-semibold text-white">
+    <div className="app-card w-full !p-0 text-sm transition-colors hover:border-[#E8C84A]/45">
+      <Link href={`/jobs/${j.id}`} className="block p-4">
+        <p className="text-base font-semibold text-white">
           {j.job_number} · {j.job_name}
         </p>
-        <p className="mt-0.5 text-xs text-white/55 sm:mt-1">
+        <p className="app-muted mt-0.5 sm:mt-1">
           {customerLabel(j)}
         </p>
         <div className="mt-1.5 flex flex-wrap gap-1 sm:mt-2">
@@ -372,20 +374,20 @@ export function JobsClient() {
           </span>
         </div>
         {[j.address, j.city, j.state].filter(Boolean).length ? (
-          <p className="mt-1.5 hidden text-xs text-white/45 sm:mt-2 sm:block">
+          <p className="app-muted mt-1.5 hidden sm:mt-2 sm:block">
             {[j.address, j.city, j.state, j.zip].filter(Boolean).join(", ")}
           </p>
         ) : null}
-        <p className="mt-1.5 text-[11px] text-white/40 sm:mt-2 sm:text-xs">
+        <p className="app-muted mt-1.5 sm:mt-2">
           {counts[j.id] ?? 0} att. · {formatDate(j.updated_at)}
         </p>
       </Link>
-      <div className="flex flex-wrap gap-2 border-t border-white/10 px-3 py-2">
+      <div className="flex flex-wrap gap-2 border-t border-white/12 px-4 py-3">
         {canCreateOrEditJobs ? (
           <button
             type="button"
             onClick={() => openEdit(j)}
-            className="rounded-md border border-white/20 px-2 py-1 text-[11px] font-semibold text-white/90 hover:bg-white/10"
+            className="btn-secondary !h-9 min-h-0 !px-3 !text-xs"
           >
             Edit
           </button>
@@ -394,7 +396,7 @@ export function JobsClient() {
           <button
             type="button"
             onClick={() => setDeleteTarget(j)}
-            className="rounded-md border border-red-500/35 px-2 py-1 text-[11px] font-semibold text-red-200 hover:bg-red-950/35"
+            className="btn-danger-outline !h-9 min-h-0 !px-3 !text-xs"
           >
             Delete
           </button>
@@ -402,14 +404,14 @@ export function JobsClient() {
         {j.customer_id ? (
           <Link
             href={`/customers/${j.customer_id}`}
-            className="rounded-md border border-[#E8C84A]/40 px-2 py-1 text-[11px] font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10"
+            className="btn-secondary !h-9 min-h-0 !px-3 !text-xs text-[#E8C84A]"
           >
             Customer
           </Link>
         ) : (
           <Link
             href="/customers"
-            className="rounded-md border border-white/20 px-2 py-1 text-[11px] font-semibold text-white/70 hover:bg-white/10"
+            className="btn-secondary !h-9 min-h-0 !px-3 !text-xs"
           >
             Link customer
           </Link>
@@ -418,23 +420,14 @@ export function JobsClient() {
     </div>
   );
 
-  const inp =
-    "mt-1 w-full rounded-lg border border-white/15 bg-[#0a1628] px-3 py-2 text-sm text-white";
+  const inp = "app-input";
 
   return (
     <div className="flex min-h-screen flex-col">
       <WideAppHeader active="jobs" showTppSubtitle />
-      {toastMsg ? (
-        <div
-          className="fixed bottom-20 left-4 right-4 z-[250] mx-auto max-w-sm rounded-xl border border-emerald-500/40 bg-emerald-950/95 px-4 py-3 text-sm font-medium text-emerald-100 shadow-lg sm:bottom-6 sm:left-auto sm:right-6"
-          role="status"
-        >
-          {toastMsg}
-        </div>
-      ) : null}
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 sm:py-10">
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
-          <h1 className="text-2xl font-semibold text-white sm:text-3xl">
+      <main className="app-page-shell flex-1 py-8 md:py-10">
+        <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+          <h1 className="text-2xl font-semibold text-white">
             Jobs
           </h1>
           <div className="flex flex-col gap-2 sm:ml-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
@@ -442,22 +435,22 @@ export function JobsClient() {
               <button
                 type="button"
                 onClick={openCreate}
-                className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-[#E8C84A] px-6 py-3 text-base font-bold text-[#0a1628] shadow-md hover:bg-[#f0d56e] sm:w-auto"
+                className="btn-primary btn-h-11 inline-flex w-full items-center justify-center gap-2 sm:w-auto"
               >
-                <span className="text-xl leading-none" aria-hidden>
+                <span className="text-lg leading-none" aria-hidden>
                   +
                 </span>
-                Add Job
+                Add job
               </button>
             ) : null}
             <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
             <button
               type="button"
               onClick={() => setView("kanban")}
-              className={`min-h-[44px] rounded-lg px-4 py-2.5 text-sm font-medium ${
+              className={`min-h-[2.75rem] rounded-lg px-4 text-sm font-semibold ${
                 view === "kanban"
-                  ? "bg-[#E8C84A] text-[#0a1628]"
-                  : "border border-white/20 text-white/80"
+                  ? "inline-flex h-11 items-center justify-center bg-[#E8C84A] text-[#0a1628]"
+                  : "btn-secondary btn-h-11"
               }`}
             >
               Kanban
@@ -465,10 +458,10 @@ export function JobsClient() {
             <button
               type="button"
               onClick={() => setView("list")}
-              className={`min-h-[44px] rounded-lg px-4 py-2.5 text-sm font-medium ${
+              className={`min-h-[2.75rem] rounded-lg px-4 text-sm font-semibold ${
                 view === "list"
-                  ? "bg-[#E8C84A] text-[#0a1628]"
-                  : "border border-white/20 text-white/80"
+                  ? "inline-flex h-11 items-center justify-center bg-[#E8C84A] text-[#0a1628]"
+                  : "btn-secondary btn-h-11"
               }`}
             >
               List
@@ -476,7 +469,7 @@ export function JobsClient() {
             </div>
             <Link
               href="/customers"
-              className="flex min-h-[44px] w-full items-center justify-center rounded-lg border border-white/20 px-4 py-2.5 text-sm text-white/85 hover:bg-white/5 sm:w-auto"
+              className="btn-secondary btn-h-11 w-full justify-center sm:w-auto"
             >
               Customers
             </Link>
@@ -484,7 +477,7 @@ export function JobsClient() {
               type="button"
               disabled={jobs.length === 0}
               onClick={exportJobTreadCsv}
-              className="min-h-[44px] w-full rounded-lg border border-[#E8C84A]/50 px-4 py-2.5 text-sm font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
+              className="btn-secondary btn-h-11 w-full border-[#E8C84A]/45 text-[#E8C84A] hover:border-[#E8C84A]/60 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
             >
               Export for JobTread
             </button>
@@ -492,15 +485,19 @@ export function JobsClient() {
         </div>
 
         {loading ? (
-          <p className="mt-10 text-white/60">Loading…</p>
+          <JobListSkeleton />
         ) : error ? (
-          <p className="mt-10 text-red-200">{error}</p>
+          <p className="app-body mt-6 text-red-200">{error}</p>
         ) : jobs.length === 0 ? (
-          <p className="mt-10 text-white/55">
-            No jobs yet. Add one above or link a tool result from a job dialog.
-          </p>
+          <EmptyState
+            icon={<span aria-hidden>📋</span>}
+            title="No jobs yet — create your first"
+            description="Add a job to track leads, quotes, and field work. You can also link tool results from a job dialog."
+            actionLabel={canCreateOrEditJobs ? "Add job" : undefined}
+            onAction={canCreateOrEditJobs ? openCreate : undefined}
+          />
         ) : view === "list" ? (
-          <ul className="mt-8 space-y-3">
+          <ul className="space-y-3">
             {jobs.map((j) => (
               <li key={j.id}>
                 <JobCard j={j} />
@@ -508,13 +505,13 @@ export function JobsClient() {
             ))}
           </ul>
         ) : (
-          <div className="mt-8 flex gap-3 overflow-x-auto pb-4 [-webkit-overflow-scrolling:touch]">
+          <div className="flex gap-4 overflow-x-auto pb-4 [-webkit-overflow-scrolling:touch]">
             {KANBAN_STATUSES.map((st) => (
               <div
                 key={st}
-                className="w-[min(100vw-2rem,18rem)] shrink-0 rounded-xl border border-white/10 bg-[#071422]/60 p-3 sm:w-72"
+                className="app-card app-card-pad-lg w-[min(100vw-2rem,18rem)] shrink-0 sm:w-72"
               >
-                <h2 className="mb-3 text-xs font-bold uppercase tracking-wide text-[#E8C84A]/90">
+                <h2 className="app-muted mb-3 font-semibold uppercase tracking-wide text-[#E8C84A]/90">
                   {st}
                 </h2>
                 <div className="space-y-2">
@@ -556,7 +553,7 @@ export function JobsClient() {
                 type="button"
                 disabled={deleting}
                 onClick={() => void confirmDeleteJob()}
-                className="rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+                className="btn-danger-outline disabled:opacity-50"
               >
                 Delete
               </button>
@@ -564,7 +561,7 @@ export function JobsClient() {
                 type="button"
                 disabled={deleting}
                 onClick={() => setDeleteTarget(null)}
-                className="rounded-lg border border-white/20 px-4 py-2.5 text-sm text-white/80 hover:bg-white/5"
+                className="btn-secondary disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -718,14 +715,14 @@ export function JobsClient() {
                 type="button"
                 disabled={saving}
                 onClick={() => void saveJob()}
-                className="rounded-lg bg-[#E8C84A] px-4 py-2.5 text-sm font-semibold text-[#0a1628] disabled:opacity-50"
+                className="btn-primary disabled:opacity-50"
               >
                 Save
               </button>
               <button
                 type="button"
                 onClick={() => setModalOpen(false)}
-                className="rounded-lg border border-white/20 px-4 py-2.5 text-sm text-white/80 hover:bg-white/5"
+                className="btn-secondary"
               >
                 Cancel
               </button>

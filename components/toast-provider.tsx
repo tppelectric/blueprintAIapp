@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 
 export type ToastVariant = "success" | "error" | "warning" | "info";
@@ -37,7 +38,7 @@ const VARIANT_STYLES: Record<
   info: "border-sky-500/40 bg-sky-950/95 text-sky-100 shadow-sky-950/40",
 };
 
-export function ToastProvider({ children }: { children: React.ReactNode }) {
+export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const timers = useRef<Map<string, number>>(new Map());
 

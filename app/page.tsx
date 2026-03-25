@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { HomeMarketingHeader } from "@/components/home-marketing-header";
+import { HomeWeatherWidget } from "@/components/home-weather-widget";
 import { HomepageApiUsageWidget } from "@/components/homepage-api-usage-widget";
 
 function LightningIcon({ className }: { className?: string }) {
@@ -135,38 +136,52 @@ function DescriberIcon({ className }: { className?: string }) {
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-screen flex-col bg-[#060d1a] bg-gradient-to-b from-[#0c1829] via-[#060d1a] to-[#03060f]">
       <HomeMarketingHeader />
 
       <main
         id="product"
-        className="flex flex-1 flex-col items-center justify-center px-4 py-12 text-center sm:px-6 sm:py-24"
+        className="mx-auto flex w-full max-w-6xl flex-1 flex-col items-center px-4 py-16 text-center md:px-8 md:py-24"
       >
-        <h1 className="max-w-3xl text-2xl font-semibold leading-tight tracking-tight text-white sm:text-3xl md:text-4xl lg:text-5xl">
+        <h1 className="max-w-3xl text-2xl font-semibold leading-tight tracking-tight text-white sm:text-3xl md:text-4xl">
           Blueprint AI — Electrical Takeoff System
         </h1>
-        <p className="mt-4 max-w-xl text-sm text-white/50 sm:text-base">
+        <p className="mt-5 max-w-xl text-sm text-white/50 sm:text-base">
           Est. 1982 · Powered by Blueprint AI
         </p>
+
+        <section
+          className="mt-8 flex w-full max-w-lg flex-col items-center gap-2 sm:mt-10"
+          aria-labelledby="home-weather-heading"
+        >
+          <h2
+            id="home-weather-heading"
+            className="text-xs font-semibold uppercase tracking-wider text-[#E8C84A]/90"
+          >
+            Local weather
+          </h2>
+          <HomeWeatherWidget />
+        </section>
+
         <Link
           href="/upload"
-          className="mt-8 inline-flex w-full max-w-md items-center justify-center rounded-lg border-2 border-[#E8C84A]/60 bg-[#E8C84A] px-6 py-3 text-base font-semibold text-[#0a1628] shadow-sm transition-colors hover:bg-[#f0d56e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A] sm:mt-10 sm:w-auto"
+          className="btn-primary btn-h-11 mt-10 inline-flex w-full max-w-md justify-center sm:mt-12 sm:w-auto"
         >
-          Start New Project
+          Start new project
         </Link>
 
-        <div className="mx-auto mt-10 grid w-full max-w-4xl grid-cols-1 gap-3 sm:mt-14 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
+        <div className="mx-auto mt-14 grid w-full grid-cols-1 gap-6 sm:mt-16 sm:grid-cols-2 lg:grid-cols-3">
           <Link
             href="/tools/load-calculator"
-            className="group card-pad-mobile flex flex-col rounded-2xl border border-white/12 bg-white/[0.04] p-5 text-left shadow-sm transition-colors hover:border-[#E8C84A] hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50 sm:p-6"
+            className="group card-pad-mobile flex flex-col rounded-xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-lg shadow-black/25 ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/60 hover:bg-white/[0.07] hover:ring-[#E8C84A]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
           >
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-500/15 text-sky-300 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-sky-500/25 group-hover:ring-[#E8C84A]/50">
               <LightningIcon className="h-6 w-6" />
             </div>
-            <h2 className="mt-4 text-lg font-semibold text-white">
+            <h2 className="mt-4 text-base font-semibold text-white">
               Load Calculator
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/60">
+            <p className="mt-2 text-sm leading-relaxed text-white/80">
               Size your electrical service per NEC Article 220
             </p>
             <span className="mt-4 text-sm font-medium text-[#E8C84A] group-hover:text-[#f0d56e]">
@@ -176,15 +191,15 @@ export default function Home() {
 
           <Link
             href="/tools/nec-checker"
-            className="group card-pad-mobile flex flex-col rounded-2xl border border-white/12 bg-white/[0.04] p-5 text-left shadow-sm transition-colors hover:border-[#E8C84A] hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50 sm:p-6"
+            className="group card-pad-mobile flex flex-col rounded-xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-lg shadow-black/25 ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/60 hover:bg-white/[0.07] hover:ring-[#E8C84A]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
           >
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-500/15 text-violet-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-violet-500/25 group-hover:ring-[#E8C84A]/50">
               <BookCheckIcon className="h-6 w-6" />
             </div>
-            <h2 className="mt-4 text-lg font-semibold text-white">
+            <h2 className="mt-4 text-base font-semibold text-white">
               NEC Code Checker
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/60">
+            <p className="mt-2 text-sm leading-relaxed text-white/80">
               Check NEC 2023 compliance and get instant code answers
             </p>
             <span className="mt-4 text-sm font-medium text-[#E8C84A] group-hover:text-[#f0d56e]">
@@ -194,15 +209,15 @@ export default function Home() {
 
           <Link
             href="/tools/wifi-analyzer"
-            className="group card-pad-mobile flex flex-col rounded-2xl border border-white/12 bg-white/[0.04] p-5 text-left shadow-sm transition-colors hover:border-[#E8C84A] hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50 sm:p-6"
+            className="group card-pad-mobile flex flex-col rounded-xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-lg shadow-black/25 ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/60 hover:bg-white/[0.07] hover:ring-[#E8C84A]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
           >
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-teal-500/15 text-teal-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-teal-500/25 group-hover:ring-[#E8C84A]/50">
               <WifiIcon className="h-6 w-6" />
             </div>
-            <h2 className="mt-4 text-lg font-semibold text-white">
+            <h2 className="mt-4 text-base font-semibold text-white">
               Wi-Fi Analyzer
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/60">
+            <p className="mt-2 text-sm leading-relaxed text-white/80">
               AP counts, cable takeoff, and vendor recommendations
             </p>
             <span className="mt-4 text-sm font-medium text-[#E8C84A] group-hover:text-[#f0d56e]">
@@ -212,15 +227,15 @@ export default function Home() {
 
           <Link
             href="/tools/av-analyzer"
-            className="group card-pad-mobile flex flex-col rounded-2xl border border-white/12 bg-white/[0.04] p-5 text-left shadow-sm transition-colors hover:border-[#E8C84A] hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50 sm:p-6"
+            className="group card-pad-mobile flex flex-col rounded-xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-lg shadow-black/25 ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/60 hover:bg-white/[0.07] hover:ring-[#E8C84A]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
           >
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-500/15 text-rose-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-rose-500/25 group-hover:ring-[#E8C84A]/50">
               <SpeakerIcon className="h-6 w-6" />
             </div>
-            <h2 className="mt-4 text-lg font-semibold text-white">
+            <h2 className="mt-4 text-base font-semibold text-white">
               AV Analyzer
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/60">
+            <p className="mt-2 text-sm leading-relaxed text-white/80">
               Speaker counts, displays, wiring takeoff, and proposals
             </p>
             <span className="mt-4 text-sm font-medium text-[#E8C84A] group-hover:text-[#f0d56e]">
@@ -230,15 +245,15 @@ export default function Home() {
 
           <Link
             href="/tools/smarthome-analyzer"
-            className="group card-pad-mobile flex flex-col rounded-2xl border border-white/12 bg-white/[0.04] p-5 text-left shadow-sm transition-colors hover:border-[#E8C84A] hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50 sm:p-6"
+            className="group card-pad-mobile flex flex-col rounded-xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-lg shadow-black/25 ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/60 hover:bg-white/[0.07] hover:ring-[#E8C84A]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
           >
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-cyan-500/25 group-hover:ring-[#E8C84A]/50">
               <SmartHomeIcon className="h-6 w-6" />
             </div>
-            <h2 className="mt-4 text-lg font-semibold text-white">
+            <h2 className="mt-4 text-base font-semibold text-white">
               Smart Home Analyzer
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/60">
+            <p className="mt-2 text-sm leading-relaxed text-white/80">
               Automation design, device counts, and network guidance
             </p>
             <span className="mt-4 text-sm font-medium text-[#E8C84A] group-hover:text-[#f0d56e]">
@@ -248,15 +263,15 @@ export default function Home() {
 
           <Link
             href="/tools/electrical-analyzer"
-            className="group card-pad-mobile flex flex-col rounded-2xl border border-white/12 bg-white/[0.04] p-5 text-left shadow-sm transition-colors hover:border-[#E8C84A] hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50 sm:p-6"
+            className="group card-pad-mobile flex flex-col rounded-xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-lg shadow-black/25 ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/60 hover:bg-white/[0.07] hover:ring-[#E8C84A]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
           >
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-lime-500/15 text-lime-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-lime-500/25 group-hover:ring-[#E8C84A]/50">
               <PanelScheduleIcon className="h-6 w-6" />
             </div>
-            <h2 className="mt-4 text-lg font-semibold text-white">
+            <h2 className="mt-4 text-base font-semibold text-white">
               Electrical Project Analyzer
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/60">
+            <p className="mt-2 text-sm leading-relaxed text-white/80">
               Room-by-room circuits, panel schedule, materials, and proposals
             </p>
             <span className="mt-4 text-sm font-medium text-[#E8C84A] group-hover:text-[#f0d56e]">
@@ -266,15 +281,15 @@ export default function Home() {
 
           <Link
             href="/tools/project-describer"
-            className="group card-pad-mobile flex flex-col rounded-2xl border border-white/12 bg-white/[0.04] p-5 text-left shadow-sm transition-colors hover:border-[#E8C84A] hover:bg-white/[0.07] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50 sm:p-6"
+            className="group card-pad-mobile flex flex-col rounded-xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-lg shadow-black/25 ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/60 hover:bg-white/[0.07] hover:ring-[#E8C84A]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
           >
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-fuchsia-500/15 text-fuchsia-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-fuchsia-500/25 group-hover:ring-[#E8C84A]/50">
               <DescriberIcon className="h-6 w-6" />
             </div>
-            <h2 className="mt-4 text-lg font-semibold text-white">
+            <h2 className="mt-4 text-base font-semibold text-white">
               AI Project Describer
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/60">
+            <p className="mt-2 text-sm leading-relaxed text-white/80">
               Describe a job in text or voice — scope, proposals, BOM, and
               pre-filled Wi‑Fi / AV / smart home plans
             </p>
@@ -284,15 +299,54 @@ export default function Home() {
           </Link>
         </div>
 
-        <div className="mt-12 w-full max-w-4xl px-1 sm:mt-16">
+        <div className="mt-14 w-full sm:mt-16">
           <h2 className="sr-only">API usage and scan costs</h2>
           <HomepageApiUsageWidget />
         </div>
 
-        <footer className="mt-12 w-full max-w-4xl border-t border-white/10 pt-8 sm:mt-16">
-          <p id="contact" className="text-sm text-white/45">
-            Questions? Reach your team through your usual TPP channels.
-          </p>
+        <footer className="mt-14 w-full border-t border-white/12 pt-10 pb-8 sm:mt-16">
+          <div className="flex flex-col gap-8 sm:flex-row sm:items-start sm:justify-between sm:gap-12">
+            <div className="text-left">
+              <p className="text-base font-semibold text-white">
+                Triple Play Productions
+              </p>
+              <p
+                id="contact"
+                className="app-body mt-2 max-w-md text-left text-white/80"
+              >
+                Questions? Reach your team through your usual TPP channels.
+              </p>
+            </div>
+            <nav
+              className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm sm:justify-end"
+              aria-label="Footer"
+            >
+              <Link
+                href="/dashboard"
+                className="text-white/50 transition-colors hover:text-[#E8C84A]"
+              >
+                Dashboard
+              </Link>
+              <Link
+                href="/tools"
+                className="text-white/50 transition-colors hover:text-[#E8C84A]"
+              >
+                Tools
+              </Link>
+              <Link
+                href="/upload"
+                className="text-white/50 transition-colors hover:text-[#E8C84A]"
+              >
+                Upload
+              </Link>
+              <Link
+                href="/jobs"
+                className="text-white/50 transition-colors hover:text-[#E8C84A]"
+              >
+                Jobs
+              </Link>
+            </nav>
+          </div>
         </footer>
       </main>
     </div>

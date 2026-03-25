@@ -15,6 +15,7 @@ import {
   readPdfFileAsArrayBuffer,
   WIFI_PDF_LOAD_ERROR,
 } from "@/lib/wifi-blueprint-preview";
+import { WIFI_PREFILL_STORAGE_KEY } from "@/lib/room-scan-tool-bridge";
 import {
   computeWifiPlan,
   isMeshVendor,
@@ -290,6 +291,7 @@ export function WifiAnalyzerClient() {
   const [buildingType, setBuildingType] =
     useState<BuildingType>("residential");
   const [rooms, setRooms] = useState<WifiRoomInput[]>(exampleRooms);
+
   const [planningPriority, setPlanningPriority] =
     useState<PlanningPriority>("best_value");
   const [internetSpeedMbps, setInternetSpeedMbps] = useState(1000);
@@ -327,6 +329,42 @@ export function WifiAnalyzerClient() {
     useState<ConstructionType>("renovation");
   const [buildingAge, setBuildingAge] = useState<BuildingAge>("2000_2015");
   const [stories, setStories] = useState<StoriesCount>(2);
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(WIFI_PREFILL_STORAGE_KEY);
+      if (!raw) return;
+      sessionStorage.removeItem(WIFI_PREFILL_STORAGE_KEY);
+      const parsed = JSON.parse(raw) as {
+        rooms?: WifiRoomInput[];
+        stories?: StoriesCount;
+        totalBuildingSqFt?: number;
+      };
+      if (Array.isArray(parsed.rooms) && parsed.rooms.length > 0) {
+        setRooms(parsed.rooms);
+      }
+      if (
+        parsed.stories === 1 ||
+        parsed.stories === 2 ||
+        parsed.stories === 3 ||
+        parsed.stories === 4
+      ) {
+        setStories(parsed.stories);
+      }
+      if (
+        typeof parsed.totalBuildingSqFt === "number" &&
+        Number.isFinite(parsed.totalBuildingSqFt) &&
+        parsed.totalBuildingSqFt > 0
+      ) {
+        setTotalBuildingSqFtInput(
+          String(Math.round(parsed.totalBuildingSqFt)),
+        );
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const [basement, setBasement] = useState<YesNoChoice>("no");
   const [atticAccess, setAtticAccess] = useState<YesNoChoice>("no");
   const [buildingShape, setBuildingShape] =

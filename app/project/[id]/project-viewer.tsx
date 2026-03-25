@@ -53,6 +53,12 @@ import { formatAutoScanName } from "@/lib/saved-scan-format";
 import type { SavedScanRow } from "@/lib/saved-scan-types";
 import { parseScanItems, parseScanRooms } from "@/lib/saved-scan-types";
 import { ScanHistoryPanel } from "./scan-history-panel";
+import { RoomScanRecallModal } from "./room-scan-recall-modal";
+import { ProjectRoomScanDialog } from "@/components/project-room-scan-dialog";
+import {
+  parseRoomsJson,
+  type ProjectRoomScanRow,
+} from "@/lib/project-room-scan-types";
 import { SymbolLegendPanel } from "./symbol-legend-panel";
 import { TakeoffExportDialog } from "./takeoff-export-dialog";
 import { ScanModeDialog } from "./scan-mode-dialog";
@@ -659,6 +665,26 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     rooms: DetectedRoomRow[];
   } | null>(null);
 
+  const [roomScanDialogOpen, setRoomScanDialogOpen] = useState(false);
+  const [roomScanRecallOpen, setRoomScanRecallOpen] = useState(false);
+  const [roomScanReloadToken, setRoomScanReloadToken] = useState(0);
+  const [savedRoomScansList, setSavedRoomScansList] = useState<
+    ProjectRoomScanRow[]
+  >([]);
+  const [roomScanBusy, setRoomScanBusy] = useState(false);
+  const [roomScanError, setRoomScanError] = useState<string | null>(null);
+  const [recalledRoomScan, setRecalledRoomScan] = useState<{
+    createdAt: string;
+    scanPage: number;
+    totalSqft: number;
+    floorCount: number;
+  } | null>(null);
+  const [lastRoomScanMeta, setLastRoomScanMeta] = useState<{
+    page: number;
+    floorCount: number;
+    totalSqft: number;
+  } | null>(null);
+
   useEffect(() => {
     setLegendStatus("idle");
     setLegendMeta(null);
@@ -681,6 +707,12 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     scanProgressOpenRef.current = false;
     setScanCompleteMessage(null);
     setResumeSnapshot(null);
+    setRoomScanDialogOpen(false);
+    setRoomScanRecallOpen(false);
+    setRecalledRoomScan(null);
+    setLastRoomScanMeta(null);
+    setRoomScanError(null);
+    setSavedRoomScansList([]);
   }, [projectId]);
 
   const manualCountsRef = useRef(manualCounts);
@@ -928,6 +960,42 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       cancelled = true;
     };
   }, [projectId]);
+
+  const refetchDetectedRoomsFromDb = useCallback(async () => {
+    try {
+      const supabase = createBrowserClient();
+      const { data } = await supabase
+        .from("detected_rooms")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("page_number", { ascending: true });
+      if (data) setDetectedRooms(data as DetectedRoomRow[]);
+    } catch {
+      /* ignore */
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/project-room-scans?projectId=${encodeURIComponent(projectId)}`,
+        );
+        const json = (await res.json()) as {
+          scans?: ProjectRoomScanRow[];
+        };
+        if (!cancelled && Array.isArray(json.scans)) {
+          setSavedRoomScansList(json.scans);
+        }
+      } catch {
+        if (!cancelled) setSavedRoomScansList([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, roomScanReloadToken]);
 
   const pdfDocsRef = useRef<PDFDocumentProxy[] | null>(null);
   const currentPageRef = useRef(currentPage);
@@ -2326,6 +2394,166 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     setScanHistoryOpen(false);
   }, []);
 
+  const persistProjectRoomScan = useCallback(
+    async (
+      rooms: DetectedRoomRow[],
+      pageNum: number,
+      totalSqft: number,
+      floorCount: number,
+    ) => {
+      const scanLabel = `Room Scan - ${new Date().toLocaleString()}`;
+      const res = await fetch("/api/project-room-scans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          roomsJson: rooms,
+          totalSqft,
+          floorCount,
+          scanPage: pageNum,
+          scanLabel,
+        }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Could not save room scan.");
+      setRoomScanReloadToken((t) => t + 1);
+    },
+    [projectId],
+  );
+
+  const runRoomPageScan = useCallback(async () => {
+    const page = currentPageRef.current;
+    const docs = pdfDocsRef.current;
+    if (!docs?.length || page < 1) return;
+    const mapped = globalPageToLocal(page, docs);
+    if (!mapped) return;
+    setRoomScanBusy(true);
+    setRoomScanError(null);
+    try {
+      const pageImage = await renderPdfPageToPngBase64(
+        mapped.doc,
+        mapped.localPage,
+      );
+      const res = await fetch("/api/analyze-rooms-page", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          pageNumber: page,
+          imageBase64: pageImage.base64,
+          imageMediaType: pageImage.mediaType,
+        }),
+      });
+      const json = (await res.json()) as {
+        rooms?: DetectedRoomRow[];
+        floor_count?: number;
+        total_sqft?: number;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Room scan failed.");
+      const rooms = json.rooms ?? [];
+      setDetectedRooms((prev) => [
+        ...prev.filter((r) => r.page_number !== page),
+        ...rooms,
+      ]);
+      setRecalledRoomScan(null);
+      const fc =
+        typeof json.floor_count === "number" && json.floor_count >= 1
+          ? Math.min(99, Math.round(json.floor_count))
+          : 1;
+      const tsq =
+        typeof json.total_sqft === "number" && Number.isFinite(json.total_sqft)
+          ? json.total_sqft
+          : 0;
+      setLastRoomScanMeta({ page, floorCount: fc, totalSqft: tsq });
+      await persistProjectRoomScan(rooms, page, tsq, fc);
+    } catch (e) {
+      setRoomScanError(
+        e instanceof Error ? e.message : "Room scan failed.",
+      );
+    } finally {
+      setRoomScanBusy(false);
+    }
+  }, [projectId, persistProjectRoomScan]);
+
+  const applyRecalledRoomScanFromRow = useCallback(
+    (scan: ProjectRoomScanRow) => {
+      const parsed = parseRoomsJson(scan.rooms_json);
+      const withProject = parsed.map((r) => ({
+        ...r,
+        project_id: projectId,
+      }));
+      setDetectedRooms((prev) => [
+        ...prev.filter((r) => r.page_number !== scan.scan_page),
+        ...withProject,
+      ]);
+      setCurrentPage(scan.scan_page);
+      setRecalledRoomScan({
+        createdAt: scan.created_at,
+        scanPage: scan.scan_page,
+        totalSqft: Number(scan.total_sqft),
+        floorCount: scan.floor_count,
+      });
+      setRoomScanDialogOpen(true);
+    },
+    [projectId],
+  );
+
+  const switchToLiveRoomScan = useCallback(() => {
+    setRecalledRoomScan(null);
+    void refetchDetectedRoomsFromDb();
+    setRoomScanDialogOpen(false);
+  }, [refetchDetectedRoomsFromDb]);
+
+  const openLiveRoomScanDialog = useCallback(() => {
+    setRecalledRoomScan(null);
+    setRoomScanError(null);
+    void refetchDetectedRoomsFromDb();
+    setRoomScanDialogOpen(true);
+  }, [refetchDetectedRoomsFromDb]);
+
+  const pageRoomsForRoomScanDialog = useMemo(
+    () => detectedRooms.filter((r) => r.page_number === currentPage),
+    [detectedRooms, currentPage],
+  );
+
+  const roomScanDialogTotals = useMemo(() => {
+    if (
+      recalledRoomScan &&
+      recalledRoomScan.scanPage === currentPage
+    ) {
+      return {
+        totalSqft: recalledRoomScan.totalSqft,
+        floorCount: recalledRoomScan.floorCount,
+      };
+    }
+    if (lastRoomScanMeta?.page === currentPage) {
+      return {
+        totalSqft: lastRoomScanMeta.totalSqft,
+        floorCount: lastRoomScanMeta.floorCount,
+      };
+    }
+    let t = 0;
+    for (const r of pageRoomsForRoomScanDialog) {
+      const sq = r.sq_ft != null ? Number(r.sq_ft) : NaN;
+      if (Number.isFinite(sq) && sq > 0) t += sq;
+      else if (
+        r.width_ft != null &&
+        r.length_ft != null &&
+        r.width_ft > 0 &&
+        r.length_ft > 0
+      ) {
+        t += Number(r.width_ft) * Number(r.length_ft);
+      }
+    }
+    return { totalSqft: Math.round(t), floorCount: 1 };
+  }, [
+    recalledRoomScan,
+    currentPage,
+    lastRoomScanMeta,
+    pageRoomsForRoomScanDialog,
+  ]);
+
   const runTargetScan = useCallback(async () => {
     const q = targetQuery.trim();
     if (q.length < 2) {
@@ -3380,25 +3608,64 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       {!pdfLoading && !pdfError && pdfDocs && pdfDocs.length > 0 && numPages > 0 && (
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
           <aside
-            className="flex shrink-0 gap-2 overflow-x-auto border-b border-white/10 bg-[#071422]/60 px-3 py-3 lg:w-[16.5rem] lg:flex-col lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-2 lg:py-4"
-            aria-label="Page thumbnails"
+            className="flex shrink-0 flex-col gap-3 border-b border-white/10 bg-[#071422]/60 lg:w-[16.5rem] lg:border-b-0 lg:border-r lg:px-2 lg:py-4"
+            aria-label="Page thumbnails and saved room scans"
           >
-            {Array.from({ length: numPages }, (_, i) => i + 1).map((n) => {
-              const mapped = globalPageToLocal(n, pdfDocs);
-              if (!mapped) return null;
-              return (
-                <PageThumbnail
-                  key={n}
-                  pdfDoc={mapped.doc}
-                  pageNumber={mapped.localPage}
-                  globalPageLabel={n}
-                  selected={n === currentPage}
-                  onSelect={() => setCurrentPage(n)}
-                  disabled={blockPageNav}
-                  scanStatus={thumbByPage[n]}
-                />
-              );
-            })}
+            <div
+              className="flex gap-2 overflow-x-auto px-3 py-3 lg:flex-col lg:overflow-y-auto lg:px-0 lg:py-0"
+              aria-label="Page thumbnails"
+            >
+              {Array.from({ length: numPages }, (_, i) => i + 1).map((n) => {
+                const mapped = globalPageToLocal(n, pdfDocs);
+                if (!mapped) return null;
+                return (
+                  <PageThumbnail
+                    key={n}
+                    pdfDoc={mapped.doc}
+                    pageNumber={mapped.localPage}
+                    globalPageLabel={n}
+                    selected={n === currentPage}
+                    onSelect={() => setCurrentPage(n)}
+                    disabled={blockPageNav}
+                    scanStatus={thumbByPage[n]}
+                  />
+                );
+              })}
+            </div>
+            <div className="hidden border-t border-white/10 px-2 pb-4 pt-2 lg:block">
+              <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-white/45">
+                Saved room scans
+              </p>
+              <div className="max-h-[40vh] space-y-2 overflow-y-auto">
+                {savedRoomScansList.length === 0 ? (
+                  <p className="px-1 text-xs text-white/45">None yet</p>
+                ) : (
+                  savedRoomScansList.map((s) => {
+                    const rc = Array.isArray(s.rooms_json)
+                      ? s.rooms_json.length
+                      : 0;
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => applyRecalledRoomScanFromRow(s)}
+                        disabled={analyzeBusy || roomScanBusy}
+                        className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-2 py-2 text-left text-xs text-white/85 transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <span className="block font-medium text-white">
+                          {new Date(s.created_at).toLocaleDateString()}
+                        </span>
+                        <span className="mt-0.5 block text-white/50">
+                          {rc} rm ·{" "}
+                          {Number(s.total_sqft).toLocaleString("en-US")} sqft ·
+                          p.{s.scan_page}
+                        </span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
           </aside>
 
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
@@ -3499,6 +3766,27 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
             {symbolCaptureSuccessBanner ? (
               <div className="shrink-0 border-b border-teal-500/40 bg-teal-950/45 px-4 py-2 text-center text-sm font-medium text-teal-100">
                 {symbolCaptureSuccessBanner}
+              </div>
+            ) : null}
+            {recalledRoomScan &&
+            recalledRoomScan.scanPage === currentPage ? (
+              <div className="flex shrink-0 flex-col items-center justify-center gap-2 border-b border-amber-500/40 bg-amber-950/45 px-4 py-3 text-center sm:flex-row sm:flex-wrap sm:justify-between">
+                <p className="text-sm font-medium text-amber-50">
+                  Viewing room scan from{" "}
+                  {new Date(
+                    recalledRoomScan.createdAt,
+                  ).toLocaleString()}{" "}
+                  — {pageRoomsForRoomScanDialog.length} room
+                  {pageRoomsForRoomScanDialog.length === 1 ? "" : "s"} |{" "}
+                  {roomScanDialogTotals.totalSqft.toLocaleString("en-US")} sqft
+                </p>
+                <button
+                  type="button"
+                  onClick={() => switchToLiveRoomScan()}
+                  className="shrink-0 rounded-lg border border-emerald-500/50 bg-emerald-600/85 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500/90"
+                >
+                  Switch to Live Scan
+                </button>
               </div>
             ) : null}
             <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-b border-white/10 bg-[#0a1628] px-3 py-3 sm:gap-3 sm:px-4">
@@ -3629,6 +3917,32 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                   className="rounded-lg border border-white/25 bg-white/10 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-white/15"
                 >
                   Scan History
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openLiveRoomScanDialog()}
+                  disabled={
+                    analyzeBusy ||
+                    legendBusy ||
+                    symbolToolboxBusy ||
+                    roomScanBusy
+                  }
+                  className="rounded-lg border border-teal-500/40 bg-teal-950/35 px-3 py-2 text-sm font-semibold text-teal-100 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-teal-950/50"
+                >
+                  Scan Rooms and Sq Footage
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRoomScanRecallOpen(true)}
+                  disabled={
+                    analyzeBusy ||
+                    legendBusy ||
+                    symbolToolboxBusy ||
+                    roomScanBusy
+                  }
+                  className="rounded-lg border border-teal-500/35 bg-white/10 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-white/15"
+                >
+                  📋 Recall Room Scan
                 </button>
                 <button
                   type="button"
@@ -4528,6 +4842,35 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           </div>
         </div>
       ) : null}
+
+      <RoomScanRecallModal
+        open={roomScanRecallOpen}
+        onClose={() => setRoomScanRecallOpen(false)}
+        projectId={projectId}
+        reloadToken={roomScanReloadToken}
+        onPickScan={applyRecalledRoomScanFromRow}
+      />
+
+      <ProjectRoomScanDialog
+        open={roomScanDialogOpen}
+        onClose={() => setRoomScanDialogOpen(false)}
+        projectId={projectId}
+        pageNumber={currentPage}
+        projectName={name}
+        rooms={pageRoomsForRoomScanDialog}
+        floorCount={roomScanDialogTotals.floorCount}
+        totalSqft={roomScanDialogTotals.totalSqft}
+        scanning={roomScanBusy}
+        scanError={roomScanError}
+        onRunScan={() => void runRoomPageScan()}
+        recalledAt={
+          recalledRoomScan &&
+          recalledRoomScan.scanPage === currentPage
+            ? recalledRoomScan.createdAt
+            : null
+        }
+        onSwitchToLive={() => switchToLiveRoomScan()}
+      />
 
       <ScanHistoryPanel
         open={scanHistoryOpen}

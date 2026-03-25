@@ -59,6 +59,26 @@ export function extractAnalyzePayload(text: string): {
   throw new Error("Claude did not return a JSON object or array.");
 }
 
+/** Room-only scan: JSON object with "rooms" array and optional "floor_count". */
+export function extractRoomScanPayload(text: string): {
+  rooms: unknown[];
+  floor_count: number;
+} {
+  const trimmed = text.trim();
+  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const payload = (fence ? fence[1] : trimmed).trim();
+  const parsed = JSON.parse(payload) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Claude did not return a JSON object for room scan.");
+  }
+  const o = parsed as Record<string, unknown>;
+  const rooms = Array.isArray(o.rooms) ? o.rooms : [];
+  const fc = Number(o.floor_count);
+  const floor_count =
+    Number.isFinite(fc) && fc >= 1 && fc <= 99 ? Math.round(fc) : 1;
+  return { rooms, floor_count };
+}
+
 export function normalizeAnalysisItem(raw: IncomingItem): {
   category: string;
   description: string;

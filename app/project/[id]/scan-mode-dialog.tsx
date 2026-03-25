@@ -14,11 +14,13 @@ export function ScanModeDialog({
   pageCount,
   onClose,
   onStart,
+  showApiCosts = true,
 }: {
   open: boolean;
   pageCount: number;
   onClose: () => void;
   onStart: (mode: ScanModeId) => void;
+  showApiCosts?: boolean;
 }) {
   const [selected, setSelected] = useState<ScanModeId>("standard");
 
@@ -81,9 +83,11 @@ export function ScanModeDialog({
                 <span className="mt-0.5 block text-sm text-white/65">
                   {m.subtitle}
                 </span>
-                <span className="mt-1 block text-xs text-white/45">
-                  Est. cost: {formatUsd(totalCostPerPage(m))}/page
-                </span>
+                {showApiCosts ? (
+                  <span className="mt-1 block text-xs text-white/45">
+                    Est. cost: {formatUsd(totalCostPerPage(m))}/page
+                  </span>
+                ) : null}
               </span>
             </label>
           ))}
@@ -104,12 +108,14 @@ export function ScanModeDialog({
                   : `~${estMinutes} minutes`}
             </strong>
           </p>
-          <p className="mt-0.5">
-            Estimated cost:{" "}
-            <strong className="text-white">
-              {meta.id === "manual" ? "$0.00" : formatUsd(estCostTotal)}
-            </strong>
-          </p>
+          {showApiCosts ? (
+            <p className="mt-0.5">
+              Estimated cost:{" "}
+              <strong className="text-white">
+                {meta.id === "manual" ? "$0.00" : formatUsd(estCostTotal)}
+              </strong>
+            </p>
+          ) : null}
         </div>
 
         <div className="mt-6 flex flex-wrap justify-end gap-2">

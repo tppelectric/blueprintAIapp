@@ -50,6 +50,7 @@ export function ScanProgressOverlay({
   estRemainingSec,
   costSoFar,
   sessionCostEstimate,
+  showApiCosts = true,
   scanCompleteMessage,
   onDismissComplete,
   cancelPagesCompleted,
@@ -68,6 +69,8 @@ export function ScanProgressOverlay({
   estRemainingSec: number | null;
   costSoFar: number;
   sessionCostEstimate: number | null;
+  /** When false, hide running and estimated API dollar amounts (non-admin roles). */
+  showApiCosts?: boolean;
   scanCompleteMessage?: string | null;
   onDismissComplete?: () => void;
   /** Batch: pages finished before cancel (for confirmation copy). */
@@ -159,18 +162,22 @@ export function ScanProgressOverlay({
               </span>
             </p>
           ) : null}
-          <p>
-            Cost so far:{" "}
-            <span className="tabular-nums text-emerald-200/95">
-              {formatUsd(costSoFar)}
-            </span>
-          </p>
-          {sessionCostEstimate != null ? (
-            <p className="text-xs text-white/50">
-              {variant === "single"
-                ? `Est. cost this page: ${formatUsd(sessionCostEstimate)}`
-                : `Session estimate (if completed): ${formatUsd(sessionCostEstimate)}`}
-            </p>
+          {showApiCosts ? (
+            <>
+              <p>
+                Cost so far:{" "}
+                <span className="tabular-nums text-emerald-200/95">
+                  {formatUsd(costSoFar)}
+                </span>
+              </p>
+              {sessionCostEstimate != null ? (
+                <p className="text-xs text-white/50">
+                  {variant === "single"
+                    ? `Est. cost this page: ${formatUsd(sessionCostEstimate)}`
+                    : `Session estimate (if completed): ${formatUsd(sessionCostEstimate)}`}
+                </p>
+              ) : null}
+            </>
           ) : null}
         </div>
 

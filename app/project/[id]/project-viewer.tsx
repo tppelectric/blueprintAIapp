@@ -75,6 +75,7 @@ import {
 import { TakeoffExportDialog } from "./takeoff-export-dialog";
 import { ScanModeDialog } from "./scan-mode-dialog";
 import { LinkToJobDialog } from "@/components/link-to-job-dialog";
+import { useUserRole } from "@/hooks/use-user-role";
 import {
   formatRoomScanBannerDate,
   parseRoomsJson,
@@ -572,6 +573,11 @@ const MainPageCanvas = forwardRef<
 
 export function ProjectViewer({ projectId }: { projectId: string }) {
   const searchParams = useSearchParams();
+  const {
+    canSeeApiCosts,
+    loading: roleLoading,
+    canCreateOrEditJobs,
+  } = useUserRole();
   const [project, setProject] = useState<ProjectRow | null>(null);
   const [sheets, setSheets] = useState<SheetRow[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -991,6 +997,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   }, [scanProgressOpen, scanCompleteMessage]);
 
   useEffect(() => {
+    if (!canSeeApiCosts || roleLoading) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -1012,7 +1019,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [projectId, scanReloadToken]);
+  }, [projectId, scanReloadToken, canSeeApiCosts, roleLoading]);
 
   useEffect(() => {
     try {
@@ -2100,6 +2107,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
 
   /** api_usage is recorded server-side in /api/analyze-page; refresh project totals for the UI. */
   const refreshProjectUsageTotal = useCallback(async () => {
+    if (!canSeeApiCosts) return;
     try {
       const r = await fetch(
         `/api/api-usage?projectId=${encodeURIComponent(projectId)}`,
@@ -2109,7 +2117,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     } catch {
       /* non-blocking */
     }
-  }, [projectId]);
+  }, [projectId, canSeeApiCosts]);
 
   const scanProgressOpenRef = useRef(false);
   useEffect(() => {
@@ -4595,18 +4603,22 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
             >
               Pages
             </button>
-            <button
-              type="button"
-              onClick={() => setJobLinkOpen(true)}
-              className="shrink-0 rounded-lg border border-sky-500/45 bg-sky-500/15 px-3 py-1.5 text-sm font-semibold text-sky-100 hover:bg-sky-500/25"
-            >
-              Link to job
-            </button>
+            {canCreateOrEditJobs ? (
+              <button
+                type="button"
+                onClick={() => setJobLinkOpen(true)}
+                className="shrink-0 rounded-lg border border-sky-500/45 bg-sky-500/15 px-3 py-1.5 text-sm font-semibold text-sky-100 hover:bg-sky-500/25"
+              >
+                Link to job
+              </button>
+            ) : null}
             <div className="min-w-0">
               <h1 className="truncate text-lg font-semibold text-white sm:text-xl">
                 {name}
               </h1>
-              {projectUsageTotal != null && Number.isFinite(projectUsageTotal) ? (
+              {canSeeApiCosts &&
+              projectUsageTotal != null &&
+              Number.isFinite(projectUsageTotal) ? (
                 <p className="mt-0.5 text-xs text-emerald-200/90">
                   Total analysis cost: {formatUsd(projectUsageTotal)}
                 </p>
@@ -4683,6 +4695,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           estRemainingSec={scanEstRemainingSec}
           costSoFar={scanCostSoFar}
           sessionCostEstimate={scanSessionEstimate}
+          showApiCosts={canSeeApiCosts}
           scanCompleteMessage={scanCompleteMessage}
           cancelPagesCompleted={
             scanProgressVariant === "batch" ? scanDonePageCount : undefined
@@ -4701,6 +4714,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           setScanModeDialogTarget(null);
         }}
         onStart={onScanModeChosen}
+        showApiCosts={canSeeApiCosts}
       />
 
       {!pdfLoading && !pdfError && pdfDocs && pdfDocs.length > 0 && numPages > 0 && (
@@ -6865,13 +6879,15 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         onLegendRescan={runLegendRescan}
       />
 
-      <LinkToJobDialog
-        open={jobLinkOpen}
-        onOpenChange={setJobLinkOpen}
-        attachmentType="blueprint_project"
-        attachmentId={projectId}
-        attachmentLabel={name}
-      />
+      {canCreateOrEditJobs ? (
+        <LinkToJobDialog
+          open={jobLinkOpen}
+          onOpenChange={setJobLinkOpen}
+          attachmentType="blueprint_project"
+          attachmentId={projectId}
+          attachmentLabel={name}
+        />
+      ) : null}
     </div>
   );
 }

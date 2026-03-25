@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { DashboardApiUsageCard } from "@/components/dashboard-api-usage-card";
 import { WideAppHeader } from "@/components/wide-app-header";
+import { useUserRole } from "@/hooks/use-user-role";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProjectScansSummary } from "@/lib/project-scans-types";
 import { formatPlanScanRelativeDate } from "@/lib/scan-import-from-plans";
@@ -214,6 +215,7 @@ function CheckSaveIcon({ className }: { className?: string }) {
 }
 
 export function DashboardClient() {
+  const { canSeeApiCosts, loading: roleLoading } = useUserRole();
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -320,6 +322,10 @@ export function DashboardClient() {
   }, [load]);
 
   useEffect(() => {
+    if (!canSeeApiCosts || roleLoading) {
+      setMonthUsage(null);
+      return;
+    }
     let cancelled = false;
     void (async () => {
       try {
@@ -348,7 +354,7 @@ export function DashboardClient() {
     return () => {
       cancelled = true;
     };
-  }, [load]);
+  }, [load, canSeeApiCosts, roleLoading]);
 
   useEffect(() => {
     if (!projects.length) {

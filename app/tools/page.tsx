@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ToolPageHeader } from "@/components/tool-page-header";
-import { ToolsHubGrid, type ToolCard } from "@/app/tools/tools-hub-grid";
+import { ToolsHubGrid, type ToolCard } from "./tools-hub-grid";
 
 const tools: ToolCard[] = [
   {

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { WideAppHeader } from "@/components/wide-app-header";
+import { useUserRole } from "@/hooks/use-user-role";
 import { createBrowserClient } from "@/lib/supabase/client";
 import {
   JOB_STATUSES,
@@ -61,6 +62,7 @@ function downloadCsv(filename: string, headerRow: string, bodyLines: string[]) {
 type JobFormState = {
   job_name: string;
   customer_id: string;
+  assigned_user_id: string;
   job_type: (typeof JOB_TYPES)[number];
   status: (typeof JOB_STATUSES)[number];
   address: string;
@@ -68,9 +70,16 @@ type JobFormState = {
   notes: string;
 };
 
+type AssigneeOption = {
+  id: string;
+  email: string;
+  full_name: string;
+};
+
 const emptyJobForm: JobFormState = {
   job_name: "",
   customer_id: "",
+  assigned_user_id: "",
   job_type: JOB_TYPES[0]!,
   status: JOB_STATUSES[0]!,
   address: "",
@@ -79,6 +88,12 @@ const emptyJobForm: JobFormState = {
 };
 
 export function JobsClient() {
+  const {
+    canCreateOrEditJobs,
+    canDeleteJobs,
+    canAssignJobs,
+  } = useUserRole();
+  const [assignees, setAssignees] = useState<AssigneeOption[]>([]);
   const [jobs, setJobs] = useState<JobListRow[]>([]);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -116,7 +131,7 @@ export function JobsClient() {
       const { data, error: qe } = await sb
         .from("jobs")
         .select(
-          "id,job_name,job_number,status,job_type,address,city,state,zip,description,notes,created_at,updated_at,customer_id, customers(company_name,contact_name)",
+          "id,job_name,job_number,status,job_type,address,city,state,zip,description,notes,created_at,updated_at,customer_id,assigned_user_id, customers(company_name,contact_name)",
         )
         .order("updated_at", { ascending: false });
       if (qe) throw qe;
@@ -163,6 +178,27 @@ export function JobsClient() {
   useEffect(() => {
     if (modalOpen) void loadCustomers();
   }, [modalOpen, loadCustomers]);
+
+  useEffect(() => {
+    if (!modalOpen || !canAssignJobs) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await fetch("/api/users/for-assignment", {
+          credentials: "include",
+        });
+        const j = (await r.json()) as {
+          users?: AssigneeOption[];
+        };
+        if (!cancelled && r.ok && j.users) setAssignees(j.users);
+      } catch {
+        if (!cancelled) setAssignees([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [modalOpen, canAssignJobs]);
 
   useEffect(() => {
     if (!toastMsg) return;
@@ -232,6 +268,7 @@ export function JobsClient() {
     setForm({
       job_name: j.job_name,
       customer_id: j.customer_id ?? "",
+      assigned_user_id: j.assigned_user_id ?? "",
       job_type: (JOB_TYPES as readonly string[]).includes(j.job_type)
         ? (j.job_type as (typeof JOB_TYPES)[number])
         : JOB_TYPES[0]!,
@@ -265,6 +302,7 @@ export function JobsClient() {
       const payload = {
         job_name: name,
         customer_id: form.customer_id || null,
+        assigned_user_id: form.assigned_user_id.trim() || null,
         job_type: form.job_type,
         status: form.status,
         address,
@@ -343,20 +381,24 @@ export function JobsClient() {
         </p>
       </Link>
       <div className="flex flex-wrap gap-2 border-t border-white/10 px-3 py-2">
-        <button
-          type="button"
-          onClick={() => openEdit(j)}
-          className="rounded-md border border-white/20 px-2 py-1 text-[11px] font-semibold text-white/90 hover:bg-white/10"
-        >
-          Edit
-        </button>
-        <button
-          type="button"
-          onClick={() => setDeleteTarget(j)}
-          className="rounded-md border border-red-500/35 px-2 py-1 text-[11px] font-semibold text-red-200 hover:bg-red-950/35"
-        >
-          Delete
-        </button>
+        {canCreateOrEditJobs ? (
+          <button
+            type="button"
+            onClick={() => openEdit(j)}
+            className="rounded-md border border-white/20 px-2 py-1 text-[11px] font-semibold text-white/90 hover:bg-white/10"
+          >
+            Edit
+          </button>
+        ) : null}
+        {canDeleteJobs ? (
+          <button
+            type="button"
+            onClick={() => setDeleteTarget(j)}
+            className="rounded-md border border-red-500/35 px-2 py-1 text-[11px] font-semibold text-red-200 hover:bg-red-950/35"
+          >
+            Delete
+          </button>
+        ) : null}
         {j.customer_id ? (
           <Link
             href={`/customers/${j.customer_id}`}
@@ -396,16 +438,18 @@ export function JobsClient() {
             Jobs
           </h1>
           <div className="flex flex-col gap-2 sm:ml-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-            <button
-              type="button"
-              onClick={openCreate}
-              className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-[#E8C84A] px-6 py-3 text-base font-bold text-[#0a1628] shadow-md hover:bg-[#f0d56e] sm:w-auto"
-            >
-              <span className="text-xl leading-none" aria-hidden>
-                +
-              </span>
-              Add Job
-            </button>
+            {canCreateOrEditJobs ? (
+              <button
+                type="button"
+                onClick={openCreate}
+                className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-[#E8C84A] px-6 py-3 text-base font-bold text-[#0a1628] shadow-md hover:bg-[#f0d56e] sm:w-auto"
+              >
+                <span className="text-xl leading-none" aria-hidden>
+                  +
+                </span>
+                Add Job
+              </button>
+            ) : null}
             <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
             <button
               type="button"
@@ -571,6 +615,30 @@ export function JobsClient() {
                   ))}
                 </select>
               </label>
+              {canAssignJobs ? (
+                <label className="block text-sm">
+                  <span className="text-white/70">Assigned field tech</span>
+                  <select
+                    className={inp}
+                    value={form.assigned_user_id}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        assigned_user_id: e.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">— Unassigned —</option>
+                    {assignees.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.full_name?.trim()
+                          ? `${u.full_name} (${u.email})`
+                          : u.email}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm">
                   <span className="text-white/70">Job type</span>

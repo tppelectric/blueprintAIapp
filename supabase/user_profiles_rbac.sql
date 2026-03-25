@@ -461,3 +461,11 @@ CREATE POLICY "project_symbols_delete_auth" ON public.project_symbols
       'office_manager'
     )
   );
+
+-- ── 10) Backfill profiles for existing auth users (safe to re-run) ───────────
+INSERT INTO public.user_profiles (id, email, full_name, role)
+SELECT u.id, COALESCE(u.email, ''), '', 'estimator'
+FROM auth.users u
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.user_profiles p WHERE p.id = u.id
+);

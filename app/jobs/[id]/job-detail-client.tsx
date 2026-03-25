@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { WideAppHeader } from "@/components/wide-app-header";
+import { useUserRole } from "@/hooks/use-user-role";
 import { createBrowserClient } from "@/lib/supabase/client";
 import type {
   CustomerRow,
@@ -35,7 +36,16 @@ function attachmentHref(
   }
 }
 
+const FINANCIAL_ATTACHMENT_TYPES = new Set([
+  "project_breakdown",
+  "wifi_calculation",
+  "av_calculation",
+  "smarthome_calculation",
+  "electrical_calculation",
+]);
+
 export function JobDetailClient({ jobId }: { jobId: string }) {
+  const { canAccessFinancialTools, canRemoveJobAttachments } = useUserRole();
   const [job, setJob] = useState<JobRow | null>(null);
   const [customer, setCustomer] = useState<CustomerRow | null>(null);
   const [attachments, setAttachments] = useState<JobAttachmentRow[]>([]);
@@ -183,6 +193,12 @@ export function JobDetailClient({ jobId }: { jobId: string }) {
           ) : (
             <ul className="mt-4 space-y-3">
               {attachments.map((a) => {
+                if (
+                  !canAccessFinancialTools &&
+                  FINANCIAL_ATTACHMENT_TYPES.has(a.attachment_type)
+                ) {
+                  return null;
+                }
                 const { href, label } = attachmentHref(
                   a.attachment_type,
                   a.attachment_id,
@@ -213,13 +229,15 @@ export function JobDetailClient({ jobId }: { jobId: string }) {
                           {label}
                         </Link>
                       ) : null}
-                      <button
-                        type="button"
-                        onClick={() => void removeAttachment(a.id)}
-                        className="rounded-lg border border-red-500/35 px-3 py-1.5 text-xs text-red-200 hover:bg-red-950/40"
-                      >
-                        Remove
-                      </button>
+                      {canRemoveJobAttachments ? (
+                        <button
+                          type="button"
+                          onClick={() => void removeAttachment(a.id)}
+                          className="rounded-lg border border-red-500/35 px-3 py-1.5 text-xs text-red-200 hover:bg-red-950/40"
+                        >
+                          Remove
+                        </button>
+                      ) : null}
                     </div>
                   </li>
                 );

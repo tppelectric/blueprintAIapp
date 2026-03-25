@@ -45,6 +45,8 @@ export type CustomerRow = {
 export type JobRow = {
   id: string;
   customer_id: string | null;
+  /** Field tech access: job visible when this matches their auth user id. */
+  assigned_user_id?: string | null;
   job_name: string;
   job_number: string;
   job_type: string;
@@ -63,6 +65,7 @@ export type JobRow = {
 /** Supabase list/join shape (subset of columns + nested customer). */
 export type JobListRow = {
   id: string;
+  assigned_user_id?: string | null;
   job_name: string;
   job_number: string;
   status: string;

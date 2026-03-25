@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/lib/theme-context";
 
-type Tab = "calc" | "ohm" | "power" | "units";
+type Tab = "calc" | "sci" | "ohm" | "power" | "units";
 
 type CalcOp = "+" | "-" | "×" | "÷";
 

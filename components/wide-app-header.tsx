@@ -6,13 +6,20 @@ import { usePathname } from "next/navigation";
 import { HeaderAuthMenu } from "@/components/header-auth-menu";
 import { GlobalNavSearch } from "@/components/global-nav-search";
 import { HeaderToolsMenu } from "@/components/header-tools-menu";
+import { PendingTimeOffNavBadge } from "@/components/pending-time-off-nav-badge";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TppLogoPill } from "@/components/tpp-logo-pill";
 import { TPP_COMPANY_FULL, TPP_TAGLINE } from "@/lib/tpp-branding";
 import { AppMobileNavButton } from "@/components/app-mobile-nav";
 import { useUserRole } from "@/hooks/use-user-role";
 
-export type NavKey = "dashboard" | "jobs" | "customers" | "upload" | "reference";
+export type NavKey =
+  | "dashboard"
+  | "jobs"
+  | "customers"
+  | "upload"
+  | "reference"
+  | "team_time";
 
 const NAV_IDLE =
   "inline-flex items-center border-b-2 border-transparent px-2 py-1.5 text-sm font-medium text-white/85 transition-colors duration-200 hover:border-[#E8C84A]/45 hover:text-[#E8C84A]";
@@ -42,6 +49,9 @@ export function WideAppHeader({
   const refActive =
     active === "reference" || pathname.startsWith("/reference");
   const adminUsersActive = pathname.startsWith("/admin");
+  const timesheetsActive = pathname.startsWith("/timesheets");
+  const timeOffActive = pathname.startsWith("/time-off");
+  const calendarActive = pathname.startsWith("/calendar");
 
   const navItems = (
     <>
@@ -78,6 +88,31 @@ export function WideAppHeader({
       ) : (
         <Link href="/reference" className={NAV_IDLE}>
           Reference
+        </Link>
+      )}
+      {timesheetsActive ? (
+        <span className={NAV_ACTIVE}>Timesheets</span>
+      ) : (
+        <Link href="/timesheets" className={NAV_IDLE}>
+          Timesheets
+        </Link>
+      )}
+      {timeOffActive ? (
+        <span className={`${NAV_ACTIVE} inline-flex items-center`}>
+          Time off
+          <PendingTimeOffNavBadge />
+        </span>
+      ) : (
+        <Link href="/time-off" className={`${NAV_IDLE} inline-flex items-center`}>
+          Time off
+          <PendingTimeOffNavBadge />
+        </Link>
+      )}
+      {calendarActive ? (
+        <span className={NAV_ACTIVE}>Calendar</span>
+      ) : (
+        <Link href="/calendar" className={NAV_IDLE}>
+          Calendar
         </Link>
       )}
       <HeaderToolsMenu idleClassName={NAV_IDLE} activeClassName={NAV_ACTIVE} />

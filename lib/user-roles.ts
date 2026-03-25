@@ -75,6 +75,13 @@ export function canAssignJobs(role: UserRole | null): boolean {
   );
 }
 
+/** Approve timesheets, time off, edit payroll rows. */
+export function canManageTeamTime(role: UserRole | null): boolean {
+  return (
+    role === "super_admin" || role === "admin" || role === "office_manager"
+  );
+}
+
 const FINANCIAL_TOOL_HREFS = new Set([
   "/tools/wifi-analyzer",
   "/tools/av-analyzer",

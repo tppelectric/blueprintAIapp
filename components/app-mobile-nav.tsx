@@ -5,13 +5,20 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { GlobalNavSearch } from "@/components/global-nav-search";
+import { PendingTimeOffNavBadge } from "@/components/pending-time-off-nav-badge";
 import { HomeWeatherWidget } from "@/components/home-weather-widget";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useUserRole } from "@/hooks/use-user-role";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { ROLE_LABELS } from "@/lib/user-roles";
 
-type AppNavKey = "dashboard" | "jobs" | "customers" | "upload" | "reference";
+type AppNavKey =
+  | "dashboard"
+  | "jobs"
+  | "customers"
+  | "upload"
+  | "reference"
+  | "team_time";
 
 const TOOL_LINKS: { href: string; label: string }[] = [
   { href: "/tools/project-describer", label: "AI Project Describer" },
@@ -267,6 +274,33 @@ function MobileMenuPortal({
             onClick={onClose}
           >
             Daily logs
+          </Link>
+          <p className="mt-3 border-t border-white/10 px-3 pb-2 pt-3 text-[10px] font-bold uppercase tracking-wide text-[#E8C84A]/80">
+            Team time
+          </p>
+          <Link
+            href="/timesheets"
+            className={linkClass(pathname.startsWith("/timesheets"))}
+            onClick={onClose}
+          >
+            Timesheets
+          </Link>
+          <Link
+            href="/time-off"
+            className={linkClass(pathname.startsWith("/time-off"))}
+            onClick={onClose}
+          >
+            <span className="inline-flex items-center gap-0.5">
+              Time off
+              <PendingTimeOffNavBadge />
+            </span>
+          </Link>
+          <Link
+            href="/calendar"
+            className={linkClass(pathname.startsWith("/calendar"))}
+            onClick={onClose}
+          >
+            Calendar
           </Link>
           <Link
             href="/customers"

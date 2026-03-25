@@ -558,6 +558,15 @@ export function DashboardClient() {
             >
               Daily logs
             </Link>
+            <Link href="/timesheets" className="btn-secondary btn-h-11 w-full">
+              Timesheets
+            </Link>
+            <Link href="/time-off" className="btn-secondary btn-h-11 w-full">
+              Time off
+            </Link>
+            <Link href="/calendar" className="btn-secondary btn-h-11 w-full">
+              Work calendar
+            </Link>
             <Link href="/reference" className="btn-secondary btn-h-11 w-full">
               Reference library
             </Link>

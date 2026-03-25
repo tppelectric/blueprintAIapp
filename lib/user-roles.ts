@@ -31,6 +31,11 @@ export function canManageUsers(role: UserRole | null): boolean {
   return role === "super_admin";
 }
 
+/** Upload/delete company reference PDFs (Reference Library). */
+export function canManageReferenceDocuments(role: UserRole | null): boolean {
+  return role === "super_admin" || role === "admin";
+}
+
 export function canSeeApiCosts(role: UserRole | null): boolean {
   return role === "super_admin" || role === "admin";
 }

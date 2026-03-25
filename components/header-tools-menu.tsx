@@ -86,6 +86,18 @@ export function HeaderToolsMenu({
         <p className="px-4 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-[#E8C84A]/80">
           Tools
         </p>
+        <Link
+          href="/reference"
+          role="menuitem"
+          className={`block px-4 py-2.5 text-sm transition-colors duration-200 hover:bg-white/10 ${
+            pathname.startsWith("/reference")
+              ? "bg-[#E8C84A]/15 font-semibold text-[#E8C84A]"
+              : "text-white/85"
+          }`}
+          onClick={() => setOpen(false)}
+        >
+          Reference Library
+        </Link>
         {TOOL_LINKS.map((t) => (
           <Link
             key={t.href}

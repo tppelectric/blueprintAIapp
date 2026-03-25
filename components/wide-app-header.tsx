@@ -12,7 +12,7 @@ import { TPP_COMPANY_FULL, TPP_TAGLINE } from "@/lib/tpp-branding";
 import { AppMobileNavButton } from "@/components/app-mobile-nav";
 import { useUserRole } from "@/hooks/use-user-role";
 
-export type NavKey = "dashboard" | "jobs" | "customers" | "upload";
+export type NavKey = "dashboard" | "jobs" | "customers" | "upload" | "reference";
 
 const NAV_IDLE =
   "inline-flex items-center border-b-2 border-transparent px-2 py-1.5 text-sm font-medium text-white/85 transition-colors duration-200 hover:border-[#E8C84A]/45 hover:text-[#E8C84A]";
@@ -39,6 +39,8 @@ export function WideAppHeader({
   const custActive =
     active === "customers" || pathname.startsWith("/customers");
   const uploadActive = active === "upload" || pathname === "/upload";
+  const refActive =
+    active === "reference" || pathname.startsWith("/reference");
   const adminUsersActive = pathname.startsWith("/admin");
 
   const navItems = (
@@ -69,6 +71,13 @@ export function WideAppHeader({
       ) : (
         <Link href="/customers" className={NAV_IDLE}>
           Customers
+        </Link>
+      )}
+      {refActive ? (
+        <span className={NAV_ACTIVE}>Reference</span>
+      ) : (
+        <Link href="/reference" className={NAV_IDLE}>
+          Reference
         </Link>
       )}
       <HeaderToolsMenu idleClassName={NAV_IDLE} activeClassName={NAV_ACTIVE} />

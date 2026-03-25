@@ -15,6 +15,7 @@ import {
   canAssignJobs,
   canCreateOrEditJobs,
   canDeleteJobs,
+  canManageReferenceDocuments,
   canManageUsers,
   canRemoveJobAttachments,
   canSeeApiCosts,
@@ -36,6 +37,7 @@ type UserRoleContextValue = {
   canCreateOrEditJobs: boolean;
   canRemoveJobAttachments: boolean;
   canAssignJobs: boolean;
+  canManageReferenceDocuments: boolean;
 };
 
 const UserRoleContext = createContext<UserRoleContextValue | null>(null);
@@ -142,6 +144,8 @@ export function UserRoleProvider({ children }: { children: React.ReactNode }) {
       canCreateOrEditJobs: !loading && canCreateOrEditJobs(role),
       canRemoveJobAttachments: !loading && canRemoveJobAttachments(role),
       canAssignJobs: !loading && canAssignJobs(role),
+      canManageReferenceDocuments:
+        !loading && canManageReferenceDocuments(role),
     }),
     [profile, role, loading, refresh],
   );

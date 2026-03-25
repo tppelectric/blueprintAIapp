@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ToolPageHeader } from "@/components/tool-page-header";
 import { useThemedPageShell } from "@/lib/theme-context";
 import { downloadElectricalReferenceSheetsPdf } from "@/lib/electrical-reference-all-pdf";
@@ -142,6 +142,16 @@ export function ElectricalReferenceClient() {
   const toggleCard = (k: string) =>
     setOpenCards((p) => ({ ...p, [k]: !p[k] }));
 
+  useEffect(() => {
+    const hash = (window.location.hash || "").replace(/^#/, "").trim();
+    if (!hash) return;
+    const t = window.setTimeout(() => {
+      const el = document.getElementById(hash);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+    return () => window.clearTimeout(t);
+  }, []);
+
   return (
     <div className={shell}>
       <ToolPageHeader
@@ -186,7 +196,10 @@ export function ElectricalReferenceClient() {
         </div>
 
         {/* Section 1 */}
-        <section className="tool-surface-card space-y-4 p-6">
+        <section
+          id="eref-section-wire-ampacity"
+          className="tool-surface-card scroll-mt-24 space-y-4 p-6"
+        >
           <h2 className="text-lg font-semibold text-[var(--foreground)]">
             1 — Wire ampacity
           </h2>
@@ -336,7 +349,10 @@ export function ElectricalReferenceClient() {
         </section>
 
         {/* Section 2 */}
-        <section className="tool-surface-card space-y-4 p-6">
+        <section
+          id="eref-section-conduit-fill"
+          className="tool-surface-card scroll-mt-24 space-y-4 p-6"
+        >
           <h2 className="text-lg font-semibold">2 — Conduit fill</h2>
           <p className="tool-muted text-xs">NEC Chapter 9 Tables 4 & 5 (ref.)</p>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -507,7 +523,10 @@ export function ElectricalReferenceClient() {
         </section>
 
         {/* Section 3 */}
-        <section className="tool-surface-card space-y-4 p-6">
+        <section
+          id="eref-section-voltage-drop"
+          className="tool-surface-card scroll-mt-24 space-y-4 p-6"
+        >
           <h2 className="text-lg font-semibold">3 — Voltage drop</h2>
           <p className="tool-muted text-xs">
             NEC 210.19(A) Informational Note No. 4 — 3% suggestion (branch)
@@ -603,9 +622,65 @@ export function ElectricalReferenceClient() {
           </div>
         </section>
 
-        {/* Section 4 — cheat cards */}
-        <section className="space-y-4">
-          <h2 className="text-lg font-semibold">4 — Quick reference cards</h2>
+        {/* Section 4 — GFCI */}
+        <section
+          id="eref-section-gfci"
+          className="tool-surface-card scroll-mt-24 space-y-4 p-6"
+        >
+          <h2 className="text-lg font-semibold text-[var(--foreground)]">
+            4 — GFCI requirements (NEC 210.8)
+          </h2>
+          <p className="tool-muted text-xs">
+            Summary for field reference — verify against the NEC in force and
+            local amendments.
+          </p>
+          <ul className="list-inside list-disc space-y-1.5 text-sm text-[var(--foreground)]">
+            <li>Bathrooms — all receptacles</li>
+            <li>Garages — all receptacles</li>
+            <li>Outdoors — all receptacles</li>
+            <li>Crawl spaces — all receptacles</li>
+            <li>Unfinished basements — all receptacles</li>
+            <li>Kitchen countertops — within 6 ft of sink</li>
+            <li>Boathouses — all receptacles</li>
+            <li>Within 6 ft of any sink</li>
+            <li>Bathtub / shower space receptacles</li>
+            <li>Indoor pool / spa areas</li>
+          </ul>
+          <p className="rounded-lg border border-sky-500/30 bg-sky-950/25 p-3 text-xs text-sky-100/90">
+            <strong>NYS:</strong> Expanded GFCI rules may apply (e.g. garages,
+            basements). Confirm with AHJ.
+          </p>
+        </section>
+
+        {/* Section 5 — AFCI */}
+        <section
+          id="eref-section-afci"
+          className="tool-surface-card scroll-mt-24 space-y-4 p-6"
+        >
+          <h2 className="text-lg font-semibold text-[var(--foreground)]">
+            5 — AFCI requirements (NEC 210.12)
+          </h2>
+          <p className="tool-muted text-xs">
+            Dwelling-unit branch circuits — use listed AFCI protection where
+            required.
+          </p>
+          <p className="text-sm font-medium text-[var(--foreground)]">
+            Typically required on 120V 15A and 20A circuits supplying outlets in:
+          </p>
+          <ul className="list-inside list-disc space-y-1.5 text-sm text-[var(--foreground)]">
+            <li>Bedrooms, living rooms, dining rooms</li>
+            <li>Kitchens, hallways, closets, laundry areas</li>
+            <li>Sunrooms, recreation rooms, and similar</li>
+          </ul>
+          <p className="rounded-lg border border-orange-500/30 bg-orange-950/25 p-3 text-xs text-orange-100/90">
+            <strong>NYS:</strong> Broader AFCI requirements may apply to dwelling
+            units. Confirm with AHJ.
+          </p>
+        </section>
+
+        {/* Section 6 — cheat cards */}
+        <section className="scroll-mt-24 space-y-4">
+          <h2 className="text-lg font-semibold">6 — Quick reference cards</h2>
           {(
             [
               {
@@ -730,7 +805,8 @@ export function ElectricalReferenceClient() {
           ).map((card) => (
             <div
               key={card.key}
-              className="tool-surface-card overflow-hidden"
+              id={`eref-${card.key}`}
+              className="tool-surface-card scroll-mt-24 overflow-hidden"
             >
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
                 <button
@@ -744,18 +820,26 @@ export function ElectricalReferenceClient() {
                   type="button"
                   className="rounded border border-[#E8C84A]/50 px-2 py-1 text-xs font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10"
                   onClick={() =>
-                    printRefCard(`eref-${card.key}`, card.title, card.nec)
+                    printRefCard(
+                      `eref-print-${card.key}`,
+                      card.title,
+                      card.nec,
+                    )
                   }
                 >
                   Print
                 </button>
               </div>
               {openCards[card.key] ? (
-                <div id={`eref-${card.key}`} className="px-4 py-3">
+                <div id={`eref-print-${card.key}`} className="px-4 py-3">
                   {card.body}
                 </div>
               ) : (
-                <div id={`eref-${card.key}`} className="hidden" aria-hidden>
+                <div
+                  id={`eref-print-${card.key}`}
+                  className="hidden"
+                  aria-hidden
+                >
                   {card.body}
                 </div>
               )}

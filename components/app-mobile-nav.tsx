@@ -10,7 +10,7 @@ import { useUserRole } from "@/hooks/use-user-role";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { ROLE_LABELS } from "@/lib/user-roles";
 
-type AppNavKey = "dashboard" | "jobs" | "customers" | "upload";
+type AppNavKey = "dashboard" | "jobs" | "customers" | "upload" | "reference";
 
 const TOOL_LINKS: { href: string; label: string }[] = [
   { href: "/tools/project-describer", label: "AI Project Describer" },
@@ -173,6 +173,7 @@ function MobileMenuPortal({
   const jobsActive = pathname.startsWith("/jobs");
   const custActive = pathname.startsWith("/customers");
   const uploadActive = pathname === "/upload";
+  const refActive = pathname.startsWith("/reference");
   const toolsActive = pathname.startsWith("/tools");
   const homeActive = pathname === "/";
 
@@ -259,6 +260,13 @@ function MobileMenuPortal({
             onClick={onClose}
           >
             Customers
+          </Link>
+          <Link
+            href="/reference"
+            className={linkClass(refActive)}
+            onClick={onClose}
+          >
+            Reference
           </Link>
           <Link
             href="/tools"

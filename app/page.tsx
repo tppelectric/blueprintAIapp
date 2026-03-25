@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { HomeMarketingHeader } from "@/components/home-marketing-header";
-import { HomeWeatherWidget } from "@/components/home-weather-widget";
 import { HomepageApiUsageWidget } from "@/components/homepage-api-usage-widget";
 import { PwaInstallBanners } from "@/components/pwa-install-banners";
 
@@ -150,19 +149,6 @@ export default function Home() {
         <p className="mt-5 max-w-xl text-sm text-white/50 sm:text-base">
           Est. 1982 · Powered by Blueprint AI
         </p>
-
-        <section
-          className="mt-8 flex w-full max-w-lg flex-col items-center gap-2 sm:mt-10"
-          aria-labelledby="home-weather-heading"
-        >
-          <h2
-            id="home-weather-heading"
-            className="text-xs font-semibold uppercase tracking-wider text-[#E8C84A]/90"
-          >
-            Local weather
-          </h2>
-          <HomeWeatherWidget />
-        </section>
 
         <Link
           href="/upload"

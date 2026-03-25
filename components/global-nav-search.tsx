@@ -162,14 +162,16 @@ export function GlobalNavSearch({
   return (
     <div
       ref={wrapRef}
-      className={`relative min-w-0 max-lg:!hidden lg:block ${className ?? ""}`.trim()}
+      className={`relative max-lg:!hidden lg:block ${className ?? ""}`.trim()}
     >
       <label className="sr-only" htmlFor={inputId}>
         Search tools, NEC, jobs
       </label>
       <div
-        className={`flex justify-end transition-all duration-200 ease-out ${
-          expanded ? "w-[min(100vw-2rem,250px)] max-w-[250px]" : "w-10"
+        className={`flex justify-end transition-[width] duration-200 ease-out ${
+          expanded
+            ? "w-[min(100vw-2rem,20rem)] max-w-xs xl:max-w-sm"
+            : "w-9"
         }`}
       >
         {!expanded ? (
@@ -177,13 +179,14 @@ export function GlobalNavSearch({
             type="button"
             className="app-nav-search-trigger flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border text-base leading-none outline-none transition-all hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[#E8C84A]/50"
             aria-expanded={false}
-            aria-label="Open search"
+            aria-label="Search"
+            title="Search"
             onClick={() => {
               setExpanded(true);
               setOpen(true);
             }}
           >
-            🔍
+            <span aria-hidden>🔍</span>
           </button>
         ) : (
           <input

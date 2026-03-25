@@ -57,7 +57,19 @@ function savePrefs(p: StoredPrefs) {
   }
 }
 
-export function HomeWeatherWidget() {
+function shortCityName(cityLabel: string): string {
+  const t = cityLabel.trim();
+  if (!t) return "";
+  const comma = t.indexOf(",");
+  return comma === -1 ? t : t.slice(0, comma).trim();
+}
+
+export function HomeWeatherWidget({
+  variant = "default",
+}: {
+  /** `header`: single-line compact control for nav bar; dropdown centered below. */
+  variant?: "default" | "header";
+}) {
   const [prefs, setPrefs] = useState<StoredPrefs>({
     zips: [DEFAULT_ZIP],
     activeZip: DEFAULT_ZIP,
@@ -164,33 +176,62 @@ export function HomeWeatherWidget() {
   const collapsedLabel =
     data?.current.cityLabel ??
     (prefs.activeZip === DEFAULT_ZIP ? "Poughkeepsie, NY" : `ZIP ${prefs.activeZip}`);
+  const headerCity = shortCityName(collapsedLabel);
+
+  const isHeader = variant === "header";
 
   return (
-    <div ref={wrapRef} className="relative z-[100] shrink-0 text-left">
+    <div
+      ref={wrapRef}
+      className={`relative z-[100] shrink-0 text-left ${isHeader ? "flex justify-center" : ""}`}
+    >
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
-        className="flex max-w-[11rem] items-center gap-1.5 rounded-lg border border-white/15 bg-[#071422]/90 px-2 py-1.5 text-left text-xs text-white/90 shadow-sm transition-colors hover:border-[#E8C84A]/35 hover:bg-[#0a1628] sm:max-w-none sm:gap-2 sm:px-2.5 sm:text-sm"
+        className={
+          isHeader
+            ? "flex max-w-full items-center gap-1 rounded-md border border-white/12 bg-[#071422]/85 px-1.5 py-1 text-left text-[11px] text-white/90 shadow-sm transition-colors hover:border-[#E8C84A]/40 hover:bg-[#0a1628] sm:gap-1.5 sm:px-2 sm:py-1 sm:text-xs"
+            : "flex max-w-[11rem] items-center gap-1.5 rounded-lg border border-white/15 bg-[#071422]/90 px-2 py-1.5 text-left text-xs text-white/90 shadow-sm transition-colors hover:border-[#E8C84A]/35 hover:bg-[#0a1628] sm:max-w-none sm:gap-2 sm:px-2.5 sm:text-sm"
+        }
         aria-expanded={expanded}
         aria-haspopup="dialog"
       >
         {loading && !data ? (
-          <span className="text-white/50">Weather…</span>
+          <span className="text-white/50">
+            {isHeader ? "…" : "Weather…"}
+          </span>
         ) : error && !data ? (
-          <span className="truncate text-amber-200/80">Weather — setup</span>
+          <span className="truncate text-amber-200/80">
+            {isHeader ? "Setup" : "Weather — setup"}
+          </span>
         ) : data ? (
-          <>
-            <span className="shrink-0 text-base sm:text-lg" aria-hidden>
-              {data.current.iconEmoji}
-            </span>
-            <span className="min-w-0 truncate">
-              <span className="font-semibold text-[#E8C84A]">
-                {data.current.tempF}°F
+          isHeader ? (
+            <>
+              <span className="shrink-0 text-sm leading-none" aria-hidden>
+                {data.current.iconEmoji || "🌤"}
               </span>
-              <span className="text-white/50"> | </span>
-              <span className="text-white/80">{collapsedLabel}</span>
-            </span>
-          </>
+              <span className="min-w-0 truncate whitespace-nowrap">
+                <span className="font-semibold tabular-nums text-[#E8C84A]">
+                  {data.current.tempF}°F
+                </span>
+                <span className="text-white/45"> </span>
+                <span className="text-white/75">{headerCity}</span>
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="shrink-0 text-base sm:text-lg" aria-hidden>
+                {data.current.iconEmoji}
+              </span>
+              <span className="min-w-0 truncate">
+                <span className="font-semibold text-[#E8C84A]">
+                  {data.current.tempF}°F
+                </span>
+                <span className="text-white/50"> | </span>
+                <span className="text-white/80">{collapsedLabel}</span>
+              </span>
+            </>
+          )
         ) : (
           <span className="text-white/50">Weather</span>
         )}
@@ -198,7 +239,10 @@ export function HomeWeatherWidget() {
 
       <div
         className={[
-          "absolute right-0 top-[calc(100%+0.35rem)] w-[min(100vw-2rem,20rem)] origin-top overflow-hidden rounded-xl border border-white/12 bg-[#071422] shadow-2xl ring-1 ring-[#E8C84A]/15 transition-[max-height,opacity] duration-200 ease-out",
+          "absolute top-[calc(100%+0.35rem)] w-[min(100vw-2rem,20rem)] origin-top overflow-hidden rounded-xl border border-white/12 bg-[#071422] shadow-2xl ring-1 ring-[#E8C84A]/15 transition-[max-height,opacity] duration-200 ease-out",
+          isHeader
+            ? "left-1/2 right-auto -translate-x-1/2"
+            : "right-0",
           expanded ? "max-h-[85vh] opacity-100" : "pointer-events-none max-h-0 opacity-0",
         ].join(" ")}
         role="dialog"

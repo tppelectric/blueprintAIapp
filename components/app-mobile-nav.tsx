@@ -97,6 +97,18 @@ function MobileMenuPortal({
             ×
           </button>
         </div>
+        <div className="shrink-0 border-b border-white/10 px-3 py-3">
+          <p className="px-1 pb-2 text-[10px] font-bold uppercase tracking-wide text-[#E8C84A]/80">
+            Search
+          </p>
+          <GlobalNavSearch variant="drawer" />
+        </div>
+        <div className="shrink-0 px-3 pt-2">
+          <ThemeToggle className="flex w-full justify-center py-2.5" />
+        </div>
+        <div className="shrink-0 border-b border-white/10 px-3 pb-3">
+          <HeaderAuthMenu />
+        </div>
         <nav
           className="min-h-0 flex-1 overflow-y-auto px-3 py-4"
           aria-label="Primary"
@@ -190,15 +202,6 @@ function MobileMenuPortal({
             </>
           ) : null}
         </nav>
-        <div className="shrink-0 border-t border-white/10 bg-[#071422]/40 px-3 py-3">
-          <GlobalNavSearch variant="drawer" />
-        </div>
-        <div className="shrink-0 px-3 pb-3">
-          <ThemeToggle className="flex w-full justify-center py-2.5" />
-        </div>
-        <div className="shrink-0 border-t border-white/10 px-3 py-4">
-          <HeaderAuthMenu />
-        </div>
       </div>
     </div>,
     document.body,

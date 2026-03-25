@@ -121,8 +121,11 @@ export function WideAppHeader({
             </div>
           </Link>
 
-          <div className="max-lg:!hidden shrink-0 items-center gap-2 sm:gap-3 lg:flex">
-            <GlobalNavSearch className="w-64 xl:w-80" />
+          <div
+            className="max-lg:!hidden flex shrink-0 items-center gap-2 sm:gap-3"
+            aria-label="Header tools"
+          >
+            <GlobalNavSearch className="shrink-0" />
             <ThemeToggle />
             <HeaderAuthMenu />
           </div>

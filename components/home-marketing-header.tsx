@@ -9,6 +9,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { TppLogoPill } from "@/components/tpp-logo-pill";
 import { TPP_COMPANY_FULL, TPP_TAGLINE } from "@/lib/tpp-branding";
 import { AppMobileNavButton } from "@/components/app-mobile-nav";
+import { HomeWeatherWidget } from "@/components/home-weather-widget";
 
 const NAV_IDLE =
   "text-white/80 transition-colors hover:text-[#E8C84A] rounded-md px-1 py-0.5";
@@ -53,10 +54,10 @@ export function HomeMarketingHeader() {
   return (
     <header className="app-header-wide border-b backdrop-blur-md">
       <div className="mx-auto flex min-h-14 max-w-6xl flex-col gap-2 px-4 py-2.5 sm:px-8 lg:min-h-16 lg:py-3">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex w-full items-center gap-2 sm:gap-3">
           <Link
             href="/"
-            className="flex min-w-0 flex-1 items-center gap-3 transition-opacity duration-200 hover:opacity-95 sm:gap-4 lg:max-w-[min(100%,28rem)] lg:flex-initial lg:shrink-0"
+            className="flex min-w-0 max-w-[min(100%,12rem)] shrink-0 items-center gap-2 transition-opacity duration-200 hover:opacity-95 sm:max-w-[min(100%,18rem)] sm:gap-3 md:max-w-[min(100%,22rem)] lg:max-w-[min(100%,28rem)]"
           >
             <TppLogoPill size="compact" className="shrink-0 md:hidden" />
             <TppLogoPill
@@ -76,9 +77,16 @@ export function HomeMarketingHeader() {
             </div>
           </Link>
 
-          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <div className="flex min-w-0 flex-1 justify-center px-0.5 sm:px-1">
+            <HomeWeatherWidget variant="header" />
+          </div>
+
+          <div
+            className="flex shrink-0 items-center gap-2 sm:gap-3"
+            aria-label="Header tools"
+          >
             <div className="max-lg:!hidden flex items-center gap-2 sm:gap-3">
-              <GlobalNavSearch className="w-64 xl:w-80" />
+              <GlobalNavSearch className="shrink-0" />
               <ThemeToggle />
               <HeaderAuthMenu />
             </div>

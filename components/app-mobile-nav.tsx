@@ -4,6 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { GlobalNavSearch } from "@/components/global-nav-search";
+import { HeaderAuthMenu } from "@/components/header-auth-menu";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 type AppNavKey = "dashboard" | "jobs" | "customers" | "upload";
 
@@ -55,7 +58,7 @@ function MobileMenuPortal({
   return createPortal(
     <div
       className={[
-        "fixed inset-0 z-[999999] md:hidden transition-[visibility] duration-300 [isolation:isolate] [transform:translateZ(0)]",
+        "fixed inset-0 z-[999999] lg:hidden transition-[visibility] duration-300 [isolation:isolate] [transform:translateZ(0)]",
         open ? "visible" : "invisible pointer-events-none",
       ].join(" ")}
       role="dialog"
@@ -91,7 +94,7 @@ function MobileMenuPortal({
           </button>
         </div>
         <nav
-          className="flex-1 overflow-y-auto px-3 py-4"
+          className="min-h-0 flex-1 overflow-y-auto px-3 py-4"
           aria-label="Primary"
         >
           <Link
@@ -171,6 +174,15 @@ function MobileMenuPortal({
             </>
           ) : null}
         </nav>
+        <div className="shrink-0 border-t border-white/10 bg-[#071422]/40 px-3 py-3">
+          <GlobalNavSearch variant="drawer" />
+        </div>
+        <div className="shrink-0 px-3 pb-3">
+          <ThemeToggle className="flex w-full justify-center py-2.5" />
+        </div>
+        <div className="shrink-0 border-t border-white/10 px-3 py-4">
+          <HeaderAuthMenu />
+        </div>
       </div>
     </div>,
     document.body,
@@ -206,7 +218,7 @@ export function AppMobileNavButton({
     <>
       <button
         type="button"
-        className="touch-target-md relative z-[1] inline-flex items-center justify-center rounded-lg border border-white/20 bg-white/10 px-3 text-lg text-white md:hidden"
+        className="touch-target-md relative z-[1] inline-flex items-center justify-center rounded-lg border border-white/20 bg-white/10 px-3 text-lg text-white lg:hidden"
         aria-expanded={open}
         aria-label="Open navigation menu"
         onClick={() => setOpen(true)}

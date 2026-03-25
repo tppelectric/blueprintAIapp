@@ -30,9 +30,16 @@ function categoryIcon(c: string): string {
   }
 }
 
-export function GlobalNavSearch({ className }: { className?: string }) {
+export function GlobalNavSearch({
+  className,
+  variant = "toolbar",
+}: {
+  className?: string;
+  /** Full-width field for mobile drawer (no 🔍 icon trigger). */
+  variant?: "toolbar" | "drawer";
+}) {
   const router = useRouter();
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(variant === "drawer");
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [hits, setHits] = useState<Hit[]>([]);
@@ -84,9 +91,77 @@ export function GlobalNavSearch({ className }: { className?: string }) {
     setOpen(false);
   }, []);
 
+  const inputId =
+    variant === "drawer"
+      ? "global-nav-search-drawer-input"
+      : "global-nav-search-input";
+
+  if (variant === "drawer") {
+    return (
+      <div ref={wrapRef} className={`relative w-full ${className ?? ""}`}>
+        <label className="sr-only" htmlFor={inputId}>
+          Search tools, NEC, jobs
+        </label>
+        <input
+          ref={inputRef}
+          id={inputId}
+          type="search"
+          autoComplete="off"
+          placeholder="Search NEC, tools, jobs…"
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          className="app-nav-search-input h-10 w-full min-w-0 rounded-lg border border-white/20 bg-[#071422]/80 px-3 py-2 text-sm text-white outline-none placeholder:text-white/45 focus:ring-2 focus:ring-[#E8C84A]/50"
+        />
+        {open && q.trim().length >= 2 ? (
+          <div
+            className="app-nav-search-dropdown absolute left-0 right-0 z-50 mt-1 max-h-80 overflow-auto rounded-xl border border-white/15 bg-[#0a1628] py-1 shadow-lg"
+            role="listbox"
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            {loading ? (
+              <div className="px-3 py-2 text-sm text-white/70">Searching…</div>
+            ) : hits.length === 0 ? (
+              <div className="px-3 py-2 text-sm text-white/70">No results</div>
+            ) : (
+              hits.map((h) => (
+                <button
+                  key={h.id}
+                  type="button"
+                  role="option"
+                  className="flex w-full items-start gap-2 px-3 py-2 text-left text-sm text-white/90 hover:bg-white/10"
+                  onClick={() => {
+                    setOpen(false);
+                    setQ("");
+                    router.push(h.href);
+                  }}
+                >
+                  <span className="shrink-0 font-mono text-xs text-[#E8C84A]">
+                    {categoryIcon(h.category)}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block font-medium">{h.title}</span>
+                    {h.subtitle ? (
+                      <span className="block truncate text-xs text-white/55">
+                        {h.subtitle}
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div ref={wrapRef} className={`relative ${className ?? ""}`}>
-      <label className="sr-only" htmlFor="global-nav-search-input">
+      <label className="sr-only" htmlFor={inputId}>
         Search tools, NEC, jobs
       </label>
       <div
@@ -110,7 +185,7 @@ export function GlobalNavSearch({ className }: { className?: string }) {
         ) : (
           <input
             ref={inputRef}
-            id="global-nav-search-input"
+            id={inputId}
             type="search"
             autoComplete="off"
             placeholder="Search NEC, tools, jobs…"

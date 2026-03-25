@@ -1,0 +1,160 @@
+"use client";
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { createBrowserClient } from "@/lib/supabase/client";
+import type { UserProfileRow } from "@/lib/user-profile-types";
+import {
+  canAccessFinancialTools,
+  canAssignJobs,
+  canCreateOrEditJobs,
+  canDeleteJobs,
+  canManageUsers,
+  canRemoveJobAttachments,
+  canSeeApiCosts,
+  canSeeMarkupAndProfit,
+  parseUserRole,
+  type UserRole,
+} from "@/lib/user-roles";
+
+type UserRoleContextValue = {
+  profile: UserProfileRow | null;
+  role: UserRole | null;
+  loading: boolean;
+  refresh: () => Promise<void>;
+  canManageUsers: boolean;
+  canSeeApiCosts: boolean;
+  canSeeMarkupAndProfit: boolean;
+  canAccessFinancialTools: boolean;
+  canDeleteJobs: boolean;
+  canCreateOrEditJobs: boolean;
+  canRemoveJobAttachments: boolean;
+  canAssignJobs: boolean;
+};
+
+const UserRoleContext = createContext<UserRoleContextValue | null>(null);
+
+function parseProfilePayload(j: unknown): UserProfileRow | null {
+  if (!j || typeof j !== "object") return null;
+  const o = j as Record<string, unknown>;
+  const id = typeof o.id === "string" ? o.id : null;
+  const email = typeof o.email === "string" ? o.email : null;
+  const full_name = typeof o.full_name === "string" ? o.full_name : "";
+  const role = parseUserRole(typeof o.role === "string" ? o.role : null);
+  const is_active = typeof o.is_active === "boolean" ? o.is_active : true;
+  const created_at =
+    typeof o.created_at === "string" ? o.created_at : new Date().toISOString();
+  const updated_at =
+    typeof o.updated_at === "string" ? o.updated_at : new Date().toISOString();
+  if (!id || !email || !role) return null;
+  return {
+    id,
+    email,
+    full_name,
+    role,
+    is_active,
+    created_at,
+    updated_at,
+  };
+}
+
+export function UserRoleProvider({ children }: { children: React.ReactNode }) {
+  const [profile, setProfile] = useState<UserProfileRow | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    const sb = createBrowserClient();
+    const {
+      data: { session },
+    } = await sb.auth.getSession();
+    if (!session?.user) {
+      setProfile(null);
+      setLoading(false);
+      return;
+    }
+    try {
+      const r = await fetch("/api/user-profile", { credentials: "include" });
+      if (r.status === 401) {
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+      const j = (await r.json()) as { profile?: unknown; error?: string };
+      if (!r.ok || j.error) {
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+      const p = parseProfilePayload(j.profile);
+      setProfile(p);
+      if (p && p.is_active === false) {
+        await sb.auth.signOut();
+        window.location.href = "/login?inactive=1";
+      }
+    } catch {
+      setProfile(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    const sb = createBrowserClient();
+    const {
+      data: { subscription },
+    } = sb.auth.onAuthStateChange((event) => {
+      if (
+        event === "SIGNED_IN" ||
+        event === "SIGNED_OUT" ||
+        event === "USER_UPDATED" ||
+        event === "TOKEN_REFRESHED"
+      ) {
+        setLoading(true);
+        void refresh();
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [refresh]);
+
+  const role = profile?.role ?? null;
+
+  const value = useMemo<UserRoleContextValue>(
+    () => ({
+      profile,
+      role,
+      loading,
+      refresh,
+      canManageUsers: canManageUsers(role),
+      canSeeApiCosts: canSeeApiCosts(role),
+      canSeeMarkupAndProfit: canSeeMarkupAndProfit(role),
+      canAccessFinancialTools: canAccessFinancialTools(role),
+      canDeleteJobs: canDeleteJobs(role),
+      canCreateOrEditJobs: canCreateOrEditJobs(role),
+      canRemoveJobAttachments: canRemoveJobAttachments(role),
+      canAssignJobs: canAssignJobs(role),
+    }),
+    [profile, role, loading, refresh],
+  );
+
+  return (
+    <UserRoleContext.Provider value={value}>{children}</UserRoleContext.Provider>
+  );
+}
+
+export function useUserRoleContext(): UserRoleContextValue {
+  const ctx = useContext(UserRoleContext);
+  if (!ctx) {
+    throw new Error("useUserRole must be used within UserRoleProvider");
+  }
+  return ctx;
+}

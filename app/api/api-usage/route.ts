@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import type { ScanModeId } from "@/lib/scan-modes";
+import { userMayReadApiUsageAggregates } from "@/lib/require-api-cost-access";
 
 const uuidRe =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -136,6 +137,11 @@ function aggregateUsage(rows: UsageRow[]) {
 }
 
 export async function GET(request: Request) {
+  const allowed = await userMayReadApiUsageAggregates();
+  if (!allowed) {
+    return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+  }
+
   const { searchParams } = new URL(request.url);
   const projectId = searchParams.get("projectId")?.trim();
   const scope = searchParams.get("scope")?.trim();

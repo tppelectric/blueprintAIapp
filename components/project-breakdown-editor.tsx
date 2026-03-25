@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useUserRole } from "@/hooks/use-user-role";
 import {
   defaultProjectBreakdownState,
   grandTotals,
@@ -72,6 +73,8 @@ export function ProjectBreakdownEditor({
 
   const [matEditId, setMatEditId] = useState<string | null>(null);
   const [labEditId, setLabEditId] = useState<string | null>(null);
+
+  const { loading: roleLoading, canAccessFinancialTools } = useUserRole();
 
   const g = useMemo(() => grandTotals(state), [state]);
 
@@ -195,6 +198,24 @@ export function ProjectBreakdownEditor({
     variant === "full"
       ? "rounded-xl border border-white/10 bg-white/[0.03] p-5"
       : "";
+
+  if (roleLoading) {
+    return (
+      <div
+        className="h-24 animate-pulse rounded-xl bg-white/[0.06]"
+        aria-hidden
+      />
+    );
+  }
+
+  if (!canAccessFinancialTools) {
+    return (
+      <div className="rounded-xl border border-amber-500/25 bg-amber-950/20 p-5 text-sm text-amber-100/90">
+        Your role does not include financial breakdown tools (markup, customer
+        pricing, and profit). Contact a Super Admin if you need access.
+      </div>
+    );
+  }
 
   return (
     <div className={variant === "full" ? "space-y-8" : "space-y-5"}>

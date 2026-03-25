@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useUserRole } from "@/hooks/use-user-role";
 
 type ScopeAgg = {
   pagesAnalyzed: number;
@@ -36,6 +37,7 @@ async function fetchScope(
 }
 
 export function DashboardApiUsageCard() {
+  const { canSeeApiCosts, loading: roleLoading } = useUserRole();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [today, setToday] = useState<ScopeAgg | null>(null);
@@ -59,8 +61,11 @@ export function DashboardApiUsageCard() {
   }, []);
 
   useEffect(() => {
+    if (roleLoading || !canSeeApiCosts) return;
     void refresh();
-  }, [refresh]);
+  }, [refresh, roleLoading, canSeeApiCosts]);
+
+  if (roleLoading || !canSeeApiCosts) return null;
 
   return (
     <section className="mt-10 rounded-2xl border border-white/10 bg-white/[0.03]">

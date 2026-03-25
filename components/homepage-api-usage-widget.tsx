@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { useUserRole } from "@/hooks/use-user-role";
 
 type ScopeAgg = {
   pagesAnalyzed: number;
@@ -28,6 +29,7 @@ async function fetchScope(
 }
 
 export function HomepageApiUsageWidget() {
+  const { canSeeApiCosts, loading: roleLoading } = useUserRole();
   const [sessionReady, setSessionReady] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
   const [open, setOpen] = useState(false);
@@ -73,11 +75,12 @@ export function HomepageApiUsageWidget() {
   }, []);
 
   useEffect(() => {
-    if (!loggedIn) return;
+    if (!loggedIn || !canSeeApiCosts || roleLoading) return;
     void load();
-  }, [loggedIn, load]);
+  }, [loggedIn, load, canSeeApiCosts, roleLoading]);
 
   if (!sessionReady || !loggedIn) return null;
+  if (roleLoading || !canSeeApiCosts) return null;
 
   const t = today ?? { pagesAnalyzed: 0, totalCost: 0 };
   const mo = month ?? { pagesAnalyzed: 0, totalCost: 0 };

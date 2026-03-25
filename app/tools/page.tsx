@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { ToolPageHeader } from "@/components/tool-page-header";
+import { ToolsHubGrid, type ToolCard } from "@/app/tools/tools-hub-grid";
 
-const tools = [
+const tools: ToolCard[] = [
   {
     href: "/tools/load-calculator",
     title: "Load Calculator",
@@ -99,21 +100,7 @@ export default function ToolsHubPage() {
             🏠 Home
           </Link>
         </nav>
-        <ul className="space-y-4">
-          {tools.map((t) => (
-            <li key={t.href}>
-              <Link
-                href={t.href}
-                className={`tool-surface-card card-pad-mobile block border p-5 transition-opacity hover:opacity-95 sm:p-6 ${t.tone}`}
-              >
-                <h2 className="text-lg font-semibold text-[var(--foreground)]">
-                  {t.title}
-                </h2>
-                <p className="tool-muted mt-2 text-sm">{t.desc}</p>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <ToolsHubGrid tools={tools} />
       </main>
     </div>
   );

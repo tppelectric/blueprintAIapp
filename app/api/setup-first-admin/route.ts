@@ -46,7 +46,30 @@ export async function POST(request: Request) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
-    return NextResponse.json({ ok: true, userId: data.user?.id });
+    const uid = data.user?.id;
+    if (uid) {
+      const { error: pe } = await supabase.from("user_profiles").upsert(
+        {
+          id: uid,
+          email,
+          full_name: "",
+          role: "super_admin",
+          is_active: true,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" },
+      );
+      if (pe) {
+        return NextResponse.json(
+          {
+            error: pe.message,
+            hint: "User was created but user_profiles upsert failed. Run supabase/user_profiles_rbac.sql.",
+          },
+          { status: 500 },
+        );
+      }
+    }
+    return NextResponse.json({ ok: true, userId: uid });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Server error" },

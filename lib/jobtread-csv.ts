@@ -268,6 +268,13 @@ export function parseJobtreadDailyLogsCsv(
       card_type: row.card_type ?? null,
       store_receipts: row.store_receipts ?? null,
       internal_notes: row.internal_notes ?? null,
+      weather: row.weather ?? null,
+      lunch_duration_minutes: row.lunch_duration_minutes ?? null,
+      equipment_used: row.equipment_used ?? null,
+      work_completed: row.work_completed ?? null,
+      next_day_plan: row.next_day_plan ?? null,
+      safety_incident: row.safety_incident ?? false,
+      safety_incident_notes: row.safety_incident_notes ?? null,
     });
   }
 
@@ -306,6 +313,13 @@ const EXPORT_HEADERS: (keyof DailyLogRow)[] = [
   "card_type",
   "store_receipts",
   "internal_notes",
+  "weather",
+  "lunch_duration_minutes",
+  "equipment_used",
+  "work_completed",
+  "next_day_plan",
+  "safety_incident",
+  "safety_incident_notes",
 ];
 
 function esc(v: unknown): string {

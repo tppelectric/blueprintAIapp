@@ -4,7 +4,8 @@ import { DailyLogsNewClient } from "@/components/daily-logs-new-client";
 
 export const metadata: Metadata = {
   title: "New daily log",
-  description: "Create a JobTread-style daily field log.",
+  description:
+    "AI-assisted daily field log with voice, photos, and documents for TPP Electrical.",
 };
 
 function NewLogFallback() {

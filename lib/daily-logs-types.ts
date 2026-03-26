@@ -26,6 +26,13 @@ export type DailyLogRow = {
   card_type: string | null;
   store_receipts: string | null;
   internal_notes: string | null;
+  weather: string | null;
+  lunch_duration_minutes: number | null;
+  equipment_used: string | null;
+  work_completed: string | null;
+  next_day_plan: string | null;
+  safety_incident: boolean | null;
+  safety_incident_notes: string | null;
   created_at: string;
 };
 

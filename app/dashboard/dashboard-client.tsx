@@ -573,10 +573,16 @@ export function DashboardClient() {
               Tools hub
             </Link>
             <Link
+              href="/jobs/daily-logs/new"
+              className="btn-secondary btn-h-11 w-full border-orange-500/35 text-orange-200"
+            >
+              📝 New Daily Log
+            </Link>
+            <Link
               href="/jobs/daily-logs"
               className="btn-secondary btn-h-11 w-full border-[#E8C84A]/35 text-[#E8C84A]"
             >
-              Daily logs
+              📋 View All Logs
             </Link>
             <Link href="/timesheets" className="btn-secondary btn-h-11 w-full">
               Timesheets

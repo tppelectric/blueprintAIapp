@@ -57,7 +57,7 @@ export type GeneratedProjectPackage = {
   laborEstimate: string;
 };
 
-function sliceBalancedJsonObject(body: string, start: number): string | null {
+export function sliceBalancedJsonObject(body: string, start: number): string | null {
   if (start < 0 || start >= body.length || body[start] !== "{") return null;
   let depth = 0;
   let inStr = false;

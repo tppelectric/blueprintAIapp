@@ -10,7 +10,7 @@ import {
   normalizeProcessDailyLogJson,
   type ProcessDailyLogResult,
 } from "@/lib/daily-log-ai-types";
-import { extractJsonObjectFromModelText } from "@/lib/project-describer-types";
+import { extractDailyLogJsonString } from "@/lib/daily-log-claude-parse";
 
 export const maxDuration = 120;
 
@@ -151,6 +151,7 @@ Respond with ONLY the JSON object as specified.`;
       .map((b) => (b.type === "text" ? b.text : ""))
       .join("\n")
       .trim();
+    console.log("[process-daily-log] Claude raw response:", rawText);
   } catch (e) {
     const message =
       e instanceof Error ? e.message : "Claude API request failed.";
@@ -159,10 +160,18 @@ Respond with ONLY the JSON object as specified.`;
     return NextResponse.json({ error: message }, { status });
   }
 
-  const extracted = extractJsonObjectFromModelText(rawText);
+  const rawForClient =
+    rawText.length > 120_000 ? `${rawText.slice(0, 120_000)}\n… (truncated)` : rawText;
+
+  const extracted = extractDailyLogJsonString(rawText);
   if (!extracted) {
     return NextResponse.json(
-      { error: "Could not parse AI response as JSON.", raw: rawText.slice(0, 500) },
+      {
+        ok: false,
+        error:
+          "Could not extract a JSON object from the AI response. Try again or shorten your description.",
+        rawResponse: rawForClient,
+      },
       { status: 502 },
     );
   }
@@ -170,9 +179,19 @@ Respond with ONLY the JSON object as specified.`;
   let parsed: unknown;
   try {
     parsed = JSON.parse(extracted);
-  } catch {
+  } catch (parseErr) {
+    const msg =
+      parseErr instanceof Error ? parseErr.message : "JSON.parse failed.";
     return NextResponse.json(
-      { error: "Invalid JSON from AI.", raw: extracted.slice(0, 500) },
+      {
+        ok: false,
+        error: `Invalid JSON from AI: ${msg}`,
+        rawResponse: rawForClient,
+        extractedSnippet:
+          extracted.length > 8_000
+            ? `${extracted.slice(0, 8_000)}…`
+            : extracted,
+      },
       { status: 502 },
     );
   }

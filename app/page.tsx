@@ -136,6 +136,25 @@ function DescriberIcon({ className }: { className?: string }) {
   );
 }
 
+function DailyLogsClipboardIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+      <path d="M15 2H9a1 1 0 0 0-1 1v2h8V3a1 1 0 0 0-1-1Z" />
+      <path d="M9 12h6M9 16h4" />
+    </svg>
+  );
+}
+
 export default function Home() {
   return (
     <div className="flex min-h-screen flex-col bg-[#060d1a] bg-gradient-to-b from-[#0c1829] via-[#060d1a] to-[#03060f]">
@@ -168,6 +187,24 @@ export default function Home() {
         </div>
 
         <div className="mx-auto mt-14 grid w-full grid-cols-1 gap-6 sm:mt-16 sm:grid-cols-2 lg:grid-cols-3">
+          <Link
+            href="/jobs/daily-logs"
+            className="group card-pad-mobile flex flex-col rounded-xl border border-orange-500/25 bg-white/[0.04] p-6 text-left shadow-lg shadow-black/25 ring-1 ring-orange-500/15 transition-colors hover:border-orange-400/55 hover:bg-orange-950/20 hover:ring-orange-400/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-400/50"
+          >
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-500/15 text-orange-200 ring-1 ring-orange-400/25 transition-colors group-hover:bg-orange-500/25 group-hover:ring-orange-300/40">
+              <DailyLogsClipboardIcon className="h-6 w-6" />
+            </div>
+            <h2 className="mt-4 text-base font-semibold text-white">
+              Daily Logs
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-white/80">
+              Create and view field daily logs for all jobs
+            </p>
+            <span className="mt-4 text-sm font-medium text-orange-200 group-hover:text-orange-100">
+              Open daily logs →
+            </span>
+          </Link>
+
           <Link
             href="/tools/load-calculator"
             className="group card-pad-mobile flex flex-col rounded-xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-lg shadow-black/25 ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/60 hover:bg-white/[0.07] hover:ring-[#E8C84A]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"

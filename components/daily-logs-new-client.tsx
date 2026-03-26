@@ -207,6 +207,19 @@ export function DailyLogsNewClient() {
     checkOutDb?: string;
   } | null>(null);
 
+  const formRefForPunch = useRef(form);
+  formRefForPunch.current = form;
+
+  const [aiProcessError, setAiProcessError] = useState<{
+    message: string;
+    rawResponse?: string;
+    extractedSnippet?: string;
+  } | null>(null);
+
+  const [voiceEnv, setVoiceEnv] = useState<
+    "unknown" | "localhost" | "needs_https" | "ok"
+  >("unknown");
+
   const [showInternalNotes, setShowInternalNotes] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -313,18 +326,17 @@ export function DailyLogsNewClient() {
     void fetchWeather();
   }, [fetchWeather]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const date = form.log_date?.trim();
-    if (!date) {
-      setPunchHint(null);
-      return;
-    }
-    void (async () => {
+  const loadPunchHintForDate = useCallback(
+    async (date: string | null | undefined, signal?: AbortSignal) => {
+      const d = date?.trim();
+      if (!d) {
+        if (!signal?.aborted) setPunchHint(null);
+        return;
+      }
       try {
         const r = await fetch(
-          `/api/daily-logs/punch-hint?date=${encodeURIComponent(date)}`,
-          { credentials: "include" },
+          `/api/daily-logs/punch-hint?date=${encodeURIComponent(d)}`,
+          { credentials: "include", signal },
         );
         const j = (await r.json()) as {
           found?: boolean;
@@ -334,7 +346,7 @@ export function DailyLogsNewClient() {
           checkInDb?: string;
           checkOutDb?: string;
         };
-        if (cancelled) return;
+        if (signal?.aborted) return;
         if (!r.ok) {
           setPunchHint(null);
           return;
@@ -347,14 +359,42 @@ export function DailyLogsNewClient() {
           checkInDb: j.checkInDb,
           checkOutDb: j.checkOutDb,
         });
-      } catch {
-        if (!cancelled) setPunchHint(null);
+      } catch (e) {
+        if (signal?.aborted) return;
+        if (e instanceof DOMException && e.name === "AbortError") return;
+        setPunchHint(null);
       }
-    })();
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const ac = new AbortController();
+    void loadPunchHintForDate(form.log_date, ac.signal);
+    return () => ac.abort();
+  }, [form.log_date, loadPunchHintForDate]);
+
+  useEffect(() => {
+    const ac = new AbortController();
+    const id = window.setTimeout(() => {
+      void loadPunchHintForDate(formRefForPunch.current.log_date, ac.signal);
+    }, 0);
     return () => {
-      cancelled = true;
+      clearTimeout(id);
+      ac.abort();
     };
-  }, [form.log_date]);
+  }, [loadPunchHintForDate]);
+
+  useEffect(() => {
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      setVoiceEnv("localhost");
+    } else if (!window.isSecureContext) {
+      setVoiceEnv("needs_https");
+    } else {
+      setVoiceEnv("ok");
+    }
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -454,6 +494,7 @@ export function DailyLogsNewClient() {
       });
       return;
     }
+    setAiProcessError(null);
     setProcessingAi(true);
     try {
       const r = await fetch("/api/tools/process-daily-log", {
@@ -470,18 +511,65 @@ export function DailyLogsNewClient() {
         ok?: boolean;
         data?: unknown;
         error?: string;
+        rawResponse?: string;
+        extractedSnippet?: string;
       };
-      if (!r.ok || !j.ok || !j.data) {
+
+      const rawLog = j.rawResponse ?? "(no raw body)";
+      console.log("Claude raw response:", rawLog);
+
+      if (!r.ok) {
+        setAiProcessError({
+          message: j.error ?? `Request failed (${r.status}).`,
+          rawResponse: j.rawResponse,
+          extractedSnippet: j.extractedSnippet,
+        });
         showToast({
           message: j.error ?? "AI processing failed.",
           variant: "error",
         });
         return;
       }
-      const normalized = normalizeProcessDailyLogJson(j.data);
-      applyAiResult(normalized);
-      showToast({ message: "Form filled from your description.", variant: "success" });
+
+      if (!j.ok || j.data == null) {
+        setAiProcessError({
+          message: j.error ?? "AI did not return usable data.",
+          rawResponse: j.rawResponse,
+          extractedSnippet: j.extractedSnippet,
+        });
+        showToast({
+          message: j.error ?? "AI processing failed.",
+          variant: "error",
+        });
+        return;
+      }
+
+      try {
+        const normalized = normalizeProcessDailyLogJson(j.data);
+        applyAiResult(normalized);
+        setAiProcessError(null);
+        showToast({
+          message: "Form filled from your description.",
+          variant: "success",
+        });
+      } catch (applyErr) {
+        const msg =
+          applyErr instanceof Error
+            ? applyErr.message
+            : "Could not apply AI result to the form.";
+        setAiProcessError({
+          message: msg,
+          rawResponse:
+            typeof j.data === "string"
+              ? j.data
+              : JSON.stringify(j.data, null, 2),
+        });
+        showToast({ message: msg, variant: "error" });
+      }
     } catch {
+      setAiProcessError({
+        message: "Network error while calling the AI. Check your connection and try again.",
+      });
       showToast({ message: "AI request failed.", variant: "error" });
     } finally {
       setProcessingAi(false);
@@ -489,6 +577,21 @@ export function DailyLogsNewClient() {
   };
 
   const toggleListen = () => {
+    if (voiceEnv === "localhost") {
+      showToast({
+        message:
+          "Voice input is unreliable on localhost. Use the live site for microphone input.",
+        variant: "error",
+      });
+      return;
+    }
+    if (voiceEnv === "needs_https") {
+      showToast({
+        message: "Voice input requires HTTPS. Open the app over a secure connection.",
+        variant: "error",
+      });
+      return;
+    }
     const Ctor = getSpeechRecognitionCtor();
     if (!Ctor) {
       showToast({
@@ -760,33 +863,78 @@ export function DailyLogsNewClient() {
         </p>
 
         {punchHint?.found ? (
-          <div className="mt-6 rounded-xl border border-[#E8C84A]/40 bg-[#E8C84A]/10 px-4 py-3 text-sm text-white">
-            <p className="font-semibold text-[#E8C84A]">
+          <div className="mt-6 rounded-xl border-2 border-[#E8C84A] bg-[#E8C84A]/12 px-5 py-4 shadow-lg shadow-black/30 ring-1 ring-[#E8C84A]/30">
+            <p className="text-base font-bold tracking-tight text-[#E8C84A]">
               ⏱ Punch record found for today
             </p>
-            <p className="mt-1 text-white/85">
-              Job: {punchHint.jobName ?? "—"}
+            <p className="mt-2 text-sm leading-relaxed text-white/90">
+              <span className="font-semibold text-white">Job:</span>{" "}
+              {punchHint.jobName ?? "—"}
               <br />
-              In: {punchHint.checkInLabel ?? "—"} | Out:{" "}
+              <span className="font-semibold text-white">Check in:</span>{" "}
+              {punchHint.checkInLabel ?? "—"}
+              <br />
+              <span className="font-semibold text-white">Check out:</span>{" "}
               {punchHint.checkOutLabel ?? "—"}
             </p>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
               <button
                 type="button"
                 onClick={usePunchTimes}
-                className="rounded-lg bg-[#E8C84A] px-3 py-1.5 text-xs font-bold text-[#0a1628]"
+                className="rounded-xl bg-[#E8C84A] px-6 py-3 text-base font-bold text-[#0a1628] shadow-md transition-colors hover:bg-[#f0d56e]"
               >
-                Use these times
+                Use These Times
               </button>
-              <span className="self-center text-xs text-white/50">
-                Or enter shift times manually below.
-              </span>
+              <a
+                href="#daily-log-shift-times"
+                className="text-center text-sm font-medium text-white/70 underline decoration-white/30 underline-offset-2 hover:text-white sm:text-left"
+              >
+                Enter manually
+              </a>
             </div>
           </div>
         ) : null}
 
+        {aiProcessError ? (
+          <div
+            className="mt-6 rounded-xl border-2 border-red-500/60 bg-red-950/40 p-4 text-sm text-red-50 shadow-lg"
+            role="alert"
+          >
+            <p className="font-bold text-red-200">AI processing failed</p>
+            <p className="mt-2 text-red-100/95">{aiProcessError.message}</p>
+            <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-red-200/80">
+              Raw response from Claude
+            </p>
+            <pre className="mt-1 max-h-48 overflow-auto rounded-lg border border-red-500/30 bg-black/40 p-3 text-xs text-red-50/90 whitespace-pre-wrap break-words">
+              {aiProcessError.rawResponse?.trim() ||
+                "(No raw text returned — see server logs.)"}
+            </pre>
+            {aiProcessError.extractedSnippet ? (
+              <>
+                <p className="mt-3 text-xs font-semibold text-red-200/80">
+                  Extracted snippet (parse failed)
+                </p>
+                <pre className="mt-1 max-h-32 overflow-auto rounded-lg border border-red-500/30 bg-black/40 p-3 text-xs text-red-50/90 whitespace-pre-wrap break-words">
+                  {aiProcessError.extractedSnippet}
+                </pre>
+              </>
+            ) : null}
+            <p className="mt-3 text-xs text-red-200/90">
+              Try again with a shorter description, fix any network issues, or
+              fill the form manually.
+            </p>
+            <button
+              type="button"
+              className="mt-3 rounded-lg border border-red-400/50 bg-red-900/40 px-3 py-1.5 text-xs font-semibold text-red-100 hover:bg-red-900/60"
+              onClick={() => setAiProcessError(null)}
+            >
+              Dismiss
+            </button>
+          </div>
+        ) : null}
+
         {/* SECTION 1 — AI */}
-        <section className="mt-8 rounded-2xl border border-white/15 bg-gradient-to-b from-[#1a2838] to-[#0f1824] p-5 shadow-lg">
+        <section className="mt-8 rounded-2xl border-2 border-[#E8C84A] bg-gradient-to-b from-[#1a2838] to-[#0f1824] p-5 shadow-xl shadow-[#E8C84A]/10">
           <h2 className="text-xl font-bold text-white">🎤 Describe Your Day</h2>
           <p className="mt-1 text-sm text-white/60">
             Speak or type what happened and AI will fill in your log.
@@ -797,27 +945,61 @@ export function DailyLogsNewClient() {
             value={describeText}
             onChange={(e) => setDescribeText(e.target.value)}
           />
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={toggleListen}
-              className={`rounded-xl border px-4 py-2.5 text-sm font-semibold ${
-                listening
-                  ? "border-red-400/60 bg-red-500/20 text-red-100"
-                  : "border-white/25 bg-white/10 text-white"
-              }`}
-            >
-              {listening ? "Listening…" : "🎙 Microphone"}
-            </button>
-            <button
-              type="button"
-              disabled={processingAi}
-              onClick={() => void processWithAi()}
-              className="rounded-xl bg-[#E8C84A] px-5 py-2.5 text-sm font-bold text-[#0a1628] shadow-md disabled:opacity-50"
-            >
-              {processingAi ? "Processing…" : "Process with AI"}
-            </button>
+          <p className="mt-2 text-xs leading-relaxed text-white/55">
+            Tip: Describe what you did, materials used, who was on site, and
+            times. AI will fill in your log automatically.
+          </p>
+          {voiceEnv === "localhost" ? (
+            <p className="mt-3 rounded-lg border border-amber-500/35 bg-amber-950/40 px-3 py-2 text-xs leading-relaxed text-amber-100/95">
+              🎤 Voice input requires HTTPS. On localhost the microphone may not
+              work reliably — use the live site for voice input:{" "}
+              <a
+                href="https://blueprint-a-iapp.vercel.app"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-[#E8C84A] underline underline-offset-2 hover:text-[#f0d56e]"
+              >
+                blueprint-a-iapp.vercel.app
+              </a>
+            </p>
+          ) : voiceEnv === "needs_https" ? (
+            <p className="mt-3 rounded-lg border border-amber-500/35 bg-amber-950/40 px-3 py-2 text-xs text-amber-100/95">
+              🎤 Voice input requires HTTPS. Open this app over a secure
+              connection to use the microphone.
+            </p>
+          ) : null}
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            {voiceEnv === "localhost" || voiceEnv === "needs_https" ? null : (
+              <>
+                <button
+                  type="button"
+                  onClick={toggleListen}
+                  title={listening ? "Stop listening" : "Start voice input"}
+                  className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 text-xl font-semibold transition-colors ${
+                    listening
+                      ? "border-red-400/70 bg-red-500/25 text-red-100"
+                      : "border-[#E8C84A]/60 bg-[#E8C84A]/15 text-[#E8C84A] hover:bg-[#E8C84A]/25"
+                  }`}
+                >
+                  <span className="sr-only">
+                    {listening ? "Stop listening" : "Speak"}
+                  </span>
+                  <span aria-hidden>{listening ? "⏹" : "🎤"}</span>
+                </button>
+                <span className="text-sm font-bold text-white/90">
+                  {listening ? "⏹ Stop" : "🎤 Speak"}
+                </span>
+              </>
+            )}
           </div>
+          <button
+            type="button"
+            disabled={processingAi}
+            onClick={() => void processWithAi()}
+            className="mt-4 w-full rounded-xl bg-[#E8C84A] px-8 py-3.5 text-base font-bold text-[#0a1628] shadow-lg transition-colors hover:bg-[#f0d56e] disabled:opacity-50 sm:max-w-md"
+          >
+            {processingAi ? "Processing…" : "Process with AI"}
+          </button>
         </section>
 
         {/* SECTION 2 — Form */}
@@ -896,7 +1078,7 @@ export function DailyLogsNewClient() {
                   </button>
                 </div>
               </div>
-              <div>
+              <div id="daily-log-shift-times">
                 <label className="text-xs font-semibold text-white/50">
                   Shift start
                 </label>

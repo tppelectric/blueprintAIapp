@@ -42,6 +42,7 @@ export function SelectPagesScanModal({
   onClose,
   onStartScan,
   estimateMode = "standard",
+  variant = "analyze",
 }: {
   open: boolean;
   numPages: number;
@@ -53,15 +54,18 @@ export function SelectPagesScanModal({
   onClose: () => void;
   onStartScan: () => void;
   estimateMode?: ScanModeId;
+  /** `room_scan` hides electrical-scan estimates and mode picker (floor-plan room AI only). */
+  variant?: "analyze" | "room_scan";
 }) {
+  const isRoomScan = variant === "room_scan";
   const [localMode, setLocalMode] = useState<ScanModeId>(estimateMode);
   const meta = useMemo(() => scanModeById(localMode), [localMode]);
   const nSel = selected.size;
   const estMinutes = useMemo(() => {
-    if (nSel === 0 || meta.id === "manual") return 0;
+    if (isRoomScan || nSel === 0 || meta.id === "manual") return 0;
     const sec = meta.estSecondsPerPage * nSel;
     return Math.max(1, Math.ceil(sec / 60));
-  }, [nSel, meta]);
+  }, [isRoomScan, nSel, meta]);
   const estCost = totalCostPerPage(meta) * nSel;
 
   if (!open) return null;
@@ -113,7 +117,7 @@ export function SelectPagesScanModal({
             id="select-pages-scan-title"
             className="text-lg font-semibold text-white"
           >
-            Select Pages to Analyze
+            {isRoomScan ? "Select Pages for Room Scan" : "Select Pages to Analyze"}
           </h2>
           <div className="mt-2 flex flex-wrap gap-2">
             <button
@@ -130,36 +134,50 @@ export function SelectPagesScanModal({
             >
               Deselect All
             </button>
-            <button
-              type="button"
-              onClick={electricalOnly}
-              className="rounded-lg border border-[#E8C84A]/40 bg-[#E8C84A]/10 px-2.5 py-1 text-xs font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/18"
-            >
-              Electrical Only
-            </button>
-            <button
-              type="button"
-              onClick={unscannedOnly}
-              className="rounded-lg border border-sky-500/40 bg-sky-950/35 px-2.5 py-1 text-xs font-semibold text-sky-100 hover:bg-sky-950/50"
-            >
-              Unscanned Only
-            </button>
+            {!isRoomScan ? (
+              <>
+                <button
+                  type="button"
+                  onClick={electricalOnly}
+                  className="rounded-lg border border-[#E8C84A]/40 bg-[#E8C84A]/10 px-2.5 py-1 text-xs font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/18"
+                >
+                  Electrical Only
+                </button>
+                <button
+                  type="button"
+                  onClick={unscannedOnly}
+                  className="rounded-lg border border-sky-500/40 bg-sky-950/35 px-2.5 py-1 text-xs font-semibold text-sky-100 hover:bg-sky-950/50"
+                >
+                  Unscanned Only
+                </button>
+              </>
+            ) : null}
           </div>
-          <p className="mt-2 text-[11px] text-white/50">
-            Estimate uses mode below (you will confirm again in the next step).
-          </p>
-          <label className="mt-2 flex items-center gap-2 text-xs text-white/75">
-            <span className="shrink-0">Est. mode:</span>
-            <select
-              value={localMode}
-              onChange={(e) => setLocalMode(e.target.value as ScanModeId)}
-              className="rounded border border-white/20 bg-[#071422] px-2 py-1 text-white"
-            >
-              <option value="quick">Quick</option>
-              <option value="standard">Standard</option>
-              <option value="deep">Deep</option>
-            </select>
-          </label>
+          {!isRoomScan ? (
+            <>
+              <p className="mt-2 text-[11px] text-white/50">
+                Estimate uses mode below (you will confirm again in the next
+                step).
+              </p>
+              <label className="mt-2 flex items-center gap-2 text-xs text-white/75">
+                <span className="shrink-0">Est. mode:</span>
+                <select
+                  value={localMode}
+                  onChange={(e) => setLocalMode(e.target.value as ScanModeId)}
+                  className="rounded border border-white/20 bg-[#071422] px-2 py-1 text-white"
+                >
+                  <option value="quick">Quick</option>
+                  <option value="standard">Standard</option>
+                  <option value="deep">Deep</option>
+                </select>
+              </label>
+            </>
+          ) : (
+            <p className="mt-2 text-[11px] text-white/50">
+              Choose blueprint pages to scan for rooms and square footage. Each
+              page runs the floor-plan room AI.
+            </p>
+          )}
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4">
@@ -227,25 +245,29 @@ export function SelectPagesScanModal({
             <strong className="text-white">{nSel}</strong> page
             {nSel === 1 ? "" : "s"} selected
           </p>
-          <p className="text-sm text-white/75">
-            Est. time:{" "}
-            <strong className="text-[#E8C84A]">
-              {meta.id === "manual" || nSel === 0
-                ? "—"
-                : estMinutes === 1
-                  ? "~1 minute"
-                  : `~${estMinutes} minutes`}
-            </strong>
-          </p>
-          <p className="text-sm text-white/75">
-            Est. cost:{" "}
-            <strong className="text-[#E8C84A]">
-              {meta.id === "manual" || nSel === 0
-                ? "$0.00"
-                : formatUsd(estCost)}
-            </strong>{" "}
-            <span className="text-xs text-white/45">({meta.label})</span>
-          </p>
+          {!isRoomScan ? (
+            <>
+              <p className="text-sm text-white/75">
+                Est. time:{" "}
+                <strong className="text-[#E8C84A]">
+                  {meta.id === "manual" || nSel === 0
+                    ? "—"
+                    : estMinutes === 1
+                      ? "~1 minute"
+                      : `~${estMinutes} minutes`}
+                </strong>
+              </p>
+              <p className="text-sm text-white/75">
+                Est. cost:{" "}
+                <strong className="text-[#E8C84A]">
+                  {meta.id === "manual" || nSel === 0
+                    ? "$0.00"
+                    : formatUsd(estCost)}
+                </strong>{" "}
+                <span className="text-xs text-white/45">({meta.label})</span>
+              </p>
+            </>
+          ) : null}
           <div className="flex flex-wrap justify-end gap-2 pt-1">
             <button
               type="button"
@@ -258,9 +280,13 @@ export function SelectPagesScanModal({
               type="button"
               disabled={nSel === 0}
               onClick={onStartScan}
-              className="rounded-lg border border-violet-500/50 bg-violet-600/35 px-4 py-2 text-sm font-semibold text-violet-50 hover:bg-violet-600/50 disabled:cursor-not-allowed disabled:opacity-40"
+              className={
+                isRoomScan
+                  ? "rounded-lg border border-teal-500/50 bg-teal-600/35 px-4 py-2 text-sm font-semibold text-teal-50 hover:bg-teal-600/50 disabled:cursor-not-allowed disabled:opacity-40"
+                  : "rounded-lg border border-violet-500/50 bg-violet-600/35 px-4 py-2 text-sm font-semibold text-violet-50 hover:bg-violet-600/50 disabled:cursor-not-allowed disabled:opacity-40"
+              }
             >
-              Start Scan
+              {isRoomScan ? "Start Room Scan" : "Start Scan"}
             </button>
           </div>
         </div>

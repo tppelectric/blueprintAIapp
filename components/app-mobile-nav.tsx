@@ -7,9 +7,10 @@ import { createPortal } from "react-dom";
 import { GlobalNavSearch } from "@/components/global-nav-search";
 import { PendingTimeOffNavBadge } from "@/components/pending-time-off-nav-badge";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { TeamClockNavBadge } from "@/components/team-clock-nav-badge";
 import { useUserRole } from "@/hooks/use-user-role";
 import { createBrowserClient } from "@/lib/supabase/client";
-import { ROLE_LABELS } from "@/lib/user-roles";
+import { ROLE_LABELS, canViewTeamClock } from "@/lib/user-roles";
 
 type AppNavKey =
   | "dashboard"
@@ -17,7 +18,8 @@ type AppNavKey =
   | "customers"
   | "upload"
   | "reference"
-  | "team_time";
+  | "team_time"
+  | "team_clock";
 
 const TOOL_LINKS: { href: string; label: string }[] = [
   { href: "/tools/project-describer", label: "AI Project Describer" },
@@ -191,6 +193,7 @@ function MobileMenuPortal({
   const [mounted, setMounted] = useState(false);
   const { role, loading: roleLoading } = useUserRole();
   const showUserManagement = !roleLoading && role === "super_admin";
+  const showTeamClock = !roleLoading && canViewTeamClock(role);
   useEffect(() => setMounted(true), []);
 
   const dashActive = pathname.startsWith("/dashboard");
@@ -341,6 +344,19 @@ function MobileMenuPortal({
               Daily Logs
             </span>
           </Link>
+          {showTeamClock ? (
+            <Link
+              href="/team-clock"
+              className={linkClass(pathname.startsWith("/team-clock"))}
+              onClick={onClose}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <span aria-hidden>🕐</span>
+                Team Clock
+                <TeamClockNavBadge />
+              </span>
+            </Link>
+          ) : null}
           <Link
             href="/reference"
             className={linkClass(refActive)}

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { HomeMarketingHeader } from "@/components/home-marketing-header";
+import { TeamStatusWidget } from "@/components/team-status-widget";
 import { TimeClockSummaryCard } from "@/components/time-clock-summary-card";
 import { HomepageApiUsageWidget } from "@/components/homepage-api-usage-widget";
 import { PwaInstallBanners } from "@/components/pwa-install-banners";
@@ -160,6 +161,10 @@ export default function Home() {
 
         <div className="mx-auto mt-8 w-full max-w-md">
           <TimeClockSummaryCard surface="marketing" />
+        </div>
+
+        <div className="mx-auto mt-4 w-full max-w-md">
+          <TeamStatusWidget surface="marketing" />
         </div>
 
         <div className="mx-auto mt-14 grid w-full grid-cols-1 gap-6 sm:mt-16 sm:grid-cols-2 lg:grid-cols-3">

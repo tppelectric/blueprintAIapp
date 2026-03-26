@@ -82,6 +82,11 @@ export function canManageTeamTime(role: UserRole | null): boolean {
   );
 }
 
+/** Live team punch dashboard (`/team-clock`). */
+export function canViewTeamClock(role: UserRole | null): boolean {
+  return role === "super_admin" || role === "admin";
+}
+
 const FINANCIAL_TOOL_HREFS = new Set([
   "/tools/wifi-analyzer",
   "/tools/av-analyzer",

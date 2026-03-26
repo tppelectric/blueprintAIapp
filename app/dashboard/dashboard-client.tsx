@@ -8,9 +8,11 @@ import {
 } from "@/components/app-polish";
 import { DashboardApiUsageCard } from "@/components/dashboard-api-usage-card";
 import { WideAppHeader } from "@/components/wide-app-header";
+import { TeamStatusWidget } from "@/components/team-status-widget";
 import { TimeClockSummaryCard } from "@/components/time-clock-summary-card";
 import { useAppToast } from "@/components/toast-provider";
 import { useUserRole } from "@/hooks/use-user-role";
+import { canViewTeamClock } from "@/lib/user-roles";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProjectScansSummary } from "@/lib/project-scans-types";
 import { formatPlanScanRelativeDate } from "@/lib/scan-import-from-plans";
@@ -223,7 +225,8 @@ function CheckSaveIcon({ className }: { className?: string }) {
 
 export function DashboardClient() {
   const { showToast } = useAppToast();
-  const { canSeeApiCosts, loading: roleLoading } = useUserRole();
+  const { canSeeApiCosts, loading: roleLoading, role } = useUserRole();
+  const showTeamClock = !roleLoading && canViewTeamClock(role);
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -551,9 +554,21 @@ export function DashboardClient() {
           <TimeClockSummaryCard surface="app" />
         </section>
 
+        <section className="w-full max-w-lg">
+          <TeamStatusWidget surface="app" />
+        </section>
+
         <section className="app-card app-card-pad-lg">
           <SectionTitle className="mb-4">Quick actions</SectionTitle>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {showTeamClock ? (
+              <Link
+                href="/team-clock"
+                className="btn-secondary btn-h-11 w-full border-orange-500/35 text-orange-200"
+              >
+                Team time clock
+              </Link>
+            ) : null}
             <Link href="/tools" className="btn-secondary btn-h-11 w-full">
               Tools hub
             </Link>

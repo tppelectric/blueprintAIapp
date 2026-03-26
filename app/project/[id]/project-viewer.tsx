@@ -100,10 +100,12 @@ import {
   type ProjectRoomScanRow,
 } from "@/lib/project-room-scans";
 import type { FloorPlanScanApiResponse } from "@/lib/tool-floor-plan-scan";
+import { mergeFloorPlanRoomScanPages } from "@/lib/merge-floor-plan-room-scans";
 import {
   ScanProgressOverlay,
   type ScanProgressPageRow,
 } from "./scan-progress-overlay";
+import { RoomScanBatchOverlay } from "./room-scan-batch-overlay";
 import {
   formatUsd,
   scanModeById,
@@ -805,6 +807,16 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const [selectedPagesForScan, setSelectedPagesForScan] = useState<Set<number>>(
     new Set(),
   );
+  const [roomScanSelectPagesModalOpen, setRoomScanSelectPagesModalOpen] =
+    useState(false);
+  const [selectedPagesForRoomScan, setSelectedPagesForRoomScan] = useState<
+    Set<number>
+  >(new Set());
+  const [roomScanBatchProgress, setRoomScanBatchProgress] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
+  const roomScanBatchCancelRef = useRef(false);
   const [markingPagesMode, setMarkingPagesMode] = useState(false);
   const [toolbarMenuOpen, setToolbarMenuOpen] =
     useState<BlueprintToolbarMenuId | null>(null);
@@ -3020,27 +3032,12 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     openScanModeForPage();
   }, [openScanModeForPage]);
 
-  const runRoomScanCurrentPage = useCallback(async () => {
-    if (
-      analyzeBusy ||
-      legendBusy ||
-      roomScanBusy ||
-      symbolCaptureState ||
-      symbolMatchState
-    )
-      return;
-    const docs = pdfDocsRef.current;
-    if (!docs?.length) {
-      window.alert("No PDF loaded.");
-      return;
-    }
-    const mapped = globalPageToLocal(currentPage, docs);
-    if (!mapped) {
-      window.alert("Could not map page.");
-      return;
-    }
-    setRoomScanBusy(true);
-    try {
+  const fetchSingleFloorPlanRoomScan = useCallback(
+    async (pageNum: number): Promise<FloorPlanScanApiResponse> => {
+      const docs = pdfDocsRef.current;
+      if (!docs?.length) throw new Error("No PDF loaded.");
+      const mapped = globalPageToLocal(pageNum, docs);
+      if (!mapped) throw new Error("Could not map page.");
       const pageImage = await renderPdfPageToPngBase64(
         mapped.doc,
         mapped.localPage,
@@ -3058,32 +3055,110 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         error?: string;
       };
       if (!res.ok) throw new Error(json.error ?? "Room scan failed");
-      setRoomScanData({
+      return {
         rooms: json.rooms ?? [],
         equipment_placement_suggestions:
           json.equipment_placement_suggestions ?? [],
         scan_notes: json.scan_notes ?? "",
+      };
+    },
+    [],
+  );
+
+  const runFloorPlanRoomScanOnPages = useCallback(
+    async (pageNums: number[]) => {
+      if (
+        analyzeBusy ||
+        legendBusy ||
+        roomScanBusy ||
+        symbolCaptureState ||
+        symbolMatchState
+      ) {
+        return;
+      }
+      const sorted = [...new Set(pageNums)]
+        .filter((p) => Number.isFinite(p) && p >= 1)
+        .sort((a, b) => a - b);
+      if (sorted.length === 0) return;
+      const docs = pdfDocsRef.current;
+      if (!docs?.length) {
+        window.alert("No PDF loaded.");
+        return;
+      }
+      const multi = sorted.length > 1;
+      roomScanBatchCancelRef.current = false;
+      if (multi) {
+        setRoomScanBatchProgress({ current: 1, total: sorted.length });
+      }
+      setRoomScanBusy(true);
+      const parts: { page: number; data: FloorPlanScanApiResponse }[] = [];
+      try {
+        for (let i = 0; i < sorted.length; i += 1) {
+          if (multi) {
+            setRoomScanBatchProgress({
+              current: i + 1,
+              total: sorted.length,
+            });
+          }
+          if (multi && roomScanBatchCancelRef.current) {
+            break;
+          }
+          const p = sorted[i]!;
+          try {
+            const data = await fetchSingleFloorPlanRoomScan(p);
+            parts.push({ page: p, data });
+          } catch (e) {
+            window.alert(
+              e instanceof Error ? e.message : "Room scan failed.",
+            );
+            break;
+          }
+        }
+      } finally {
+        if (multi) setRoomScanBatchProgress(null);
+        setRoomScanBusy(false);
+      }
+
+      const cancelledIncomplete =
+        multi &&
+        roomScanBatchCancelRef.current &&
+        parts.length < sorted.length;
+      if (cancelledIncomplete) return;
+      if (parts.length === 0) return;
+
+      const merged =
+        parts.length === 1
+          ? parts[0]!.data
+          : mergeFloorPlanRoomScanPages(parts);
+      setRoomScanData({
+        rooms: merged.rooms ?? [],
+        equipment_placement_suggestions:
+          merged.equipment_placement_suggestions ?? [],
+        scan_notes: merged.scan_notes ?? "",
       });
-      setRoomScanDialogPage(currentPage);
+      setRoomScanDialogPage(parts[0]!.page);
       setRoomScanAutosave(true);
       setSelectedRoomScanId(null);
       setRoomScanSavedAtLabel(null);
       setRoomScanOpen(true);
-    } catch (e) {
-      window.alert(
-        e instanceof Error ? e.message : "Room scan failed.",
-      );
-    } finally {
-      setRoomScanBusy(false);
-    }
-  }, [
-    analyzeBusy,
-    legendBusy,
-    roomScanBusy,
-    currentPage,
-    symbolCaptureState,
-    symbolMatchState,
-  ]);
+    },
+    [
+      analyzeBusy,
+      legendBusy,
+      roomScanBusy,
+      symbolCaptureState,
+      symbolMatchState,
+      fetchSingleFloorPlanRoomScan,
+    ],
+  );
+
+  const runRoomScanCurrentPage = useCallback(async () => {
+    await runFloorPlanRoomScanOnPages([currentPage]);
+  }, [currentPage, runFloorPlanRoomScanOnPages]);
+
+  const cancelRoomScanBatch = useCallback(() => {
+    roomScanBatchCancelRef.current = true;
+  }, []);
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1024px)");
@@ -3356,7 +3431,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const saveRoomScanToLibrary = useCallback(async () => {
     if (!roomScanData?.rooms?.length) {
       window.alert(
-        'Run "Scan Rooms and Sq Footage" first, then save the room scan.',
+        "Run a room scan (Room Scan menu) first, then save the room scan.",
       );
       return;
     }
@@ -3656,13 +3731,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     setRecalledRoomScan(null);
     void refetchDetectedRoomsFromDb();
     setRoomScanDialogOpen(false);
-  }, [refetchDetectedRoomsFromDb]);
-
-  const openLiveRoomScanDialog = useCallback(() => {
-    setRecalledRoomScan(null);
-    setRoomScanError(null);
-    void refetchDetectedRoomsFromDb();
-    setRoomScanDialogOpen(true);
   }, [refetchDetectedRoomsFromDb]);
 
   const pageRoomsForRoomScanDialog = useMemo(
@@ -5240,6 +5308,32 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         }}
       />
 
+      <SelectPagesScanModal
+        variant="room_scan"
+        open={roomScanSelectPagesModalOpen}
+        numPages={numPages}
+        selected={selectedPagesForRoomScan}
+        onChangeSelected={setSelectedPagesForRoomScan}
+        pageMeta={pagePickMeta}
+        thumbnailCells={selectPagesThumbnailCells}
+        onClose={() => setRoomScanSelectPagesModalOpen(false)}
+        onStartScan={() => {
+          const list = Array.from(selectedPagesForRoomScan).sort(
+            (a, b) => a - b,
+          );
+          if (list.length === 0) return;
+          setRoomScanSelectPagesModalOpen(false);
+          void runFloorPlanRoomScanOnPages(list);
+        }}
+      />
+
+      <RoomScanBatchOverlay
+        open={roomScanBatchProgress != null}
+        currentPageIndex={roomScanBatchProgress?.current ?? 1}
+        totalPages={roomScanBatchProgress?.total ?? 0}
+        onCancel={cancelRoomScanBatch}
+      />
+
       {tradeCtxMenu ? (
         <div
           className="fixed inset-0 z-[270]"
@@ -5920,7 +6014,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                   setActiveMenu={setToolbarMenuOpen}
                   label={
                     <>
-                      <span aria-hidden>📐</span> Rooms
+                      <span aria-hidden>📐</span> Room Scan
                     </>
                   }
                 >
@@ -5929,15 +6023,53 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                       analyzeBusy ||
                       legendBusy ||
                       symbolToolboxBusy ||
-                      roomScanBusy
+                      roomScanBusy ||
+                      numPages < 1
                     }
                     onClick={() => {
                       setToolbarMenuOpen(null);
-                      openLiveRoomScanDialog();
+                      void runRoomScanCurrentPage();
                     }}
                   >
-                    Scan Rooms and Sq Footage
+                    Scan This Page
                   </BlueprintToolbarMenuItem>
+                  <BlueprintToolbarMenuItem
+                    disabled={
+                      analyzeBusy ||
+                      legendBusy ||
+                      symbolToolboxBusy ||
+                      roomScanBusy ||
+                      numPages < 1
+                    }
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      setSelectedPagesForRoomScan(new Set([currentPage]));
+                      setRoomScanSelectPagesModalOpen(true);
+                    }}
+                  >
+                    Select Pages to Scan
+                  </BlueprintToolbarMenuItem>
+                  <BlueprintToolbarMenuItem
+                    disabled={
+                      analyzeBusy ||
+                      legendBusy ||
+                      symbolToolboxBusy ||
+                      roomScanBusy ||
+                      numPages < 1
+                    }
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      void runFloorPlanRoomScanOnPages(
+                        Array.from({ length: numPages }, (_, i) => i + 1),
+                      );
+                    }}
+                  >
+                    Scan All Pages
+                  </BlueprintToolbarMenuItem>
+                  <div
+                    className="my-1 border-t border-white/10"
+                    role="separator"
+                  />
                   <BlueprintToolbarMenuItem
                     disabled={
                       analyzeBusy ||

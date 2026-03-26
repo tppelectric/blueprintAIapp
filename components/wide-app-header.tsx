@@ -7,11 +7,13 @@ import { HeaderAuthMenu } from "@/components/header-auth-menu";
 import { GlobalNavSearch } from "@/components/global-nav-search";
 import { HeaderToolsMenu } from "@/components/header-tools-menu";
 import { PendingTimeOffNavBadge } from "@/components/pending-time-off-nav-badge";
+import { TeamClockNavBadge } from "@/components/team-clock-nav-badge";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TppLogoPill } from "@/components/tpp-logo-pill";
 import { TPP_COMPANY_FULL, TPP_TAGLINE } from "@/lib/tpp-branding";
 import { AppMobileNavButton } from "@/components/app-mobile-nav";
 import { useUserRole } from "@/hooks/use-user-role";
+import { canViewTeamClock } from "@/lib/user-roles";
 
 export type NavKey =
   | "dashboard"
@@ -19,7 +21,8 @@ export type NavKey =
   | "customers"
   | "upload"
   | "reference"
-  | "team_time";
+  | "team_time"
+  | "team_clock";
 
 const NAV_IDLE =
   "inline-flex items-center border-b-2 border-transparent px-2 py-1.5 text-sm font-medium text-white/85 transition-colors duration-200 hover:border-[#E8C84A]/45 hover:text-[#E8C84A]";
@@ -38,6 +41,7 @@ export function WideAppHeader({
   const pathname = usePathname() ?? "";
   const { role, loading: roleLoading } = useUserRole();
   const showAdminUsersNav = !roleLoading && role === "super_admin";
+  const showTeamClockNav = !roleLoading && canViewTeamClock(role);
 
   const homeActive = pathname === "/";
   const dashActive =
@@ -52,6 +56,8 @@ export function WideAppHeader({
   const timesheetsActive = pathname.startsWith("/timesheets");
   const timeOffActive = pathname.startsWith("/time-off");
   const calendarActive = pathname.startsWith("/calendar");
+  const teamClockActive =
+    active === "team_clock" || pathname.startsWith("/team-clock");
 
   const navItems = (
     <>
@@ -115,6 +121,24 @@ export function WideAppHeader({
           Calendar
         </Link>
       )}
+      {showTeamClockNav ? (
+        teamClockActive ? (
+          <span
+            className={`${NAV_ACTIVE} inline-flex items-center gap-1.5`}
+          >
+            Team Clock
+            <TeamClockNavBadge />
+          </span>
+        ) : (
+          <Link
+            href="/team-clock"
+            className={`${NAV_IDLE} inline-flex items-center gap-1.5`}
+          >
+            Team Clock
+            <TeamClockNavBadge />
+          </Link>
+        )
+      ) : null}
       <HeaderToolsMenu idleClassName={NAV_IDLE} activeClassName={NAV_ACTIVE} />
       {showAdminUsersNav ? (
         adminUsersActive ? (

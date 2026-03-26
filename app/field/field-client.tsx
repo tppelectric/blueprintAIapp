@@ -393,7 +393,11 @@ export function FieldClient() {
   const onStartLunch = async () => {
     const j = await postJson({ action: "start_lunch" });
     if (!j || "error" in j) return;
-    await refresh();
+    const nowIso = new Date().toISOString();
+    setActiveSession((s) =>
+      s ? { ...s, on_lunch: true, lunch_start_at: nowIso } : s,
+    );
+    void refresh();
   };
 
   const onEndLunch = async () => {
@@ -402,7 +406,10 @@ export function FieldClient() {
     if (typeof j.lastLunchMinutes === "number") {
       setLastLunchMinutes(j.lastLunchMinutes);
     }
-    await refresh();
+    setActiveSession((s) =>
+      s ? { ...s, on_lunch: false, lunch_start_at: null } : s,
+    );
+    void refresh();
   };
 
   const nowLabel = new Date().toLocaleString("en-US", {
@@ -509,6 +516,19 @@ export function FieldClient() {
         minute: "2-digit",
       })
     : "";
+
+  /** Recomputed every second while punched in (`tick` drives re-renders). */
+  let onLunchLiveMinutes = 0;
+  if (activeSession?.on_lunch && activeSession.lunch_start_at) {
+    void tick;
+    const ls = new Date(activeSession.lunch_start_at).getTime();
+    if (!Number.isNaN(ls)) {
+      onLunchLiveMinutes = Math.max(
+        0,
+        Math.floor((Date.now() - ls) / 60000),
+      );
+    }
+  }
 
   const auditRange = isoRangeFromYmd(auditFrom, auditTo);
   const auditExportHref =
@@ -745,14 +765,9 @@ export function FieldClient() {
                   <p className="mt-3 text-2xl font-bold tabular-nums text-[#E8C84A]">
                     {workedLabel}
                   </p>
-                  {activeSession.on_lunch ? (
-                    <p className="mt-2 text-sm font-medium text-amber-200">
-                      On lunch — timer paused
-                    </p>
-                  ) : null}
                   {lastLunchMinutes != null && !activeSession.on_lunch ? (
                     <p className="mt-2 text-sm text-white/60">
-                      Last lunch: {lastLunchMinutes} min
+                      Lunch taken: {lastLunchMinutes} min
                     </p>
                   ) : null}
                 </div>
@@ -769,22 +784,29 @@ export function FieldClient() {
                 </label>
 
                 {activeSession.on_lunch ? (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void onEndLunch()}
-                    className="flex min-h-[3.5rem] w-full items-center justify-center rounded-2xl bg-emerald-500 text-lg font-bold text-white shadow-lg active:bg-emerald-400 disabled:opacity-40"
-                  >
-                    END LUNCH
-                  </button>
+                  <div className="flex flex-col gap-2">
+                    <p className="text-center text-sm font-medium tabular-nums text-amber-200/95">
+                      On lunch: {onLunchLiveMinutes} min
+                    </p>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void onEndLunch()}
+                      className="flex min-h-[3.5rem] w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 text-lg font-bold text-white shadow-lg shadow-emerald-900/30 active:bg-emerald-400 disabled:opacity-40"
+                    >
+                      <span aria-hidden>✅</span>
+                      <span>End Lunch</span>
+                    </button>
+                  </div>
                 ) : (
                   <button
                     type="button"
                     disabled={busy}
                     onClick={() => void onStartLunch()}
-                    className="flex min-h-[3.5rem] w-full items-center justify-center rounded-2xl bg-amber-400 text-lg font-bold text-amber-950 shadow-lg active:bg-amber-300 disabled:opacity-40"
+                    className="flex min-h-[3.5rem] w-full items-center justify-center gap-2 rounded-2xl bg-amber-400 text-lg font-bold text-amber-950 shadow-lg shadow-amber-900/25 active:bg-amber-300 disabled:opacity-40"
                   >
-                    START LUNCH
+                    <span aria-hidden>🍽️</span>
+                    <span>Start Lunch</span>
                   </button>
                 )}
 

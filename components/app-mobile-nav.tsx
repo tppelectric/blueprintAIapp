@@ -6,7 +6,6 @@ import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { GlobalNavSearch } from "@/components/global-nav-search";
 import { PendingTimeOffNavBadge } from "@/components/pending-time-off-nav-badge";
-import { HomeWeatherWidget } from "@/components/home-weather-widget";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useUserRole } from "@/hooks/use-user-role";
 import { createBrowserClient } from "@/lib/supabase/client";
@@ -237,12 +236,6 @@ function MobileMenuPortal({
         <div className="shrink-0 border-b border-white/10 px-2 pb-3 pt-1">
           <MobileDrawerUserSection onNavigate={onClose} />
         </div>
-        <div className="shrink-0 border-b border-white/10 px-3 py-3">
-          <p className="px-1 pb-2 text-[10px] font-bold uppercase tracking-wide text-[#E8C84A]/80">
-            Weather
-          </p>
-          <HomeWeatherWidget variant="drawer" />
-        </div>
         <nav
           className="min-h-0 flex-1 overflow-y-auto px-3 py-4"
           aria-label="Primary"
@@ -269,28 +262,44 @@ function MobileMenuPortal({
             Jobs
           </Link>
           <Link
-            href="/jobs/daily-logs"
-            className={linkClass(pathname.startsWith("/jobs/daily-logs"))}
+            href="/customers"
+            className={linkClass(custActive)}
             onClick={onClose}
           >
-            Daily logs
+            Customers
           </Link>
           <p className="mt-3 border-t border-white/10 px-3 pb-2 pt-3 text-[10px] font-bold uppercase tracking-wide text-[#E8C84A]/80">
-            Team time
+            Team
           </p>
+          {showUserManagement ? (
+            <Link
+              href="/admin/users"
+              className={linkClass(pathname.startsWith("/admin/users"))}
+              onClick={onClose}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <span aria-hidden>⚙️</span>
+                User Management
+              </span>
+            </Link>
+          ) : null}
           <Link
             href="/timesheets"
             className={linkClass(pathname.startsWith("/timesheets"))}
             onClick={onClose}
           >
-            Timesheets
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden>📋</span>
+              Timesheets
+            </span>
           </Link>
           <Link
             href="/time-off"
             className={linkClass(pathname.startsWith("/time-off"))}
             onClick={onClose}
           >
-            <span className="inline-flex items-center gap-0.5">
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden>🏖️</span>
               Time off
               <PendingTimeOffNavBadge />
             </span>
@@ -300,21 +309,30 @@ function MobileMenuPortal({
             className={linkClass(pathname.startsWith("/calendar"))}
             onClick={onClose}
           >
-            Calendar
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden>📅</span>
+              Calendar
+            </span>
           </Link>
           <Link
-            href="/customers"
-            className={linkClass(custActive)}
+            href="/jobs/daily-logs"
+            className={linkClass(pathname.startsWith("/jobs/daily-logs"))}
             onClick={onClose}
           >
-            Customers
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden>📝</span>
+              Daily Logs
+            </span>
           </Link>
           <Link
             href="/reference"
             className={linkClass(refActive)}
             onClick={onClose}
           >
-            Reference
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden>📚</span>
+              Reference
+            </span>
           </Link>
           <Link
             href="/tools"
@@ -365,18 +383,6 @@ function MobileMenuPortal({
             </>
           ) : null}
         </nav>
-        {showUserManagement ? (
-          <div className="shrink-0 border-t border-white/10 bg-[#071422]/50 px-3 py-3">
-            <Link
-              href="/admin/users"
-              className="flex items-center justify-center gap-2 rounded-lg border border-[#E8C84A]/35 bg-[#E8C84A]/10 px-3 py-2.5 text-sm font-semibold text-[#E8C84A] transition-colors hover:bg-[#E8C84A]/18"
-              onClick={onClose}
-            >
-              <span aria-hidden>⚙️</span>
-              User Management
-            </Link>
-          </div>
-        ) : null}
       </div>
     </div>,
     document.body,

@@ -8,6 +8,8 @@ const SIZES = {
   nav: "w-16 h-16",
   tool: "w-20 h-20",
   compact: "w-14 h-14",
+  /** Single responsive logo for headers (avoids duplicate breakpoint pills). */
+  bar: "aspect-square w-14 shrink-0 md:w-16 lg:w-20",
 } as const;
 
 export function TppLogoPill({

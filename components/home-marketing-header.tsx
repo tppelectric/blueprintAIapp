@@ -57,28 +57,29 @@ export function HomeMarketingHeader() {
   return (
     <header className="app-header-wide border-b backdrop-blur-md">
       <div className="mx-auto flex min-h-14 max-w-6xl flex-col gap-2 px-4 py-2.5 sm:px-8 lg:min-h-16 lg:py-3">
-        <div className="flex w-full items-center justify-between gap-3">
-          <Link
-            href="/"
-            className="flex min-w-0 max-w-[min(100%,14rem)] shrink-0 items-center gap-2 transition-opacity duration-200 hover:opacity-95 sm:max-w-[min(100%,20rem)] lg:max-w-[min(100%,28rem)] lg:gap-3"
-          >
-            <TppLogoPill size="compact" className="lg:hidden shrink-0" />
-            <TppLogoPill size="header" className="hidden lg:block shrink-0" />
-            <div className="hidden min-w-0 text-left lg:block">
-              <span className="app-header-title block truncate text-base font-semibold tracking-tight sm:text-lg lg:text-xl">
-                Blueprint AI
-              </span>
-              <span className="mt-0.5 block truncate text-[10px] font-semibold text-[#E8C84A] sm:text-sm">
-                {TPP_COMPANY_FULL}
-              </span>
-              <span className="app-header-sub mt-0.5 hidden text-xs sm:block">
-                {TPP_TAGLINE}
-              </span>
-            </div>
-          </Link>
+        <div className="flex w-full items-center justify-between gap-2 sm:gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+            <Link
+              href="/"
+              className="flex min-w-0 shrink-0 items-center gap-2 transition-opacity duration-200 hover:opacity-95 lg:max-w-[min(100%,28rem)] lg:gap-3"
+            >
+              <TppLogoPill size="bar" />
+              <div className="hidden min-w-0 text-left lg:block">
+                <span className="app-header-title block truncate text-base font-semibold tracking-tight sm:text-lg lg:text-xl">
+                  Blueprint AI
+                </span>
+                <span className="mt-0.5 block truncate text-[10px] font-semibold text-[#E8C84A] sm:text-sm">
+                  {TPP_COMPANY_FULL}
+                </span>
+                <span className="app-header-sub mt-0.5 hidden text-xs sm:block">
+                  {TPP_TAGLINE}
+                </span>
+              </div>
+            </Link>
 
-          <div className="hidden min-w-0 flex-1 justify-center px-2 lg:flex">
-            <HomeWeatherWidget variant="header" />
+            <div className="min-w-0 flex-1 flex justify-center px-1 sm:px-2">
+              <HomeWeatherWidget variant="headerCompact" />
+            </div>
           </div>
 
           <div

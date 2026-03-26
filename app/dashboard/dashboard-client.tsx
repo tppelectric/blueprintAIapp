@@ -8,6 +8,7 @@ import {
 } from "@/components/app-polish";
 import { DashboardApiUsageCard } from "@/components/dashboard-api-usage-card";
 import { WideAppHeader } from "@/components/wide-app-header";
+import { TimeClockSummaryCard } from "@/components/time-clock-summary-card";
 import { useAppToast } from "@/components/toast-provider";
 import { useUserRole } from "@/hooks/use-user-role";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -545,6 +546,10 @@ export function DashboardClient() {
             </div>
           </section>
         ) : null}
+
+        <section className="w-full max-w-lg">
+          <TimeClockSummaryCard surface="app" />
+        </section>
 
         <section className="app-card app-card-pad-lg">
           <SectionTitle className="mb-4">Quick actions</SectionTitle>

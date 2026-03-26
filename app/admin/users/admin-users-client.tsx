@@ -66,7 +66,11 @@ export function AdminUsersClient() {
 
   const patchUser = async (
     userId: string,
-    patch: { role?: UserRole; is_active?: boolean },
+    patch: {
+      role?: UserRole;
+      is_active?: boolean;
+      show_punch_interface?: boolean;
+    },
   ) => {
     setError(null);
     const r = await fetch("/api/admin/users", {
@@ -429,6 +433,27 @@ export function AdminUsersClient() {
                                   >
                                     {label}
                                   </p>
+                                </div>
+                                <div className="sm:col-span-2">
+                                  <p className="text-[10px] font-bold uppercase tracking-wide text-white/40">
+                                    Time clock access
+                                  </p>
+                                  <label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-sm">
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(u.show_punch_interface)}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onChange={(e) =>
+                                        void patchUser(u.id, {
+                                          show_punch_interface: e.target.checked,
+                                        })
+                                      }
+                                    />
+                                    <span className="text-white/75">
+                                      ⏱ Time Clock Access —{" "}
+                                      {u.show_punch_interface ? "ON" : "OFF"}
+                                    </span>
+                                  </label>
                                 </div>
                               </div>
                               <div

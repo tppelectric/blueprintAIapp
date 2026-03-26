@@ -22,7 +22,7 @@ export async function GET() {
   const { data: profileRows, error } = await admin
     .from("user_profiles")
     .select(
-      "id,email,full_name,role,is_active,created_at,updated_at",
+      "id,email,full_name,role,is_active,show_punch_interface,created_at,updated_at",
     );
 
   if (error) {
@@ -83,7 +83,12 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
-  let body: { userId?: string; role?: string; is_active?: boolean };
+  let body: {
+    userId?: string;
+    role?: string;
+    is_active?: boolean;
+    show_punch_interface?: boolean;
+  };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -123,9 +128,13 @@ export async function PATCH(request: Request) {
     patch.is_active = Boolean(body.is_active);
   }
 
+  if (body.show_punch_interface !== undefined) {
+    patch.show_punch_interface = Boolean(body.show_punch_interface);
+  }
+
   if (Object.keys(patch).length <= 1) {
     return NextResponse.json(
-      { error: "No changes (role or is_active)." },
+      { error: "No changes (role, is_active, or time clock access)." },
       { status: 400 },
     );
   }
@@ -145,7 +154,7 @@ export async function PATCH(request: Request) {
     .update(patch)
     .eq("id", userId)
     .select(
-      "id,email,full_name,role,is_active,created_at,updated_at",
+      "id,email,full_name,role,is_active,show_punch_interface,created_at,updated_at",
     )
     .maybeSingle();
 

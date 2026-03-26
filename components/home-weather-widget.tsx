@@ -62,8 +62,8 @@ function savePrefs(p: StoredPrefs) {
 export function HomeWeatherWidget({
   variant = "default",
 }: {
-  /** `header`: nav bar; `drawer`: full-width in mobile menu, forecast expands in-flow. */
-  variant?: "default" | "header" | "drawer";
+  /** `header`: nav bar; `headerCompact`: emoji + temp + city, all breakpoints; `drawer`: full-width in mobile menu. */
+  variant?: "default" | "header" | "headerCompact" | "drawer";
 }) {
   const [prefs, setPrefs] = useState<StoredPrefs>({
     zips: [DEFAULT_ZIP],
@@ -173,6 +173,7 @@ export function HomeWeatherWidget({
     (prefs.activeZip === DEFAULT_ZIP ? "Poughkeepsie, NY" : `ZIP ${prefs.activeZip}`);
 
   const isHeader = variant === "header";
+  const isHeaderCompact = variant === "headerCompact";
   const isDrawer = variant === "drawer";
 
   const detailsBody = (
@@ -348,6 +349,58 @@ export function HomeWeatherWidget({
           </section>
     </>
   );
+
+  if (isHeaderCompact) {
+    return (
+      <div
+        ref={wrapRef}
+        className="relative z-[100] min-w-0 max-w-full shrink text-left"
+      >
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="flex max-w-full items-center gap-1 truncate rounded-lg border border-white/15 bg-[#071422]/85 px-1.5 py-1 text-left text-xs text-white/90 shadow-sm transition-colors hover:border-[#E8C84A]/40 hover:bg-[#0a1628] sm:gap-1.5 sm:px-2 sm:text-sm"
+          aria-expanded={expanded}
+          aria-haspopup="dialog"
+        >
+          {loading && !data ? (
+            <span className="truncate text-white/50">…</span>
+          ) : error && !data ? (
+            <span className="truncate text-amber-200/80">Weather</span>
+          ) : data ? (
+            <>
+              <span className="shrink-0 leading-none" aria-hidden>
+                {data.current.iconEmoji || "🌤"}
+              </span>
+              <span className="min-w-0 truncate tabular-nums font-semibold text-[#E8C84A]">
+                {data.current.tempF}°F
+              </span>
+              <span className="min-w-0 truncate text-white/85">
+                {data.current.cityLabel}
+              </span>
+            </>
+          ) : (
+            <span className="text-white/50">Weather</span>
+          )}
+        </button>
+
+        <div
+          className={[
+            "absolute top-[calc(100%+0.35rem)] z-[110] w-[min(100vw-2rem,20rem)] origin-top overflow-hidden rounded-xl border border-white/12 bg-[#071422] shadow-2xl ring-1 ring-[#E8C84A]/15 transition-[max-height,opacity] duration-200 ease-out",
+            "left-0 sm:left-1/2 sm:right-auto sm:-translate-x-1/2",
+            expanded ? "max-h-[85vh] opacity-100" : "pointer-events-none max-h-0 opacity-0",
+          ].join(" ")}
+          role="dialog"
+          aria-label="Weather details"
+          aria-hidden={!expanded}
+        >
+          <div className="max-h-[min(85vh,32rem)] overflow-y-auto p-3 sm:p-4">
+            {detailsBody}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (isDrawer) {
     return (

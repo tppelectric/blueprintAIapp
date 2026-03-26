@@ -6,6 +6,8 @@ export type UserProfileRow = {
   full_name: string;
   role: UserRole;
   is_active: boolean;
+  /** When true, user may punch in/out on /field (any role). */
+  show_punch_interface: boolean;
   created_at: string;
   updated_at: string;
 };

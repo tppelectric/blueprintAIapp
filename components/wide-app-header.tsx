@@ -144,11 +144,7 @@ export function WideAppHeader({
             href="/"
             className="flex min-w-0 flex-1 items-center gap-3 transition-opacity duration-200 hover:opacity-95 lg:max-w-[min(100%,28rem)] lg:flex-initial lg:shrink-0"
           >
-            <TppLogoPill size="compact" className="shrink-0 md:hidden" />
-            <TppLogoPill
-              size="header"
-              className="hidden shrink-0 md:block"
-            />
+            <TppLogoPill size="bar" />
             <div className="hidden min-w-0 text-left sm:block">
               <span className="app-header-title block truncate text-base font-semibold tracking-tight sm:text-lg">
                 Blueprint AI

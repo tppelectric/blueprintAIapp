@@ -52,6 +52,10 @@ function parseProfilePayload(j: unknown): UserProfileRow | null {
   const full_name = typeof o.full_name === "string" ? o.full_name : "";
   const role = parseUserRole(typeof o.role === "string" ? o.role : null);
   const is_active = typeof o.is_active === "boolean" ? o.is_active : true;
+  const show_punch_interface =
+    typeof o.show_punch_interface === "boolean"
+      ? o.show_punch_interface
+      : false;
   const created_at =
     typeof o.created_at === "string" ? o.created_at : new Date().toISOString();
   const updated_at =
@@ -63,6 +67,7 @@ function parseProfilePayload(j: unknown): UserProfileRow | null {
     full_name,
     role,
     is_active,
+    show_punch_interface,
     created_at,
     updated_at,
   };

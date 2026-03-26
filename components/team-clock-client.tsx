@@ -27,6 +27,7 @@ import {
   workedHoursForPunchRow,
   workedMsForPunchRow,
 } from "@/lib/team-clock-utils";
+import { buildActiveJobsTodayDetails } from "@/lib/team-clock-jobs-today";
 import {
   completedPunchWorkedMs,
   formatMsAsHms,
@@ -60,6 +61,7 @@ export function TeamClockClient() {
     new Date().toISOString().slice(0, 10),
   );
   const [historyEmployeeId, setHistoryEmployeeId] = useState<string>("");
+  const [jobsDetailOpen, setJobsDetailOpen] = useState(false);
 
   const nowMs = useMemo(() => Date.now(), [clockTick]);
   const todayBounds = useMemo(() => localDayBounds(new Date()), [clockTick]);
@@ -245,49 +247,10 @@ export function TeamClockClient() {
     };
   }, [employees, punchesForCards, nowMs, todayBounds.ymd]);
 
-  const jobsToday = useMemo(() => {
-    const todayStart = todayBounds.fromIso;
-    const todayEnd = todayBounds.toIso;
-    const todays = punchesForCards.filter(
-      (p) => p.punch_in_at >= todayStart && p.punch_in_at < todayEnd,
-    );
-    const byJob = new Map<
-      string,
-      { jobId: string | null; jobName: string; hours: number; ids: Set<string> }
-    >();
-    for (const p of todays) {
-      const key = p.job_id ?? `__${(p.job_name ?? "").trim() || "—"}`;
-      const label = (p.job_name ?? "").trim() || "—";
-      let b = byJob.get(key);
-      if (!b) {
-        b = { jobId: p.job_id, jobName: label, hours: 0, ids: new Set() };
-        byJob.set(key, b);
-      }
-      b.hours += workedHoursForPunchRow(p, nowMs);
-      b.ids.add(p.employee_id);
-    }
-    for (const p of punchesForCards) {
-      if (p.punch_out_at) continue;
-      if (punchInLocalYmd(p.punch_in_at) !== todayBounds.ymd) {
-        const key = p.job_id ?? `__${(p.job_name ?? "").trim() || "—"}`;
-        const label = (p.job_name ?? "").trim() || "—";
-        let b = byJob.get(key);
-        if (!b) {
-          b = { jobId: p.job_id, jobName: label, hours: 0, ids: new Set() };
-          byJob.set(key, b);
-        }
-        b.hours += workedHoursForPunchRow(p, nowMs);
-        b.ids.add(p.employee_id);
-      }
-    }
-    return [...byJob.values()]
-      .map((j) => ({
-        ...j,
-        hours: Math.round(j.hours * 100) / 100,
-        employeeCount: j.ids.size,
-      }))
-      .sort((a, b) => b.hours - a.hours);
-  }, [punchesForCards, todayBounds, nowMs]);
+  const jobsTodayDetails = useMemo(() => {
+    if (tab === "history") return [];
+    return buildActiveJobsTodayDetails(employees, punches, nowMs);
+  }, [tab, employees, punches, nowMs]);
 
   const weekCols = useMemo(() => weekdayColumns(new Date()), [clockTick]);
 
@@ -426,27 +389,116 @@ export function TeamClockClient() {
 
         {tab === "today" && !loading && employees.length > 0 ? (
           <>
-            <div className="mt-6 flex flex-wrap gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-sm">
-              <span className="rounded-lg bg-emerald-500/15 px-3 py-1.5 font-medium text-emerald-200">
-                🟢 {summary.working} Working
-              </span>
-              <span className="rounded-lg bg-amber-500/15 px-3 py-1.5 font-medium text-amber-200">
-                🟡 {summary.lunch} On lunch
-              </span>
-              <span className="rounded-lg bg-red-500/10 px-3 py-1.5 font-medium text-red-200/90">
-                🔴 {summary.done} Done
-              </span>
-              <span className="rounded-lg bg-white/10 px-3 py-1.5 font-medium text-white/60">
-                ⚫ {summary.notIn} Not in
-              </span>
-              <span className="ml-auto font-semibold tabular-nums text-[#E8C84A]">
-                Total hours today: {summary.totalH} hrs
-              </span>
-              {summary.otAlerts > 0 ? (
-                <span className="w-full text-xs font-semibold text-orange-300 sm:w-auto">
-                  ⚠️ {summary.otAlerts} overtime alert
-                  {summary.otAlerts === 1 ? "" : "s"}
+            <div className="mt-6 space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-sm">
+              <div className="flex flex-wrap gap-3">
+                <span className="rounded-lg bg-emerald-500/15 px-3 py-1.5 font-medium text-emerald-200">
+                  🟢 {summary.working} Working
                 </span>
+                <span className="rounded-lg bg-amber-500/15 px-3 py-1.5 font-medium text-amber-200">
+                  🟡 {summary.lunch} On lunch
+                </span>
+                <span className="rounded-lg bg-red-500/10 px-3 py-1.5 font-medium text-red-200/90">
+                  🔴 {summary.done} Done
+                </span>
+                <span className="rounded-lg bg-white/10 px-3 py-1.5 font-medium text-white/60">
+                  ⚫ {summary.notIn} Not in
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setJobsDetailOpen((o) => !o)}
+                  className={`rounded-lg px-3 py-1.5 font-medium transition-colors ${
+                    jobsDetailOpen
+                      ? "bg-sky-500/25 text-sky-100 ring-1 ring-sky-400/40"
+                      : "bg-sky-500/15 text-sky-200 hover:bg-sky-500/20"
+                  }`}
+                  aria-expanded={jobsDetailOpen}
+                >
+                  🏗️ {jobsTodayDetails.length} Active job
+                  {jobsTodayDetails.length === 1 ? "" : "s"} today
+                  <span className="ml-1.5 text-xs opacity-80" aria-hidden>
+                    {jobsDetailOpen ? "▼" : "▶"}
+                  </span>
+                </button>
+                <span className="w-full font-semibold tabular-nums text-[#E8C84A] sm:ml-auto sm:w-auto">
+                  Total hours today: {summary.totalH} hrs
+                </span>
+                {summary.otAlerts > 0 ? (
+                  <span className="w-full text-xs font-semibold text-orange-300 sm:w-auto">
+                    ⚠️ {summary.otAlerts} overtime alert
+                    {summary.otAlerts === 1 ? "" : "s"}
+                  </span>
+                ) : null}
+              </div>
+
+              {jobsDetailOpen ? (
+                <div
+                  className="border-t border-[var(--border)] pt-4"
+                  role="region"
+                  aria-label="Active jobs detail"
+                >
+                  {jobsTodayDetails.length === 0 ? (
+                    <p className="text-sm text-[var(--foreground-muted)]">
+                      No job hours logged yet today.
+                    </p>
+                  ) : (
+                    <ul className="space-y-3">
+                      {jobsTodayDetails.map((j) => (
+                        <li
+                          key={j.key}
+                          className="rounded-lg border border-[var(--border)] bg-[var(--surface-card)] px-4 py-3"
+                        >
+                          <p className="font-semibold text-[var(--foreground)]">
+                            {j.jobName}
+                          </p>
+                          <dl className="mt-2 grid gap-1 text-xs text-[var(--foreground-muted)] sm:grid-cols-2">
+                            <div>
+                              <dt className="inline font-medium text-[var(--foreground)]">
+                                On site now:{" "}
+                              </dt>
+                              <dd className="inline tabular-nums text-[#E8C84A]">
+                                {j.onSiteCount}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt className="inline font-medium text-[var(--foreground)]">
+                                Hours today:{" "}
+                              </dt>
+                              <dd className="inline tabular-nums">{j.hours}h</dd>
+                            </div>
+                            <div className="sm:col-span-2">
+                              <dt className="font-medium text-[var(--foreground)]">
+                                Employees on job
+                              </dt>
+                              <dd className="mt-0.5 text-[var(--foreground-muted)]">
+                                {j.employeeNames.length > 0
+                                  ? j.employeeNames.join(", ")
+                                  : "—"}
+                              </dd>
+                            </div>
+                          </dl>
+                          {rateUsd != null ? (
+                            <p className="mt-2 text-xs text-[#E8C84A]">
+                              Est. labor: $
+                              {(j.hours * rateUsd).toLocaleString("en-US", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}{" "}
+                              @ ${rateUsd}/hr
+                            </p>
+                          ) : (
+                            <p className="mt-2 text-xs text-[var(--foreground-muted)]">
+                              Set{" "}
+                              <code className="rounded bg-black/20 px-1">
+                                NEXT_PUBLIC_TEAM_CLOCK_DEFAULT_RATE_USD
+                              </code>{" "}
+                              for cost estimate.
+                            </p>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               ) : null}
             </div>
 
@@ -600,50 +652,6 @@ export function TeamClockClient() {
               </div>
             </section>
 
-            <section className="mt-10">
-              <h2 className="text-lg font-semibold text-[var(--foreground)]">
-                Jobs today
-              </h2>
-              <ul className="mt-3 space-y-3">
-                {jobsToday.length === 0 ? (
-                  <li className="text-sm text-[var(--foreground-muted)]">
-                    No job hours logged yet today.
-                  </li>
-                ) : (
-                  jobsToday.map((j) => (
-                    <li
-                      key={j.jobId ?? j.jobName}
-                      className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-4 py-3"
-                    >
-                      <p className="font-medium text-[var(--foreground)]">
-                        {j.jobName}
-                      </p>
-                      <p className="text-sm text-[var(--foreground-muted)]">
-                        {j.employeeCount} on job · {j.hours} hrs today
-                      </p>
-                      {rateUsd != null ? (
-                        <p className="text-xs text-[#E8C84A]">
-                          Est. labor: $
-                          {(j.hours * rateUsd).toLocaleString("en-US", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}{" "}
-                          @ ${rateUsd}/hr
-                        </p>
-                      ) : (
-                        <p className="text-xs text-[var(--foreground-muted)]">
-                          Set{" "}
-                          <code className="rounded bg-black/20 px-1">
-                            NEXT_PUBLIC_TEAM_CLOCK_DEFAULT_RATE_USD
-                          </code>{" "}
-                          for cost estimate.
-                        </p>
-                      )}
-                    </li>
-                  ))
-                )}
-              </ul>
-            </section>
           </>
         ) : null}
 

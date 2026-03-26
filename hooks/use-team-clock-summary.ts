@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import {
+  buildActiveJobsTodayDetails,
+  openPunchStragglers,
+} from "@/lib/team-clock-jobs-today";
+import {
   classifyEmployeeToday,
   displayName,
   localDayBounds,
@@ -20,7 +24,7 @@ export function useTeamClockSummary(enabled: boolean) {
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    const id = window.setInterval(() => setTick((n) => n + 1), 10000);
+    const id = window.setInterval(() => setTick((n) => n + 1), 3000);
     return () => window.clearInterval(id);
   }, []);
 
@@ -151,12 +155,25 @@ export function useTeamClockSummary(enabled: boolean) {
         otAlertNames.push(displayName(e));
       }
     }
+    const activeJobsToday = buildActiveJobsTodayDetails(
+      employees,
+      punches,
+      nowMs,
+    );
+    const stragglers = openPunchStragglers(
+      punches,
+      todayBounds.ymd,
+      employees,
+    );
     return {
       onClock,
       totalTeam: employees.length,
       workingNames,
       otAlertNames,
       otAlertCount: otAlertNames.length,
+      activeJobsToday,
+      stragglers,
+      stragglerCount: stragglers.length,
     };
   }, [employees, punches, tick]);
 

@@ -8,7 +8,7 @@ import {
 } from "@/components/app-polish";
 import { DashboardApiUsageCard } from "@/components/dashboard-api-usage-card";
 import { WideAppHeader } from "@/components/wide-app-header";
-import { TeamStatusWidget } from "@/components/team-status-widget";
+import { TeamCommandCenterCard } from "@/components/team-command-center-card";
 import { TimeClockSummaryCard } from "@/components/time-clock-summary-card";
 import { useAppToast } from "@/components/toast-provider";
 import { useUserRole } from "@/hooks/use-user-role";
@@ -550,12 +550,19 @@ export function DashboardClient() {
           </section>
         ) : null}
 
-        <section className="w-full max-w-lg">
-          <TimeClockSummaryCard surface="app" />
-        </section>
-
-        <section className="w-full max-w-lg">
-          <TeamStatusWidget surface="app" />
+        <section
+          className={`mt-6 grid w-full gap-4 ${showTeamClock ? "lg:grid-cols-[minmax(0,1.1fr)_minmax(0,340px)] lg:items-start" : ""}`}
+        >
+          {showTeamClock ? (
+            <TeamCommandCenterCard enabled compact surface="app" />
+          ) : null}
+          <div
+            className={
+              showTeamClock ? "min-w-0 lg:max-w-none" : "w-full max-w-lg"
+            }
+          >
+            <TimeClockSummaryCard surface="app" />
+          </div>
         </section>
 
         <section className="app-card app-card-pad-lg">

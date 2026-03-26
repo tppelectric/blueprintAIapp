@@ -22,7 +22,7 @@ export async function GET() {
   const { data: profileRows, error } = await admin
     .from("user_profiles")
     .select(
-      "id,email,full_name,role,is_active,show_punch_interface,created_at,updated_at",
+      "id,email,full_name,first_name,last_name,employee_number,role,is_active,show_punch_interface,created_at,updated_at",
     );
 
   if (error) {
@@ -88,6 +88,9 @@ export async function PATCH(request: Request) {
     role?: string;
     is_active?: boolean;
     show_punch_interface?: boolean;
+    first_name?: string;
+    last_name?: string;
+    employee_number?: string;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -132,9 +135,34 @@ export async function PATCH(request: Request) {
     patch.show_punch_interface = Boolean(body.show_punch_interface);
   }
 
+  const trimStr = (v: string | undefined) =>
+    v === undefined ? undefined : String(v).trim();
+
+  if (body.first_name !== undefined) {
+    patch.first_name = trimStr(body.first_name) ?? "";
+  }
+  if (body.last_name !== undefined) {
+    patch.last_name = trimStr(body.last_name) ?? "";
+  }
+  if (body.employee_number !== undefined) {
+    patch.employee_number = trimStr(body.employee_number) ?? "";
+  }
+
+  if (
+    body.first_name !== undefined &&
+    body.last_name !== undefined
+  ) {
+    const f = trimStr(body.first_name) ?? "";
+    const l = trimStr(body.last_name) ?? "";
+    patch.full_name = [f, l].filter(Boolean).join(" ").trim();
+  }
+
   if (Object.keys(patch).length <= 1) {
     return NextResponse.json(
-      { error: "No changes (role, is_active, or time clock access)." },
+      {
+        error:
+          "No changes (role, account status, time clock access, or name fields).",
+      },
       { status: 400 },
     );
   }
@@ -154,7 +182,7 @@ export async function PATCH(request: Request) {
     .update(patch)
     .eq("id", userId)
     .select(
-      "id,email,full_name,role,is_active,show_punch_interface,created_at,updated_at",
+      "id,email,full_name,first_name,last_name,employee_number,role,is_active,show_punch_interface,created_at,updated_at",
     )
     .maybeSingle();
 

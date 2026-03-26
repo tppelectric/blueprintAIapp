@@ -20,6 +20,94 @@ const ROLES: UserRole[] = [
   "office_manager",
 ];
 
+function listDisplayName(u: AdminUserProfileRow): string {
+  const f = (u.first_name ?? "").trim();
+  const l = (u.last_name ?? "").trim();
+  if (f || l) return [f, l].filter(Boolean).join(" ");
+  return (u.full_name ?? "").trim() || "—";
+}
+
+function listEmployeeNumber(u: AdminUserProfileRow): string {
+  const e = (u.employee_number ?? "").trim();
+  return e || "—";
+}
+
+function UserProfileDetailFields({
+  user,
+  onSave,
+  saving,
+}: {
+  user: AdminUserProfileRow;
+  onSave: (p: {
+    first_name: string;
+    last_name: string;
+    employee_number: string;
+  }) => void;
+  saving: boolean;
+}) {
+  const [first, setFirst] = useState(() => (user.first_name ?? "").trim());
+  const [last, setLast] = useState(() => (user.last_name ?? "").trim());
+  const [emp, setEmp] = useState(() => (user.employee_number ?? "").trim());
+
+  useEffect(() => {
+    setFirst((user.first_name ?? "").trim());
+    setLast((user.last_name ?? "").trim());
+    setEmp((user.employee_number ?? "").trim());
+  }, [user.id, user.first_name, user.last_name, user.employee_number]);
+
+  return (
+    <div className="grid gap-3 border-t border-white/10 pt-4 sm:col-span-2 sm:grid-cols-2">
+      <label className="block text-xs text-white/60">
+        First name
+        <input
+          className="mt-1 w-full rounded border border-white/15 bg-[#0a1628] px-3 py-2 text-sm text-white"
+          value={first}
+          onChange={(e) => setFirst(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          autoComplete="given-name"
+        />
+      </label>
+      <label className="block text-xs text-white/60">
+        Last name
+        <input
+          className="mt-1 w-full rounded border border-white/15 bg-[#0a1628] px-3 py-2 text-sm text-white"
+          value={last}
+          onChange={(e) => setLast(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          autoComplete="family-name"
+        />
+      </label>
+      <label className="block text-xs text-white/60 sm:col-span-2">
+        Employee number
+        <input
+          className="mt-1 w-full max-w-xs rounded border border-white/15 bg-[#0a1628] px-3 py-2 text-sm text-white"
+          value={emp}
+          onChange={(e) => setEmp(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          autoComplete="off"
+        />
+      </label>
+      <div className="sm:col-span-2">
+        <button
+          type="button"
+          disabled={saving}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSave({
+              first_name: first.trim(),
+              last_name: last.trim(),
+              employee_number: emp.trim(),
+            });
+          }}
+          className="rounded-lg bg-[#E8C84A] px-4 py-2 text-sm font-semibold text-[#0a1628] disabled:opacity-40"
+        >
+          {saving ? "Saving…" : "Save name & employee #"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function AdminUsersClient() {
   const { canManageUsers, loading: roleLoading, profile: me } = useUserRole();
   const { showToast } = useAppToast();
@@ -36,6 +124,7 @@ export function AdminUsersClient() {
     null,
   );
   const [resetBusy, setResetBusy] = useState(false);
+  const [patchingUserId, setPatchingUserId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -51,7 +140,16 @@ export function AdminUsersClient() {
         setUsers([]);
         return;
       }
-      setUsers(j.users ?? []);
+      const raw = j.users ?? [];
+      setUsers(
+        raw.map((u) => ({
+          ...u,
+          first_name: u.first_name ?? "",
+          last_name: u.last_name ?? "",
+          employee_number: u.employee_number ?? "",
+          full_name: u.full_name ?? "",
+        })),
+      );
     } catch {
       setError("Could not load users.");
       setUsers([]);
@@ -70,22 +168,30 @@ export function AdminUsersClient() {
       role?: UserRole;
       is_active?: boolean;
       show_punch_interface?: boolean;
+      first_name?: string;
+      last_name?: string;
+      employee_number?: string;
     },
   ) => {
     setError(null);
-    const r = await fetch("/api/admin/users", {
-      method: "PATCH",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, ...patch }),
-    });
-    const j = (await r.json()) as { error?: string };
-    if (!r.ok) {
-      setError(j.error ?? "Update failed.");
-      showToast({ message: j.error ?? "Update failed.", variant: "error" });
-      return;
+    setPatchingUserId(userId);
+    try {
+      const r = await fetch("/api/admin/users", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, ...patch }),
+      });
+      const j = (await r.json()) as { error?: string };
+      if (!r.ok) {
+        setError(j.error ?? "Update failed.");
+        showToast({ message: j.error ?? "Update failed.", variant: "error" });
+        return;
+      }
+      void load();
+    } finally {
+      setPatchingUserId(null);
     }
-    void load();
   };
 
   const sendInvite = async () => {
@@ -279,12 +385,13 @@ export function AdminUsersClient() {
             <p className="mt-4 text-white/50">No users found.</p>
           ) : (
             <div className="mt-4 overflow-x-auto rounded-xl border border-white/10">
-              <table className="w-full min-w-[720px] border-collapse text-left text-sm text-white/88">
+              <table className="w-full min-w-[820px] border-collapse text-left text-sm text-white/88">
                 <thead>
                   <tr className="border-b border-white/10 bg-white/[0.06] text-[11px] font-bold uppercase tracking-wide text-[#E8C84A]">
                     <th className="w-8 px-2 py-3" aria-hidden />
                     <th className="px-3 py-3">Email</th>
                     <th className="px-3 py-3">Name</th>
+                    <th className="px-3 py-3">Employee #</th>
                     <th className="px-3 py-3">Last login</th>
                     <th className="px-3 py-3">Status</th>
                     <th className="px-3 py-3 text-right">Actions</th>
@@ -317,7 +424,10 @@ export function AdminUsersClient() {
                             {u.email}
                           </td>
                           <td className="px-3 py-3 text-white/70">
-                            {u.full_name?.trim() || "—"}
+                            {listDisplayName(u)}
+                          </td>
+                          <td className="px-3 py-3 font-mono text-xs text-white/65">
+                            {listEmployeeNumber(u)}
                           </td>
                           <td
                             className={`px-3 py-3 text-xs font-medium ${lastLoginToneClass(tone)}`}
@@ -351,14 +461,14 @@ export function AdminUsersClient() {
                         </tr>
                         {expanded ? (
                           <tr className="border-b border-white/10 bg-[#071422]/80">
-                            <td colSpan={6} className="px-4 py-4 sm:px-6">
+                            <td colSpan={7} className="px-4 py-4 sm:px-6">
                               <div className="grid gap-4 sm:grid-cols-2">
                                 <div>
                                   <p className="text-[10px] font-bold uppercase tracking-wide text-white/40">
-                                    Full name
+                                    Display name
                                   </p>
                                   <p className="mt-1 text-sm text-white">
-                                    {u.full_name?.trim() || "—"}
+                                    {listDisplayName(u)}
                                   </p>
                                 </div>
                                 <div>
@@ -369,6 +479,11 @@ export function AdminUsersClient() {
                                     {u.email}
                                   </p>
                                 </div>
+                                <UserProfileDetailFields
+                                  user={u}
+                                  saving={patchingUserId === u.id}
+                                  onSave={(p) => void patchUser(u.id, p)}
+                                />
                                 <div>
                                   <p className="text-[10px] font-bold uppercase tracking-wide text-white/40">
                                     Role

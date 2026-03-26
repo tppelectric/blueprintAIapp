@@ -39,7 +39,7 @@ export async function GET() {
   const { data: existing, error: readErr } = await admin
     .from("user_profiles")
     .select(
-      "id,email,full_name,role,is_active,show_punch_interface,created_at,updated_at",
+      "id,email,full_name,first_name,last_name,employee_number,role,is_active,show_punch_interface,created_at,updated_at",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -63,7 +63,7 @@ export async function GET() {
       .from("user_profiles")
       .insert(insertRow)
       .select(
-        "id,email,full_name,role,is_active,show_punch_interface,created_at,updated_at",
+        "id,email,full_name,first_name,last_name,employee_number,role,is_active,show_punch_interface,created_at,updated_at",
       )
       .single();
     if (insErr) {
@@ -84,7 +84,7 @@ export async function GET() {
       .update({ email, updated_at: new Date().toISOString() })
       .eq("id", user.id)
       .select(
-        "id,email,full_name,role,is_active,show_punch_interface,created_at,updated_at",
+        "id,email,full_name,first_name,last_name,employee_number,role,is_active,show_punch_interface,created_at,updated_at",
       )
       .single();
     if (!upErr && updated) {

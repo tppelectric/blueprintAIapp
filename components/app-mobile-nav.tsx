@@ -47,11 +47,24 @@ function emailInitialLetter(email: string): string {
   return c.toUpperCase();
 }
 
+function drawerAvatarInitials(
+  email: string,
+  firstName: string | undefined,
+  lastName: string | undefined,
+): string {
+  const f = firstName?.trim();
+  const l = lastName?.trim();
+  if (f && l && f[0] && l[0]) {
+    return (f[0] + l[0]).toUpperCase();
+  }
+  return emailInitialLetter(email);
+}
+
 function MobileDrawerUserSection({ onNavigate }: { onNavigate: () => void }) {
   const [email, setEmail] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const { role, loading: roleLoading } = useUserRole();
+  const { role, loading: roleLoading, profile } = useUserRole();
 
   useEffect(() => {
     const sb = createBrowserClient();
@@ -109,7 +122,11 @@ function MobileDrawerUserSection({ onNavigate }: { onNavigate: () => void }) {
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#E8C84A] text-lg font-bold text-[#0a1628]"
           aria-hidden
         >
-          {emailInitialLetter(email)}
+          {drawerAvatarInitials(
+            email,
+            profile?.first_name,
+            profile?.last_name,
+          )}
         </div>
         <div className="min-w-0 flex-1">
           <p className="break-all text-sm font-medium leading-snug text-white">

@@ -4,6 +4,9 @@ export type UserProfileRow = {
   id: string;
   email: string;
   full_name: string;
+  first_name: string;
+  last_name: string;
+  employee_number: string;
   role: UserRole;
   is_active: boolean;
   /** When true, user may punch in/out on /field (any role). */

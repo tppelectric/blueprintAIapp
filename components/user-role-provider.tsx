@@ -50,6 +50,14 @@ function parseProfilePayload(j: unknown): UserProfileRow | null {
   const id = typeof o.id === "string" ? o.id : null;
   const email = typeof o.email === "string" ? o.email : null;
   const full_name = typeof o.full_name === "string" ? o.full_name : "";
+  const first_name =
+    o.first_name == null ? "" : String(o.first_name as string | number);
+  const last_name =
+    o.last_name == null ? "" : String(o.last_name as string | number);
+  const employee_number =
+    o.employee_number == null
+      ? ""
+      : String(o.employee_number as string | number);
   const role = parseUserRole(typeof o.role === "string" ? o.role : null);
   const is_active = typeof o.is_active === "boolean" ? o.is_active : true;
   const show_punch_interface =
@@ -65,6 +73,9 @@ function parseProfilePayload(j: unknown): UserProfileRow | null {
     id,
     email,
     full_name,
+    first_name,
+    last_name,
+    employee_number,
     role,
     is_active,
     show_punch_interface,

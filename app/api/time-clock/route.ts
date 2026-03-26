@@ -1,15 +1,35 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { parseUserRole, type UserRole } from "@/lib/user-roles";
+import {
+  splitRegularOvertime,
+  workedMsFromPunch,
+} from "@/lib/time-punch-worked";
 
-type ActiveSessionRow = {
+type ActivePunchRow = {
   id: string;
   job_id: string | null;
   job_name: string | null;
-  clock_in_at: string;
-  clock_out_at: string | null;
+  punch_in_at: string;
+  punch_out_at: string | null;
+  notes: string | null;
   on_lunch: boolean;
+  lunch_start_at: string | null;
+  lunch_end_at: string | null;
+  total_lunch_ms: number;
 };
+
+function displayName(p: {
+  first_name?: string | null;
+  last_name?: string | null;
+  full_name?: string | null;
+  email?: string | null;
+}): string {
+  const f = (p.first_name ?? "").trim();
+  const l = (p.last_name ?? "").trim();
+  if (f || l) return [f, l].filter(Boolean).join(" ");
+  return (p.full_name ?? "").trim() || (p.email ?? "").trim() || "—";
+}
 
 function startOfWeekLocal(d: Date): Date {
   const x = new Date(d);
@@ -33,6 +53,14 @@ function formatDateYmd(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function toHhMmLocal(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const h = d.getHours();
+  const mi = d.getMinutes();
+  return `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
 }
 
 export async function GET() {
@@ -82,18 +110,31 @@ export async function GET() {
     }
   }
 
-  let activeSession: ActiveSessionRow | null = null;
+  let activeSession: ActivePunchRow | null = null;
   if (showPunchInterface) {
     const { data: open } = await supabase
-      .from("time_clock_sessions")
-      .select("id,job_id,job_name,clock_in_at,clock_out_at,on_lunch")
+      .from("time_punches")
+      .select(
+        "id,job_id,job_name,punch_in_at,punch_out_at,notes,on_lunch,lunch_start_at,lunch_end_at,total_lunch_ms",
+      )
       .eq("employee_id", user.id)
-      .is("clock_out_at", null)
-      .order("clock_in_at", { ascending: false })
+      .is("punch_out_at", null)
+      .order("punch_in_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (open && !open.clock_out_at) {
-      activeSession = open as ActiveSessionRow;
+    if (open && !open.punch_out_at) {
+      activeSession = {
+        id: open.id as string,
+        job_id: (open.job_id as string | null) ?? null,
+        job_name: (open.job_name as string | null) ?? null,
+        punch_in_at: open.punch_in_at as string,
+        punch_out_at: (open.punch_out_at as string | null) ?? null,
+        notes: (open.notes as string | null) ?? null,
+        on_lunch: Boolean(open.on_lunch),
+        lunch_start_at: (open.lunch_start_at as string | null) ?? null,
+        lunch_end_at: (open.lunch_end_at as string | null) ?? null,
+        total_lunch_ms: Number(open.total_lunch_ms) || 0,
+      };
     }
   }
 
@@ -102,39 +143,49 @@ export async function GET() {
     employeeId: string;
     fullName: string;
     jobName: string | null;
-    clockInAt: string;
+    punchInAt: string;
     onLunch: boolean;
+    totalLunchMs: number;
+    lunchStartAt: string | null;
   }> | null = null;
 
   if (role === "admin" || role === "super_admin") {
-    const { data: sessions } = await supabase
-      .from("time_clock_sessions")
-      .select("id,employee_id,job_name,clock_in_at,on_lunch")
-      .is("clock_out_at", null)
-      .order("clock_in_at", { ascending: true });
+    const { data: punches } = await supabase
+      .from("time_punches")
+      .select(
+        "id,employee_id,job_name,punch_in_at,on_lunch,total_lunch_ms,lunch_start_at",
+      )
+      .is("punch_out_at", null)
+      .order("punch_in_at", { ascending: true });
 
-    const ids = [...new Set((sessions ?? []).map((s) => s.employee_id))];
+    const ids = [...new Set((punches ?? []).map((s) => s.employee_id))];
     const nameById = new Map<string, string>();
     if (ids.length) {
       const { data: profs } = await supabase
         .from("user_profiles")
-        .select("id,full_name,email")
+        .select("id,first_name,last_name,full_name,email")
         .in("id", ids);
       for (const p of profs ?? []) {
-        const nm =
-          (p.full_name as string)?.trim() ||
-          (p.email as string)?.trim() ||
-          "—";
-        nameById.set(p.id as string, nm);
+        nameById.set(
+          p.id as string,
+          displayName({
+            first_name: p.first_name as string | null,
+            last_name: p.last_name as string | null,
+            full_name: p.full_name as string | null,
+            email: p.email as string | null,
+          }),
+        );
       }
     }
-    teamActive = (sessions ?? []).map((s) => ({
+    teamActive = (punches ?? []).map((s) => ({
       id: s.id as string,
       employeeId: s.employee_id as string,
       fullName: nameById.get(s.employee_id as string) ?? "—",
       jobName: (s.job_name as string | null) ?? null,
-      clockInAt: s.clock_in_at as string,
+      punchInAt: s.punch_in_at as string,
       onLunch: Boolean(s.on_lunch),
+      totalLunchMs: Number(s.total_lunch_ms) || 0,
+      lunchStartAt: (s.lunch_start_at as string | null) ?? null,
     }));
   }
 
@@ -170,6 +221,7 @@ export async function POST(request: Request) {
   let body: {
     action?: string;
     jobId?: string | null;
+    notes?: string | null;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -181,7 +233,9 @@ export async function POST(request: Request) {
   if (
     action !== "punch_in" &&
     action !== "punch_out" &&
-    action !== "lunch_toggle"
+    action !== "start_lunch" &&
+    action !== "end_lunch" &&
+    action !== "save_notes"
   ) {
     return NextResponse.json({ error: "Invalid action." }, { status: 400 });
   }
@@ -198,6 +252,9 @@ export async function POST(request: Request) {
       { status: 403 },
     );
   }
+
+  const now = new Date().toISOString();
+  const nowMs = Date.now();
 
   if (action === "punch_in") {
     const jobId = body.jobId?.trim() || null;
@@ -216,28 +273,34 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Job not found." }, { status: 400 });
     }
     const { data: existing } = await supabase
-      .from("time_clock_sessions")
+      .from("time_punches")
       .select("id")
       .eq("employee_id", user.id)
-      .is("clock_out_at", null)
+      .is("punch_out_at", null)
       .maybeSingle();
     if (existing) {
       return NextResponse.json(
-        { error: "Already clocked in." },
+        { error: "Already punched in." },
         { status: 400 },
       );
     }
+    const notes =
+      typeof body.notes === "string" ? body.notes.trim().slice(0, 4000) : "";
     const { data: ins, error: insErr } = await supabase
-      .from("time_clock_sessions")
+      .from("time_punches")
       .insert({
         employee_id: user.id,
         job_id: jobId,
         job_name: (job.job_name as string | null) ?? null,
-        clock_in_at: new Date().toISOString(),
+        punch_in_at: now,
+        notes: notes || null,
         on_lunch: false,
-        updated_at: new Date().toISOString(),
+        total_lunch_ms: 0,
+        updated_at: now,
       })
-      .select("id,job_id,job_name,clock_in_at,clock_out_at,on_lunch")
+      .select(
+        "id,job_id,job_name,punch_in_at,punch_out_at,notes,on_lunch,lunch_start_at,lunch_end_at,total_lunch_ms",
+      )
       .single();
     if (insErr) {
       return NextResponse.json({ error: insErr.message }, { status: 500 });
@@ -245,23 +308,47 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, session: ins });
   }
 
-  if (action === "punch_out") {
+  if (action === "save_notes") {
+    const notes =
+      typeof body.notes === "string" ? body.notes.trim().slice(0, 4000) : "";
     const { data: open } = await supabase
-      .from("time_clock_sessions")
+      .from("time_punches")
       .select("id")
       .eq("employee_id", user.id)
-      .is("clock_out_at", null)
+      .is("punch_out_at", null)
       .maybeSingle();
     if (!open) {
-      return NextResponse.json({ error: "Not clocked in." }, { status: 400 });
+      return NextResponse.json({ error: "Not punched in." }, { status: 400 });
     }
-    const now = new Date().toISOString();
     const { error: upErr } = await supabase
-      .from("time_clock_sessions")
+      .from("time_punches")
+      .update({ notes: notes || null, updated_at: now })
+      .eq("id", open.id);
+    if (upErr) {
+      return NextResponse.json({ error: upErr.message }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  if (action === "start_lunch") {
+    const { data: open } = await supabase
+      .from("time_punches")
+      .select("id,on_lunch")
+      .eq("employee_id", user.id)
+      .is("punch_out_at", null)
+      .maybeSingle();
+    if (!open) {
+      return NextResponse.json({ error: "Not punched in." }, { status: 400 });
+    }
+    if (open.on_lunch) {
+      return NextResponse.json({ error: "Already on lunch." }, { status: 400 });
+    }
+    const { error: upErr } = await supabase
+      .from("time_punches")
       .update({
-        clock_out_at: now,
-        on_lunch: false,
-        lunch_started_at: null,
+        on_lunch: true,
+        lunch_start_at: now,
+        lunch_end_at: null,
         updated_at: now,
       })
       .eq("id", open.id);
@@ -271,28 +358,98 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  /* lunch_toggle */
-  const { data: open } = await supabase
-    .from("time_clock_sessions")
-    .select("id,on_lunch")
-    .eq("employee_id", user.id)
-    .is("clock_out_at", null)
-    .maybeSingle();
-  if (!open) {
-    return NextResponse.json({ error: "Not clocked in." }, { status: 400 });
+  if (action === "end_lunch") {
+    const { data: open } = await supabase
+      .from("time_punches")
+      .select("id,on_lunch,lunch_start_at,total_lunch_ms")
+      .eq("employee_id", user.id)
+      .is("punch_out_at", null)
+      .maybeSingle();
+    if (!open) {
+      return NextResponse.json({ error: "Not punched in." }, { status: 400 });
+    }
+    if (!open.on_lunch || !open.lunch_start_at) {
+      return NextResponse.json({ error: "Not on lunch." }, { status: 400 });
+    }
+    const ls = new Date(open.lunch_start_at as string).getTime();
+    const segment = Math.max(0, nowMs - ls);
+    const prev = Number(open.total_lunch_ms) || 0;
+    const { error: upErr } = await supabase
+      .from("time_punches")
+      .update({
+        on_lunch: false,
+        lunch_end_at: now,
+        total_lunch_ms: prev + segment,
+        lunch_start_at: null,
+        updated_at: now,
+      })
+      .eq("id", open.id);
+    if (upErr) {
+      return NextResponse.json({ error: upErr.message }, { status: 500 });
+    }
+    return NextResponse.json({
+      ok: true,
+      lastLunchMinutes: Math.round(segment / 60000),
+    });
   }
-  const nextLunch = !open.on_lunch;
-  const now = new Date().toISOString();
-  const { error: upErr } = await supabase
-    .from("time_clock_sessions")
-    .update({
-      on_lunch: nextLunch,
-      lunch_started_at: nextLunch ? now : null,
-      updated_at: now,
-    })
-    .eq("id", open.id);
-  if (upErr) {
-    return NextResponse.json({ error: upErr.message }, { status: 500 });
+
+  if (action === "punch_out") {
+    const { data: row } = await supabase
+      .from("time_punches")
+      .select(
+        "id,punch_in_at,job_id,job_name,on_lunch,lunch_start_at,total_lunch_ms",
+      )
+      .eq("employee_id", user.id)
+      .is("punch_out_at", null)
+      .maybeSingle();
+    if (!row) {
+      return NextResponse.json({ error: "Not punched in." }, { status: 400 });
+    }
+
+    let totalLunchMs = Number(row.total_lunch_ms) || 0;
+    if (row.on_lunch && row.lunch_start_at) {
+      const ls = new Date(row.lunch_start_at as string).getTime();
+      totalLunchMs += Math.max(0, nowMs - ls);
+    }
+
+    const punchInMs = new Date(row.punch_in_at as string).getTime();
+    const grossMs = Math.max(0, nowMs - punchInMs);
+    const workedMs = Math.max(0, grossMs - totalLunchMs);
+    const totalHours = workedMs / 3600000;
+    const { regular, overtime } = splitRegularOvertime(totalHours);
+    const lunchMinutes = Math.round(totalLunchMs / 60000);
+
+    const { error: upErr } = await supabase
+      .from("time_punches")
+      .update({
+        punch_out_at: now,
+        on_lunch: false,
+        lunch_start_at: null,
+        total_lunch_ms: totalLunchMs,
+        updated_at: now,
+      })
+      .eq("id", row.id);
+    if (upErr) {
+      return NextResponse.json({ error: upErr.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      summary: {
+        totalHours: Math.round(totalHours * 100) / 100,
+        regularHours: Math.round(regular * 100) / 100,
+        overtimeHours: Math.round(overtime * 100) / 100,
+        lunchMinutes,
+        jobName: (row.job_name as string | null) ?? "—",
+        jobId: (row.job_id as string | null) ?? null,
+        punchInAt: row.punch_in_at as string,
+        punchOutAt: now,
+        logDate: formatDateYmd(new Date(nowMs)),
+        checkIn: toHhMmLocal(row.punch_in_at as string),
+        checkOut: toHhMmLocal(now),
+      },
+    });
   }
-  return NextResponse.json({ ok: true, onLunch: nextLunch });
+
+  return NextResponse.json({ error: "Unhandled." }, { status: 500 });
 }

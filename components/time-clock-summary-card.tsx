@@ -2,20 +2,28 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import {
+  formatWorkedHrsMins,
+  workedMsFromPunch,
+} from "@/lib/time-punch-worked";
 
 type ActiveSession = {
   job_id: string | null;
   job_name: string | null;
-  clock_in_at: string;
+  punch_in_at: string;
   on_lunch: boolean;
+  lunch_start_at: string | null;
+  total_lunch_ms: number;
 };
 
 type TeamRow = {
   id: string;
   fullName: string;
   jobName: string | null;
-  clockInAt: string;
+  punchInAt: string;
   onLunch: boolean;
+  totalLunchMs: number;
+  lunchStartAt: string | null;
 };
 
 type TimeClockPayload = {
@@ -27,15 +35,6 @@ type TimeClockPayload = {
   jobs: { id: string; job_name: string; job_number: string }[];
 };
 
-function formatElapsed(iso: string): string {
-  const start = new Date(iso).getTime();
-  if (Number.isNaN(start)) return "0 hrs 0 min";
-  const mins = Math.max(0, Math.floor((Date.now() - start) / 60000));
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return `${h} hrs ${m} min`;
-}
-
 function formatTimeIn(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
@@ -43,6 +42,20 @@ function formatTimeIn(iso: string): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function teamWorkedLabel(row: TeamRow): string {
+  return formatWorkedHrsMins(
+    workedMsFromPunch(
+      {
+        punch_in_at: row.punchInAt,
+        on_lunch: row.onLunch,
+        lunch_start_at: row.lunchStartAt,
+        total_lunch_ms: row.totalLunchMs,
+      },
+      Date.now(),
+    ),
+  );
 }
 
 export function TimeClockSummaryCard({
@@ -53,6 +66,10 @@ export function TimeClockSummaryCard({
   const [data, setData] = useState<TimeClockPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [jobId, setJobId] = useState("");
+  const [tick, setTick] = useState(0);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quickBusy, setQuickBusy] = useState(false);
+  const [quickErr, setQuickErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -80,6 +97,12 @@ export function TimeClockSummaryCard({
   }, [load]);
 
   useEffect(() => {
+    if (!data?.activeSession) return;
+    const id = window.setInterval(() => setTick((t) => t + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [data?.activeSession?.punch_in_at]);
+
+  useEffect(() => {
     if (data?.jobs?.length && !jobId) {
       setJobId(data.jobs[0]!.id);
     }
@@ -95,11 +118,43 @@ export function TimeClockSummaryCard({
   const fg =
     surface === "marketing" ? "text-white" : "text-[var(--foreground)]";
 
+  const quickPunchIn = async () => {
+    if (!jobId) {
+      setQuickErr("Choose a job.");
+      return;
+    }
+    setQuickBusy(true);
+    setQuickErr(null);
+    try {
+      const r = await fetch("/api/time-clock", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "punch_in", jobId }),
+      });
+      const j = (await r.json()) as { error?: string };
+      if (!r.ok) {
+        setQuickErr(j.error ?? "Punch in failed.");
+        return;
+      }
+      setQuickOpen(false);
+      void load();
+    } catch {
+      setQuickErr("Punch in failed.");
+    } finally {
+      setQuickBusy(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className={shell} aria-busy="true">
-        <div className={`h-5 w-40 animate-pulse rounded ${surface === "marketing" ? "bg-white/10" : "bg-[var(--surface-elevated)]"}`} />
-        <div className={`mt-3 h-24 animate-pulse rounded-lg ${surface === "marketing" ? "bg-white/10" : "bg-[var(--surface-elevated)]"}`} />
+        <div
+          className={`h-5 w-40 animate-pulse rounded ${surface === "marketing" ? "bg-white/10" : "bg-[var(--surface-elevated)]"}`}
+        />
+        <div
+          className={`mt-3 h-24 animate-pulse rounded-lg ${surface === "marketing" ? "bg-white/10" : "bg-[var(--surface-elevated)]"}`}
+        />
       </div>
     );
   }
@@ -110,10 +165,27 @@ export function TimeClockSummaryCard({
     data;
   const isAdmin = role === "admin" || role === "super_admin";
 
+  const selectCls =
+    surface === "marketing"
+      ? "mt-1 w-full rounded-lg border border-white/15 bg-[#0a1628] px-2 py-2 text-sm text-white"
+      : "mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-2 text-sm text-[var(--foreground)]";
+
   if (showPunchInterface) {
-    const fieldHref = jobId
-      ? `/field?jobId=${encodeURIComponent(jobId)}`
-      : "/field";
+    const workedLive =
+      activeSession &&
+      formatWorkedHrsMins(
+        workedMsFromPunch(
+          {
+            punch_in_at: activeSession.punch_in_at,
+            on_lunch: activeSession.on_lunch,
+            lunch_start_at: activeSession.lunch_start_at,
+            total_lunch_ms: activeSession.total_lunch_ms,
+          },
+          Date.now(),
+        ),
+      );
+    void tick;
+
     return (
       <div className={shell}>
         <h2 className={`text-base font-semibold ${fg}`}>⏱ Time Clock</h2>
@@ -125,11 +197,7 @@ export function TimeClockSummaryCard({
               <select
                 value={jobId}
                 onChange={(e) => setJobId(e.target.value)}
-                className={
-                  surface === "marketing"
-                    ? "mt-1 w-full rounded-lg border border-white/15 bg-[#0a1628] px-2 py-2 text-sm text-white"
-                    : "mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-2 py-2 text-sm text-[var(--foreground)]"
-                }
+                className={selectCls}
               >
                 {jobs.length === 0 ? (
                   <option value="">No jobs</option>
@@ -143,17 +211,27 @@ export function TimeClockSummaryCard({
                 )}
               </select>
             </label>
-            <Link
-              href={fieldHref}
+            <button
+              type="button"
+              onClick={() => {
+                setQuickErr(null);
+                setQuickOpen(true);
+              }}
               className="mt-4 flex h-12 w-full items-center justify-center rounded-lg bg-emerald-600 text-center text-base font-bold text-white shadow-sm transition-colors hover:bg-emerald-500"
             >
               PUNCH IN
+            </button>
+            <Link
+              href="/field"
+              className={`mt-2 block text-center text-xs font-medium text-[#E8C84A] hover:underline`}
+            >
+              Open full time clock
             </Link>
           </>
         ) : (
           <>
             <p className={`mt-2 text-sm ${muted}`}>
-              On the clock: {formatElapsed(activeSession.clock_in_at)}
+              On the clock: {workedLive}
             </p>
             <p className={`mt-1 text-sm font-medium ${fg}`}>
               {activeSession.job_name?.trim() || "—"}
@@ -169,17 +247,93 @@ export function TimeClockSummaryCard({
                 href="/field"
                 className="flex h-11 flex-1 items-center justify-center rounded-lg bg-amber-500 text-center text-sm font-bold text-amber-950 shadow-sm transition-colors hover:bg-amber-400"
               >
-                Lunch
+                Lunch / field
               </Link>
             </div>
           </>
         )}
+
+        {quickOpen ? (
+          <div
+            className="fixed inset-0 z-[300] flex items-end justify-center bg-black/70 p-4 sm:items-center"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="quick-punch-title"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setQuickOpen(false);
+            }}
+          >
+            <div
+              className={`w-full max-w-md rounded-2xl border p-5 shadow-xl ${
+                surface === "marketing"
+                  ? "border-white/15 bg-[#0a1628] text-white"
+                  : "border-[var(--border)] bg-[var(--surface-card)] text-[var(--foreground)]"
+              }`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3
+                id="quick-punch-title"
+                className="text-lg font-semibold"
+              >
+                Punch in
+              </h3>
+              <label className={`mt-4 block text-sm ${muted}`}>
+                Job
+                <select
+                  value={jobId}
+                  onChange={(e) => setJobId(e.target.value)}
+                  disabled={quickBusy}
+                  className={selectCls}
+                >
+                  {jobs.length === 0 ? (
+                    <option value="">No jobs</option>
+                  ) : (
+                    jobs.map((j) => (
+                      <option key={j.id} value={j.id}>
+                        {(j.job_number ? `${j.job_number} · ` : "") +
+                          (j.job_name || "Job")}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </label>
+              {quickErr ? (
+                <p className="mt-2 text-sm text-amber-600 dark:text-amber-200">
+                  {quickErr}
+                </p>
+              ) : null}
+              <div className="mt-5 flex gap-2">
+                <button
+                  type="button"
+                  disabled={quickBusy}
+                  onClick={() => setQuickOpen(false)}
+                  className={`flex-1 rounded-lg border py-2.5 text-sm font-medium disabled:opacity-40 ${
+                    surface === "marketing"
+                      ? "border-white/25 text-white hover:bg-white/10"
+                      : "btn-secondary btn-h-11"
+                  }`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={quickBusy || !jobId}
+                  onClick={() => void quickPunchIn()}
+                  className="btn-h-11 flex-1 rounded-lg bg-emerald-600 font-bold text-white hover:bg-emerald-500 disabled:opacity-40"
+                >
+                  {quickBusy ? "…" : "Punch In"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     );
   }
 
   if (isAdmin && teamActive) {
     const n = teamActive.length;
+    void tick;
     return (
       <div className={shell}>
         <h2 className={`text-base font-semibold ${fg}`}>⏱ Team Clock</h2>
@@ -190,11 +344,13 @@ export function TimeClockSummaryCard({
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[280px] border-collapse text-left text-xs">
               <thead>
-                <tr className={`border-b ${surface === "marketing" ? "border-white/15" : "border-[var(--border)]"}`}>
+                <tr
+                  className={`border-b ${surface === "marketing" ? "border-white/15" : "border-[var(--border)]"}`}
+                >
                   <th className={`py-2 pr-2 font-semibold ${muted}`}>Name</th>
                   <th className={`py-2 pr-2 font-semibold ${muted}`}>Job</th>
                   <th className={`py-2 pr-2 font-semibold ${muted}`}>In</th>
-                  <th className={`py-2 font-semibold ${muted}`}>Hrs</th>
+                  <th className={`py-2 font-semibold ${muted}`}>Worked</th>
                 </tr>
               </thead>
               <tbody>
@@ -208,10 +364,10 @@ export function TimeClockSummaryCard({
                       {row.jobName ?? "—"}
                     </td>
                     <td className={`py-2 pr-2 tabular-nums ${fg}`}>
-                      {formatTimeIn(row.clockInAt)}
+                      {formatTimeIn(row.punchInAt)}
                     </td>
                     <td className={`py-2 tabular-nums ${fg}`}>
-                      {formatElapsed(row.clockInAt)}
+                      {teamWorkedLabel(row)}
                     </td>
                   </tr>
                 ))}

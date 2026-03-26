@@ -58,6 +58,9 @@ export function DailyLogsNewClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preJobId = searchParams.get("jobId")?.trim() || "";
+  const preLogDate = searchParams.get("logDate")?.trim() || "";
+  const preCheckIn = searchParams.get("checkIn")?.trim() || "";
+  const preCheckOut = searchParams.get("checkOut")?.trim() || "";
   const { showToast } = useAppToast();
 
   const [jobs, setJobs] = useState<JobOption[]>([]);
@@ -65,6 +68,9 @@ export function DailyLogsNewClient() {
   const [form, setForm] = useState<DailyLogInsert>(() => ({
     ...emptyForm,
     job_id: preJobId || null,
+    log_date: preLogDate || emptyForm.log_date,
+    check_in: preCheckIn ? toTimeDb(preCheckIn) : null,
+    check_out: preCheckOut ? toTimeDb(preCheckOut) : null,
   }));
   const [saving, setSaving] = useState(false);
 

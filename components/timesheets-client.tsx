@@ -46,9 +46,18 @@ function statusBadge(status: string) {
 
 type JobOpt = { id: string; job_name: string; job_number: string };
 
+type TodayPunchRow = {
+  id: string;
+  employeeName: string;
+  jobName: string;
+  punchInLabel: string;
+  hoursSoFarLabel: string;
+  status: "working" | "lunch";
+};
+
 export function TimesheetsClient() {
   const { showToast } = useAppToast();
-  const { profile, canManageTeamTime } = useUserRole();
+  const { profile, canManageTeamTime, role } = useUserRole();
   const [anchor, setAnchor] = useState(() => startOfWeekMonday(new Date()));
   const [rangeFrom, setRangeFrom] = useState("");
   const [rangeTo, setRangeTo] = useState("");
@@ -58,6 +67,13 @@ export function TimesheetsClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [mainTab, setMainTab] = useState<"week" | "today">("week");
+  const [todayRows, setTodayRows] = useState<TodayPunchRow[]>([]);
+  const [todayLoading, setTodayLoading] = useState(false);
+  const [todayError, setTodayError] = useState<string | null>(null);
+
+  const showTodayPunchesTab =
+    role === "super_admin" || role === "admin" || role === "office_manager";
 
   const weekStartStr = useMemo(() => toIsoDate(anchor), [anchor]);
   const weekEndStr = useMemo(
@@ -121,6 +137,39 @@ export function TimesheetsClient() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const loadTodayPunches = useCallback(async () => {
+    setTodayLoading(true);
+    setTodayError(null);
+    try {
+      const r = await fetch("/api/time-clock/today", { credentials: "include" });
+      const j = (await r.json()) as {
+        punches?: TodayPunchRow[];
+        error?: string;
+      };
+      if (!r.ok) {
+        setTodayError(j.error ?? "Could not load today’s punches.");
+        setTodayRows([]);
+        return;
+      }
+      setTodayRows(j.punches ?? []);
+    } catch {
+      setTodayError("Could not load today’s punches.");
+      setTodayRows([]);
+    } finally {
+      setTodayLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (mainTab === "today" && showTodayPunchesTab) void loadTodayPunches();
+  }, [mainTab, showTodayPunchesTab, loadTodayPunches]);
+
+  useEffect(() => {
+    if (mainTab !== "today" || !showTodayPunchesTab) return;
+    const id = window.setInterval(() => void loadTodayPunches(), 45000);
+    return () => window.clearInterval(id);
+  }, [mainTab, showTodayPunchesTab, loadTodayPunches]);
 
   const employees = useMemo(() => {
     const s = new Set<string>();
@@ -319,9 +368,111 @@ export function TimesheetsClient() {
             Weekly view with entries from daily logs. Managers can edit, approve,
             or add manual rows.
           </p>
+          {showTodayPunchesTab ? (
+            <div className="mt-4 flex flex-wrap gap-2 border-b border-white/10 pb-1">
+              <button
+                type="button"
+                onClick={() => setMainTab("week")}
+                className={[
+                  "rounded-t-lg px-4 py-2 text-sm font-semibold transition-colors",
+                  mainTab === "week"
+                    ? "bg-[#E8C84A]/20 text-[#E8C84A]"
+                    : "text-white/55 hover:bg-white/5 hover:text-white/85",
+                ].join(" ")}
+              >
+                Weekly timesheets
+              </button>
+              <button
+                type="button"
+                onClick={() => setMainTab("today")}
+                className={[
+                  "rounded-t-lg px-4 py-2 text-sm font-semibold transition-colors",
+                  mainTab === "today"
+                    ? "bg-[#E8C84A]/20 text-[#E8C84A]"
+                    : "text-white/55 hover:bg-white/5 hover:text-white/85",
+                ].join(" ")}
+              >
+                Today&apos;s Punches
+              </button>
+            </div>
+          ) : null}
         </div>
 
-        {loading ? (
+        {mainTab === "today" && showTodayPunchesTab ? (
+          <section className="mt-8 print:hidden">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-white/55">
+              Active punches right now
+            </h2>
+            <p className="mt-1 text-xs text-white/40">
+              Anyone currently punched in (not including completed shifts today).
+            </p>
+            {todayLoading ? (
+              <p className="mt-4 text-sm text-white/50">Loading…</p>
+            ) : todayError ? (
+              <p className="mt-4 text-sm text-red-300" role="alert">
+                {todayError}
+              </p>
+            ) : todayRows.length === 0 ? (
+              <p className="mt-4 text-sm text-white/50">
+                No one is punched in right now.
+              </p>
+            ) : (
+              <div className="mt-4 overflow-x-auto rounded-xl border border-white/10">
+                <table className="w-full min-w-[640px] border-collapse text-left text-sm text-white/88">
+                  <thead>
+                    <tr className="border-b border-white/10 bg-white/[0.06] text-[11px] font-bold uppercase tracking-wide text-[#E8C84A]">
+                      <th className="px-3 py-3">Employee</th>
+                      <th className="px-3 py-3">Job</th>
+                      <th className="px-3 py-3">Punched in</th>
+                      <th className="px-3 py-3">Hours so far</th>
+                      <th className="px-3 py-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {todayRows.map((row) => (
+                      <tr
+                        key={row.id}
+                        className="border-b border-white/8 odd:bg-white/[0.02]"
+                      >
+                        <td className="px-3 py-3 font-medium">{row.employeeName}</td>
+                        <td className="max-w-[14rem] truncate px-3 py-3 text-white/75">
+                          {row.jobName}
+                        </td>
+                        <td className="px-3 py-3 font-mono text-xs tabular-nums">
+                          {row.punchInLabel}
+                        </td>
+                        <td className="px-3 py-3 font-mono tabular-nums text-[#E8C84A]">
+                          {row.hoursSoFarLabel}
+                        </td>
+                        <td className="px-3 py-3">
+                          <span
+                            className={
+                              row.status === "lunch"
+                                ? "rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-semibold text-amber-100"
+                                : "rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-semibold text-emerald-100"
+                            }
+                          >
+                            {row.status === "lunch" ? "Lunch" : "Working"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => void loadTodayPunches()}
+              className="btn-secondary btn-h-11 mt-4"
+            >
+              Refresh
+            </button>
+          </section>
+        ) : null}
+
+        {mainTab === "week" ? (
+          loading ? (
           <p className="mt-8 text-sm text-white/50 print:hidden">Loading…</p>
         ) : error ? (
           <p className="mt-8 text-sm text-red-300 print:hidden" role="alert">
@@ -688,7 +839,8 @@ export function TimesheetsClient() {
               }
             `}</style>
           </>
-        )}
+        )
+        ) : null}
       </main>
     </div>
   );

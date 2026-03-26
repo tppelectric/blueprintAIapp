@@ -1,5 +1,6 @@
 import {
   completedPunchWorkedMs,
+  formatWorkedMsForPunchTable,
   hoursFromMs,
   splitRegularOvertime,
   workedMsFromPunch,
@@ -26,6 +27,8 @@ export type DayPunchListItem = {
   isOpen: boolean;
   /** Cumulative net hours for the day after this row (chronological order). */
   runningTotalHours: number;
+  /** Same cumulative total as human-readable duration for the table. */
+  runningTotalLabel: string;
 };
 
 function lunchMsForRow(r: DayPunchRow, nowMs: number): number {
@@ -66,6 +69,7 @@ export function computeDayStats(rows: DayPunchRow[], nowMs: number): {
   );
 
   let cumulativeHours = 0;
+  let cumulativeMs = 0;
   const punches: DayPunchListItem[] = sorted.map((r) => {
     const lunchMs = lunchMsForRow(r, nowMs);
     totalLunchMsAgg += lunchMs;
@@ -90,6 +94,7 @@ export function computeDayStats(rows: DayPunchRow[], nowMs: number): {
     }
 
     totalWorkedMs += workedMs;
+    cumulativeMs += workedMs;
     const inMs = new Date(r.punch_in_at).getTime();
     const endMs = r.punch_out_at
       ? new Date(r.punch_out_at).getTime()
@@ -105,11 +110,12 @@ export function computeDayStats(rows: DayPunchRow[], nowMs: number): {
       timeIn: timeHm(r.punch_in_at),
       timeOut: r.punch_out_at ? timeHm(r.punch_out_at) : "—",
       hours,
-      hoursLabel: hours.toFixed(2),
+      hoursLabel: formatWorkedMsForPunchTable(workedMs),
       jobName: (r.job_name ?? "").trim() || "—",
       lunchMinutes: Math.round(lunchMs / 60000),
       isOpen: !r.punch_out_at,
       runningTotalHours: cumulativeHours,
+      runningTotalLabel: formatWorkedMsForPunchTable(cumulativeMs),
     };
   });
 

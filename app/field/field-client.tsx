@@ -5,7 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { UserRole } from "@/lib/user-roles";
 import {
-  formatWorkedHrsMins,
+  formatDecimalHoursAsReadable,
+  formatMsAsHms,
+  formatWorkedMsForPunchTable,
   workedMsFromPunch,
 } from "@/lib/time-punch-worked";
 
@@ -78,6 +80,18 @@ type DayPunchRow = {
   lunchMinutes: number;
   isOpen: boolean;
   runningTotalHours: number;
+  runningTotalLabel?: string;
+};
+
+type TeamOnSiteRow = {
+  id: string;
+  employeeId: string;
+  fullName: string;
+  jobName: string | null;
+  punchInAt: string;
+  onLunch: boolean;
+  totalLunchMs: number;
+  lunchStartAt: string | null;
 };
 
 type DayTotals = {
@@ -138,7 +152,8 @@ export function FieldClient() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
+  const [clockTick, setClockTick] = useState(0);
+  const [teamActive, setTeamActive] = useState<TeamOnSiteRow[] | null>(null);
   const [lastLunchMinutes, setLastLunchMinutes] = useState<number | null>(null);
   const [punchSummary, setPunchSummary] = useState<PunchSummary | null>(null);
   const [dayPunches, setDayPunches] = useState<DayPunchRow[] | null>(null);
@@ -158,6 +173,37 @@ export function FieldClient() {
   const [auditTo, setAuditTo] = useState(todayYmd);
   const notesBaseline = useRef("");
 
+  const ingestClockResponse = useCallback(
+    (j: {
+      role?: UserRole | null;
+      showPunchInterface?: boolean;
+      activeSession?: ActivePunch | null;
+      teamActive?: TeamOnSiteRow[] | null;
+      jobs?: JobOpt[];
+      dayPunches?: DayPunchRow[] | null;
+      dayTotals?: DayTotals | null;
+    }) => {
+      setRole((j.role ?? null) as UserRole | null);
+      setShowPunch(Boolean(j.showPunchInterface));
+      const s = j.activeSession ?? null;
+      setActiveSession(s);
+      if (s) {
+        const n = s.notes ?? "";
+        setNotes(n);
+        notesBaseline.current = n;
+      } else {
+        setNotes("");
+        notesBaseline.current = "";
+        setLastLunchMinutes(null);
+      }
+      setJobs(j.jobs ?? []);
+      setDayPunches(j.dayPunches ?? null);
+      setDayTotals(j.dayTotals ?? null);
+      setTeamActive(Array.isArray(j.teamActive) ? j.teamActive : null);
+    },
+    [],
+  );
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setMsg(null);
@@ -175,6 +221,7 @@ export function FieldClient() {
         role?: UserRole | null;
         showPunchInterface?: boolean;
         activeSession?: ActivePunch | null;
+        teamActive?: TeamOnSiteRow[] | null;
         jobs?: JobOpt[];
         dayPunches?: DayPunchRow[] | null;
         dayTotals?: DayTotals | null;
@@ -184,30 +231,35 @@ export function FieldClient() {
         setMsg(j.error ?? "Could not load time clock.");
         return;
       }
-      setRole((j.role ?? null) as UserRole | null);
-      setShowPunch(Boolean(j.showPunchInterface));
-      const s = j.activeSession ?? null;
-      setActiveSession(s);
-      if (s) {
-        const n = s.notes ?? "";
-        setNotes(n);
-        notesBaseline.current = n;
-      } else {
-        setNotes("");
-        notesBaseline.current = "";
-        setLastLunchMinutes(null);
-      }
-      setJobs(j.jobs ?? []);
-      setDayPunches(j.dayPunches ?? null);
-      setDayTotals(j.dayTotals ?? null);
+      ingestClockResponse(j);
     } catch {
       setMsg("Could not load time clock.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [ingestClockResponse]);
 
   const isCompanyAdmin = role === "admin" || role === "super_admin";
+
+  const silentRefreshTeam = useCallback(async () => {
+    if (role !== "admin" && role !== "super_admin") return;
+    try {
+      const { from, to } = localDayIsoRange();
+      const r = await fetch(
+        `/api/time-clock?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+        { credentials: "include" },
+      );
+      if (!r.ok) return;
+      const j = (await r.json()) as {
+        teamActive?: TeamOnSiteRow[] | null;
+        error?: string;
+      };
+      if (j.error) return;
+      setTeamActive(Array.isArray(j.teamActive) ? j.teamActive : null);
+    } catch {
+      /* ignore */
+    }
+  }, [role]);
 
   const loadAuditAndJobs = useCallback(async () => {
     if (!isCompanyAdmin) return;
@@ -306,10 +358,23 @@ export function FieldClient() {
   }, [refresh]);
 
   useEffect(() => {
-    if (!activeSession) return;
-    const id = window.setInterval(() => setTick((t) => t + 1), 1000);
+    if (fieldTab !== "clock" || !showPunch) return;
+    const needLiveClock =
+      activeSession != null ||
+      role === "admin" ||
+      role === "super_admin";
+    if (!needLiveClock) return;
+    const id = window.setInterval(() => setClockTick((n) => n + 1), 1000);
     return () => window.clearInterval(id);
-  }, [activeSession?.id]);
+  }, [fieldTab, showPunch, activeSession?.id, role]);
+
+  useEffect(() => {
+    if (fieldTab !== "clock" || !showPunch) return;
+    if (role !== "admin" && role !== "super_admin") return;
+    void silentRefreshTeam();
+    const id = window.setInterval(() => void silentRefreshTeam(), 30000);
+    return () => window.clearInterval(id);
+  }, [fieldTab, showPunch, role, silentRefreshTeam]);
 
   useEffect(() => {
     if (!jobs.length) return;
@@ -441,9 +506,9 @@ export function FieldClient() {
           </h1>
           <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-elevated)] p-5 text-center shadow-sm">
             <p className="text-lg font-semibold text-[#E8C84A]">
-              Total: {punchSummary.totalHours} hrs
+              Total: {formatDecimalHoursAsReadable(punchSummary.totalHours)}
               {punchSummary.overtimeHours > 0
-                ? ` (${punchSummary.overtimeHours} OT)`
+                ? ` (${formatDecimalHoursAsReadable(punchSummary.overtimeHours)} OT)`
                 : ""}
             </p>
             <p className="mt-2 text-sm text-[var(--foreground-muted)]">
@@ -495,10 +560,11 @@ export function FieldClient() {
     );
   }
 
-  const workedLabel =
+  const workedMsLive =
     activeSession && !punchSummary
-      ? formatWorkedHrsMins(
-          workedMsFromPunch(
+      ? (() => {
+          void clockTick;
+          return workedMsFromPunch(
             {
               punch_in_at: activeSession.punch_in_at,
               on_lunch: activeSession.on_lunch,
@@ -506,9 +572,11 @@ export function FieldClient() {
               total_lunch_ms: activeSession.total_lunch_ms,
             },
             Date.now(),
-          ),
-        )
-      : "";
+          );
+        })()
+      : 0;
+  const workedLabel =
+    activeSession && !punchSummary ? formatMsAsHms(workedMsLive) : "";
 
   const punchedInLabel = activeSession
     ? new Date(activeSession.punch_in_at).toLocaleTimeString("en-US", {
@@ -517,18 +585,15 @@ export function FieldClient() {
       })
     : "";
 
-  /** Recomputed every second while punched in (`tick` drives re-renders). */
-  let onLunchLiveMinutes = 0;
+  let onLunchLiveMs = 0;
   if (activeSession?.on_lunch && activeSession.lunch_start_at) {
-    void tick;
+    void clockTick;
     const ls = new Date(activeSession.lunch_start_at).getTime();
     if (!Number.isNaN(ls)) {
-      onLunchLiveMinutes = Math.max(
-        0,
-        Math.floor((Date.now() - ls) / 60000),
-      );
+      onLunchLiveMs = Math.max(0, Date.now() - ls);
     }
   }
+  const onLunchLiveLabel = formatMsAsHms(onLunchLiveMs);
 
   const auditRange = isoRangeFromYmd(auditFrom, auditTo);
   const auditExportHref =
@@ -558,7 +623,7 @@ export function FieldClient() {
             ← Dashboard
           </Link>
           <span className="sr-only tabular-nums" aria-live="polite">
-            {tick}
+            {clockTick}
           </span>
         </header>
 
@@ -609,7 +674,7 @@ export function FieldClient() {
                   <div className="flex justify-between gap-4">
                     <dt className="text-white/70">Total hours worked</dt>
                     <dd className="font-semibold tabular-nums text-[#E8C84A]">
-                      {dayTotals.totalWorkedHours.toFixed(2)} hrs
+                      {formatDecimalHoursAsReadable(dayTotals.totalWorkedHours)}
                     </dd>
                   </div>
                   <div className="flex justify-between gap-4">
@@ -621,20 +686,20 @@ export function FieldClient() {
                   <div className="flex justify-between gap-4">
                     <dt className="text-white/70">Net hours</dt>
                     <dd className="tabular-nums text-white">
-                      {dayTotals.netHours.toFixed(2)} hrs
+                      {formatDecimalHoursAsReadable(dayTotals.netHours)}
                     </dd>
                   </div>
                   <div className="flex justify-between gap-4">
                     <dt className="text-white/50">On-site (in→out)</dt>
                     <dd className="tabular-nums text-white/80">
-                      {dayTotals.grossHours.toFixed(2)} hrs
+                      {formatDecimalHoursAsReadable(dayTotals.grossHours)}
                     </dd>
                   </div>
                   {dayTotals.overtimeHours > 0 ? (
                     <div className="flex justify-between gap-4 border-t border-white/10 pt-2">
                       <dt className="text-amber-200/90">Overtime</dt>
                       <dd className="font-medium tabular-nums text-amber-200">
-                        {dayTotals.overtimeHours.toFixed(2)} hrs
+                        {formatDecimalHoursAsReadable(dayTotals.overtimeHours)}
                       </dd>
                     </div>
                   ) : null}
@@ -679,8 +744,11 @@ export function FieldClient() {
                           <td className="max-w-[140px] truncate px-3 py-2">
                             {p.jobName}
                           </td>
-                          <td className="px-3 py-2 text-right tabular-nums text-[#E8C84A]">
-                            {p.runningTotalHours.toFixed(2)}
+                          <td className="px-3 py-2 text-right text-[#E8C84A]">
+                            {p.runningTotalLabel ??
+                              formatWorkedMsForPunchTable(
+                                Math.round(p.runningTotalHours * 3600000),
+                              )}
                           </td>
                         </tr>
                       ))}
@@ -688,8 +756,11 @@ export function FieldClient() {
                   </table>
                 </div>
                 {dayTotals ? (
-                  <p className="border-t border-white/10 bg-[#071422] px-3 py-2 text-right text-sm font-semibold tabular-nums text-[#E8C84A]">
-                    Day total: {dayTotals.runningTotalHours.toFixed(2)} hrs
+                  <p className="border-t border-white/10 bg-[#071422] px-3 py-2 text-right text-sm font-semibold text-[#E8C84A]">
+                    Day total:{" "}
+                    {formatWorkedMsForPunchTable(
+                      Math.round(dayTotals.runningTotalHours * 3600000),
+                    )}
                   </p>
                 ) : null}
               </section>
@@ -786,7 +857,7 @@ export function FieldClient() {
                 {activeSession.on_lunch ? (
                   <div className="flex flex-col gap-2">
                     <p className="text-center text-sm font-medium tabular-nums text-amber-200/95">
-                      On lunch: {onLunchLiveMinutes} min
+                      On lunch: {onLunchLiveLabel}
                     </p>
                     <button
                       type="button"
@@ -820,6 +891,58 @@ export function FieldClient() {
                 </button>
               </>
             )}
+
+            {isCompanyAdmin && teamActive && teamActive.length > 0 ? (
+              <section className="overflow-hidden rounded-2xl border border-white/15">
+                <h2 className="bg-[#071422] px-3 py-2.5 text-sm font-semibold text-white/90">
+                  Currently on site
+                </h2>
+                <ul className="divide-y divide-white/10 bg-[#060d18]">
+                  {teamActive.map((row) => {
+                    void clockTick;
+                    const workedTeam = workedMsFromPunch(
+                      {
+                        punch_in_at: row.punchInAt,
+                        on_lunch: row.onLunch,
+                        lunch_start_at: row.lunchStartAt,
+                        total_lunch_ms: row.totalLunchMs,
+                      },
+                      Date.now(),
+                    );
+                    const punchInDisplay = new Date(
+                      row.punchInAt,
+                    ).toLocaleTimeString("en-US", {
+                      hour: "numeric",
+                      minute: "2-digit",
+                    });
+                    return (
+                      <li key={row.id} className="px-3 py-3 text-sm">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="font-semibold text-white">
+                              {row.fullName}
+                            </p>
+                            <p className="text-xs text-white/60">
+                              {row.jobName?.trim() || "—"} · In {punchInDisplay}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-mono text-base font-bold tabular-nums text-[#E8C84A]">
+                              {formatMsAsHms(workedTeam)}
+                            </p>
+                            {row.onLunch ? (
+                              <p className="text-xs font-medium text-amber-200">
+                                On lunch
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            ) : null}
           </>
         ) : (
           <div className="flex flex-col gap-5">

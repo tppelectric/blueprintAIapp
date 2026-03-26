@@ -48,6 +48,8 @@ function timeHm(iso: string): string {
 
 export function computeDayStats(rows: DayPunchRow[], nowMs: number): {
   punches: DayPunchListItem[];
+  /** Sum of (punch out − punch in) wall time; open punches use now. */
+  grossHours: number;
   totalWorkedHours: number;
   totalLunchMinutes: number;
   netHours: number;
@@ -55,6 +57,7 @@ export function computeDayStats(rows: DayPunchRow[], nowMs: number): {
   runningTotalHours: number;
 } {
   let totalWorkedMs = 0;
+  let totalGrossMs = 0;
   let totalLunchMsAgg = 0;
 
   const sorted = [...rows].sort(
@@ -87,6 +90,13 @@ export function computeDayStats(rows: DayPunchRow[], nowMs: number): {
     }
 
     totalWorkedMs += workedMs;
+    const inMs = new Date(r.punch_in_at).getTime();
+    const endMs = r.punch_out_at
+      ? new Date(r.punch_out_at).getTime()
+      : nowMs;
+    if (!Number.isNaN(inMs) && !Number.isNaN(endMs) && endMs > inMs) {
+      totalGrossMs += endMs - inMs;
+    }
     const hours = hoursFromMs(workedMs);
     cumulativeHours = Math.round((cumulativeHours + hours) * 100) / 100;
 
@@ -103,6 +113,7 @@ export function computeDayStats(rows: DayPunchRow[], nowMs: number): {
     };
   });
 
+  const grossHours = Math.round((totalGrossMs / 3600000) * 100) / 100;
   const totalWorkedHours = Math.round((totalWorkedMs / 3600000) * 100) / 100;
   const totalLunchMinutes = Math.round(totalLunchMsAgg / 60000);
   const netHours = totalWorkedHours;
@@ -112,6 +123,7 @@ export function computeDayStats(rows: DayPunchRow[], nowMs: number): {
 
   return {
     punches,
+    grossHours,
     totalWorkedHours,
     totalLunchMinutes,
     netHours,

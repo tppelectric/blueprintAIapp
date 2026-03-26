@@ -3,10 +3,57 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { UserRole } from "@/lib/user-roles";
 import {
   formatWorkedHrsMins,
   workedMsFromPunch,
 } from "@/lib/time-punch-worked";
+
+function formatYmd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function localDayIsoRange(): { from: string; to: string } {
+  const d = new Date();
+  const start = new Date(
+    d.getFullYear(),
+    d.getMonth(),
+    d.getDate(),
+    0,
+    0,
+    0,
+    0,
+  );
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { from: start.toISOString(), to: end.toISOString() };
+}
+
+function isoRangeFromYmd(startYmd: string, endYmdInclusive: string): {
+  from: string;
+  to: string;
+} | null {
+  const p1 = startYmd.split("-").map(Number);
+  const p2 = endYmdInclusive.split("-").map(Number);
+  if (p1.length !== 3 || p2.length !== 3) return null;
+  const [y1, m1, d1] = p1;
+  const [y2, m2, d2] = p2;
+  if (
+    [y1, m1, d1, y2, m2, d2].some(
+      (n) => typeof n !== "number" || Number.isNaN(n),
+    )
+  ) {
+    return null;
+  }
+  const from = new Date(y1!, m1! - 1, d1!, 0, 0, 0, 0);
+  const endExclusive = new Date(y2!, m2! - 1, d2!, 0, 0, 0, 0);
+  endExclusive.setDate(endExclusive.getDate() + 1);
+  if (endExclusive.getTime() <= from.getTime()) return null;
+  return { from: from.toISOString(), to: endExclusive.toISOString() };
+}
 
 type ActivePunch = {
   id: string;
@@ -20,6 +67,49 @@ type ActivePunch = {
 };
 
 type JobOpt = { id: string; job_name: string; job_number: string };
+
+type DayPunchRow = {
+  id: string;
+  timeIn: string;
+  timeOut: string;
+  hours: number;
+  hoursLabel: string;
+  jobName: string;
+  lunchMinutes: number;
+  isOpen: boolean;
+  runningTotalHours: number;
+};
+
+type DayTotals = {
+  grossHours: number;
+  totalWorkedHours: number;
+  totalLunchMinutes: number;
+  netHours: number;
+  overtimeHours: number;
+  runningTotalHours: number;
+};
+
+type AuditPunch = {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  jobName: string;
+  punchInAt: string;
+  punchOutAt: string | null;
+  workedHours: number;
+  lunchMinutes: number;
+  approvalStatus: string | null;
+  discrepancyFlag: boolean;
+  discrepancyNote: string | null;
+  isOpen: boolean;
+};
+
+type JobSummaryRow = {
+  jobId: string | null;
+  jobName: string;
+  hoursInRange: number;
+  currentlyOnSite: { employeeId: string; name: string }[];
+};
 
 type PunchSummary = {
   totalHours: number;
@@ -38,6 +128,8 @@ export function FieldClient() {
   const searchParams = useSearchParams();
   const qpJob = searchParams.get("jobId")?.trim() ?? "";
 
+  const [role, setRole] = useState<UserRole | null>(null);
+  const [fieldTab, setFieldTab] = useState<"clock" | "audit">("clock");
   const [showPunch, setShowPunch] = useState(false);
   const [activeSession, setActiveSession] = useState<ActivePunch | null>(null);
   const [jobs, setJobs] = useState<JobOpt[]>([]);
@@ -49,27 +141,50 @@ export function FieldClient() {
   const [tick, setTick] = useState(0);
   const [lastLunchMinutes, setLastLunchMinutes] = useState<number | null>(null);
   const [punchSummary, setPunchSummary] = useState<PunchSummary | null>(null);
+  const [dayPunches, setDayPunches] = useState<DayPunchRow[] | null>(null);
+  const [dayTotals, setDayTotals] = useState<DayTotals | null>(null);
+  const [auditPunches, setAuditPunches] = useState<AuditPunch[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditMsg, setAuditMsg] = useState<string | null>(null);
+  const [auditBusyId, setAuditBusyId] = useState<string | null>(null);
+  const [jobsToday, setJobsToday] = useState<JobSummaryRow[]>([]);
+  const [jobsLoading, setJobsLoading] = useState(false);
+  const todayYmd = formatYmd(new Date());
+  const [auditFrom, setAuditFrom] = useState(() => {
+    const x = new Date();
+    x.setDate(x.getDate() - 6);
+    return formatYmd(x);
+  });
+  const [auditTo, setAuditTo] = useState(todayYmd);
   const notesBaseline = useRef("");
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setMsg(null);
     try {
-      const r = await fetch("/api/time-clock", { credentials: "include" });
+      const { from, to } = localDayIsoRange();
+      const r = await fetch(
+        `/api/time-clock?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+        { credentials: "include" },
+      );
       if (r.status === 401) {
         window.location.href = "/login";
         return;
       }
       const j = (await r.json()) as {
+        role?: UserRole | null;
         showPunchInterface?: boolean;
         activeSession?: ActivePunch | null;
         jobs?: JobOpt[];
+        dayPunches?: DayPunchRow[] | null;
+        dayTotals?: DayTotals | null;
         error?: string;
       };
       if (!r.ok || j.error) {
         setMsg(j.error ?? "Could not load time clock.");
         return;
       }
+      setRole((j.role ?? null) as UserRole | null);
       setShowPunch(Boolean(j.showPunchInterface));
       const s = j.activeSession ?? null;
       setActiveSession(s);
@@ -83,12 +198,108 @@ export function FieldClient() {
         setLastLunchMinutes(null);
       }
       setJobs(j.jobs ?? []);
+      setDayPunches(j.dayPunches ?? null);
+      setDayTotals(j.dayTotals ?? null);
     } catch {
       setMsg("Could not load time clock.");
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const isCompanyAdmin = role === "admin" || role === "super_admin";
+
+  const loadAuditAndJobs = useCallback(async () => {
+    if (!isCompanyAdmin) return;
+    const range = isoRangeFromYmd(auditFrom, auditTo);
+    if (!range) {
+      setAuditMsg("Invalid date range.");
+      return;
+    }
+    setAuditMsg(null);
+    setAuditLoading(true);
+    setJobsLoading(true);
+    try {
+      const q = `from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`;
+      const [ra, rj] = await Promise.all([
+        fetch(`/api/time-clock/audit?${q}`, { credentials: "include" }),
+        fetch(
+          `/api/time-clock/jobs-summary?${q}`,
+          { credentials: "include" },
+        ),
+      ]);
+      if (ra.status === 403) {
+        setAuditMsg("You do not have access to audit.");
+        setAuditPunches([]);
+        setJobsToday([]);
+        return;
+      }
+      const ja = (await ra.json()) as {
+        punches?: AuditPunch[];
+        error?: string;
+      };
+      const jj = (await rj.json()) as {
+        jobs?: JobSummaryRow[];
+        error?: string;
+      };
+      if (!ra.ok) {
+        setAuditMsg(ja.error ?? "Could not load audit.");
+        setAuditPunches([]);
+      } else {
+        setAuditPunches(ja.punches ?? []);
+      }
+      if (!rj.ok) {
+        setJobsToday([]);
+      } else {
+        setJobsToday(jj.jobs ?? []);
+      }
+    } catch {
+      setAuditMsg("Could not load audit.");
+      setAuditPunches([]);
+      setJobsToday([]);
+    } finally {
+      setAuditLoading(false);
+      setJobsLoading(false);
+    }
+  }, [auditFrom, auditTo, isCompanyAdmin]);
+
+  useEffect(() => {
+    if (fieldTab !== "audit" || !isCompanyAdmin) return;
+    void loadAuditAndJobs();
+  }, [fieldTab, isCompanyAdmin, loadAuditAndJobs]);
+
+  const patchAudit = useCallback(
+    async (
+      punchId: string,
+      patch: {
+        approvalStatus?: "pending" | "approved" | "rejected";
+        discrepancyFlag?: boolean;
+        discrepancyNote?: string | null;
+      },
+    ) => {
+      setAuditBusyId(punchId);
+      setAuditMsg(null);
+      try {
+        const r = await fetch("/api/time-clock/audit", {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ punchId, ...patch }),
+        });
+        const j = (await r.json()) as { error?: string };
+        if (!r.ok) {
+          setAuditMsg(j.error ?? "Update failed.");
+          return;
+        }
+        await loadAuditAndJobs();
+      } catch {
+        setAuditMsg("Update failed.");
+      } finally {
+        setAuditBusyId(null);
+      }
+    },
+    [loadAuditAndJobs],
+  );
 
   useEffect(() => {
     void refresh();
@@ -299,9 +510,26 @@ export function FieldClient() {
       })
     : "";
 
+  const auditRange = isoRangeFromYmd(auditFrom, auditTo);
+  const auditExportHref =
+    auditRange != null
+      ? `/api/time-clock/audit?from=${encodeURIComponent(auditRange.from)}&to=${encodeURIComponent(auditRange.to)}&format=csv`
+      : null;
+
+  function formatAuditTs(iso: string): string {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+
   return (
     <div className="min-h-[100dvh] touch-manipulation bg-gradient-to-b from-[#0a1628] to-[#060d1a] px-4 pb-12 pt-4 text-white">
-      <div className="mx-auto flex max-w-md flex-col gap-6">
+      <div className="mx-auto flex max-w-2xl flex-col gap-5">
         <header className="flex items-center justify-between gap-2">
           <Link
             href="/dashboard"
@@ -323,124 +551,472 @@ export function FieldClient() {
           </p>
         ) : null}
 
-        {!activeSession ? (
-          <>
-            <div className="text-center">
-              <p className="text-sm text-white/60">Ready to start</p>
-              <p className="mt-2 text-lg font-medium tabular-nums text-white">
-                {nowLabel}
-              </p>
-            </div>
-
-            <label className="block text-sm font-medium text-white/90">
-              Job
-              <select
-                value={jobId}
-                onChange={(e) => setJobId(e.target.value)}
-                disabled={busy}
-                className="mt-2 w-full rounded-xl border border-white/20 bg-[#071422] px-4 py-3.5 text-base text-white"
-              >
-                {jobs.length === 0 ? (
-                  <option value="">No jobs</option>
-                ) : (
-                  jobs.map((j) => (
-                    <option key={j.id} value={j.id}>
-                      {(j.job_number ? `${j.job_number} · ` : "") +
-                        (j.job_name || "Job")}
-                    </option>
-                  ))
-                )}
-              </select>
-            </label>
-
-            <label className="block text-sm font-medium text-white/90">
-              Notes <span className="text-white/45">(optional)</span>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                disabled={busy}
-                rows={3}
-                placeholder="Optional note for this shift…"
-                className="mt-2 w-full resize-none rounded-xl border border-white/20 bg-[#071422] px-4 py-3 text-base text-white placeholder:text-white/35"
-              />
-            </label>
-
+        {isCompanyAdmin ? (
+          <div className="flex rounded-xl border border-white/15 bg-[#071422] p-1">
             <button
               type="button"
-              disabled={busy || !jobId}
-              onClick={() => void onPunchIn()}
-              className="flex min-h-[3.5rem] w-full items-center justify-center rounded-2xl bg-emerald-500 text-lg font-bold text-white shadow-lg shadow-emerald-900/40 active:bg-emerald-400 disabled:opacity-40"
+              onClick={() => setFieldTab("clock")}
+              className={
+                fieldTab === "clock"
+                  ? "flex-1 rounded-lg bg-[#E8C84A] py-2.5 text-sm font-bold text-[#0a1628]"
+                  : "flex-1 rounded-lg py-2.5 text-sm font-medium text-white/70"
+              }
             >
-              PUNCH IN
+              Clock
             </button>
+            <button
+              type="button"
+              onClick={() => setFieldTab("audit")}
+              className={
+                fieldTab === "audit"
+                  ? "flex-1 rounded-lg bg-[#E8C84A] py-2.5 text-sm font-bold text-[#0a1628]"
+                  : "flex-1 rounded-lg py-2.5 text-sm font-medium text-white/70"
+              }
+            >
+              Audit
+            </button>
+          </div>
+        ) : null}
+
+        {fieldTab === "clock" ? (
+          <>
+            {dayTotals ? (
+              <section className="rounded-2xl border border-white/15 bg-[#071422]/90 p-4 shadow-sm">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-white/50">
+                  Today&apos;s summary
+                </h2>
+                <dl className="mt-3 space-y-2 text-sm">
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-white/70">Total hours worked</dt>
+                    <dd className="font-semibold tabular-nums text-[#E8C84A]">
+                      {dayTotals.totalWorkedHours.toFixed(2)} hrs
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-white/70">Lunch taken</dt>
+                    <dd className="tabular-nums text-white">
+                      {dayTotals.totalLunchMinutes} min
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-white/70">Net hours</dt>
+                    <dd className="tabular-nums text-white">
+                      {dayTotals.netHours.toFixed(2)} hrs
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-white/50">On-site (in→out)</dt>
+                    <dd className="tabular-nums text-white/80">
+                      {dayTotals.grossHours.toFixed(2)} hrs
+                    </dd>
+                  </div>
+                  {dayTotals.overtimeHours > 0 ? (
+                    <div className="flex justify-between gap-4 border-t border-white/10 pt-2">
+                      <dt className="text-amber-200/90">Overtime</dt>
+                      <dd className="font-medium tabular-nums text-amber-200">
+                        {dayTotals.overtimeHours.toFixed(2)} hrs
+                      </dd>
+                    </div>
+                  ) : null}
+                </dl>
+              </section>
+            ) : null}
+
+            {dayPunches && dayPunches.length > 0 ? (
+              <section className="overflow-hidden rounded-2xl border border-white/15">
+                <h2 className="bg-[#071422] px-3 py-2.5 text-sm font-semibold text-white/90">
+                  Today&apos;s punches
+                </h2>
+                <div className="overflow-x-auto bg-[#060d18]">
+                  <table className="w-full min-w-[480px] text-left text-xs sm:text-sm">
+                    <thead>
+                      <tr className="border-b border-white/10 text-white/55">
+                        <th className="px-3 py-2 font-medium">In</th>
+                        <th className="px-3 py-2 font-medium">Out</th>
+                        <th className="px-3 py-2 font-medium">Hours</th>
+                        <th className="px-3 py-2 font-medium">Job</th>
+                        <th className="px-3 py-2 text-right font-medium">
+                          Running
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dayPunches.map((p) => (
+                        <tr
+                          key={p.id}
+                          className="border-b border-white/5 text-white/90"
+                        >
+                          <td className="px-3 py-2 tabular-nums">{p.timeIn}</td>
+                          <td className="px-3 py-2 tabular-nums">
+                            {p.timeOut}
+                            {p.isOpen ? (
+                              <span className="ml-1 text-emerald-300">●</span>
+                            ) : null}
+                          </td>
+                          <td className="px-3 py-2 tabular-nums">
+                            {p.hoursLabel}
+                          </td>
+                          <td className="max-w-[140px] truncate px-3 py-2">
+                            {p.jobName}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-[#E8C84A]">
+                            {p.runningTotalHours.toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {dayTotals ? (
+                  <p className="border-t border-white/10 bg-[#071422] px-3 py-2 text-right text-sm font-semibold tabular-nums text-[#E8C84A]">
+                    Day total: {dayTotals.runningTotalHours.toFixed(2)} hrs
+                  </p>
+                ) : null}
+              </section>
+            ) : dayPunches && dayPunches.length === 0 ? (
+              <p className="text-center text-sm text-white/45">
+                No punches yet today.
+              </p>
+            ) : null}
+
+            {!activeSession ? (
+              <>
+                <div className="text-center">
+                  <p className="text-sm text-white/60">Ready to start</p>
+                  <p className="mt-2 text-lg font-medium tabular-nums text-white">
+                    {nowLabel}
+                  </p>
+                </div>
+
+                <label className="block text-sm font-medium text-white/90">
+                  Job
+                  <select
+                    value={jobId}
+                    onChange={(e) => setJobId(e.target.value)}
+                    disabled={busy}
+                    className="mt-2 w-full rounded-xl border border-white/20 bg-[#071422] px-4 py-3.5 text-base text-white"
+                  >
+                    {jobs.length === 0 ? (
+                      <option value="">No jobs</option>
+                    ) : (
+                      jobs.map((j) => (
+                        <option key={j.id} value={j.id}>
+                          {(j.job_number ? `${j.job_number} · ` : "") +
+                            (j.job_name || "Job")}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </label>
+
+                <label className="block text-sm font-medium text-white/90">
+                  Notes <span className="text-white/45">(optional)</span>
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    disabled={busy}
+                    rows={3}
+                    placeholder="Optional note for this shift…"
+                    className="mt-2 w-full resize-none rounded-xl border border-white/20 bg-[#071422] px-4 py-3 text-base text-white placeholder:text-white/35"
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  disabled={busy || !jobId}
+                  onClick={() => void onPunchIn()}
+                  className="flex min-h-[3.5rem] w-full items-center justify-center rounded-2xl bg-emerald-500 text-lg font-bold text-white shadow-lg shadow-emerald-900/40 active:bg-emerald-400 disabled:opacity-40"
+                >
+                  PUNCH IN
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="rounded-2xl border border-emerald-500/40 bg-emerald-950/40 px-4 py-4 text-center">
+                  <p className="text-lg font-bold tracking-wide text-emerald-200">
+                    ON THE CLOCK ✅
+                  </p>
+                  <p className="mt-2 text-xl font-semibold text-white">
+                    {activeSession.job_name?.trim() || "—"}
+                  </p>
+                  <p className="mt-2 text-sm text-white/70">
+                    Punched in at: {punchedInLabel}
+                  </p>
+                  <p className="mt-3 text-2xl font-bold tabular-nums text-[#E8C84A]">
+                    {workedLabel}
+                  </p>
+                  {activeSession.on_lunch ? (
+                    <p className="mt-2 text-sm font-medium text-amber-200">
+                      On lunch — timer paused
+                    </p>
+                  ) : null}
+                  {lastLunchMinutes != null && !activeSession.on_lunch ? (
+                    <p className="mt-2 text-sm text-white/60">
+                      Last lunch: {lastLunchMinutes} min
+                    </p>
+                  ) : null}
+                </div>
+
+                <label className="block text-sm font-medium text-white/90">
+                  Notes
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    disabled={busy}
+                    rows={3}
+                    className="mt-2 w-full resize-none rounded-xl border border-white/20 bg-[#071422] px-4 py-3 text-base text-white"
+                  />
+                </label>
+
+                {activeSession.on_lunch ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void onEndLunch()}
+                    className="flex min-h-[3.5rem] w-full items-center justify-center rounded-2xl bg-emerald-500 text-lg font-bold text-white shadow-lg active:bg-emerald-400 disabled:opacity-40"
+                  >
+                    END LUNCH
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void onStartLunch()}
+                    className="flex min-h-[3.5rem] w-full items-center justify-center rounded-2xl bg-amber-400 text-lg font-bold text-amber-950 shadow-lg active:bg-amber-300 disabled:opacity-40"
+                  >
+                    START LUNCH
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void onPunchOut()}
+                  className="flex min-h-[3.5rem] w-full items-center justify-center rounded-2xl bg-red-600 text-lg font-bold text-white shadow-lg active:bg-red-500 disabled:opacity-40"
+                >
+                  PUNCH OUT
+                </button>
+              </>
+            )}
           </>
         ) : (
-          <>
-            <div className="rounded-2xl border border-emerald-500/40 bg-emerald-950/40 px-4 py-4 text-center">
-              <p className="text-lg font-bold tracking-wide text-emerald-200">
-                ON THE CLOCK ✅
-              </p>
-              <p className="mt-2 text-xl font-semibold text-white">
-                {activeSession.job_name?.trim() || "—"}
-              </p>
-              <p className="mt-2 text-sm text-white/70">
-                Punched in at: {punchedInLabel}
-              </p>
-              <p className="mt-3 text-2xl font-bold tabular-nums text-[#E8C84A]">
-                {workedLabel}
-              </p>
-              {activeSession.on_lunch ? (
-                <p className="mt-2 text-sm font-medium text-amber-200">
-                  On lunch — timer paused
-                </p>
-              ) : null}
-              {lastLunchMinutes != null && !activeSession.on_lunch ? (
-                <p className="mt-2 text-sm text-white/60">
-                  Last lunch: {lastLunchMinutes} min
-                </p>
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-3 rounded-2xl border border-white/15 bg-[#071422]/90 p-4 sm:flex-row sm:flex-wrap sm:items-end">
+              <label className="block text-xs font-medium text-white/70">
+                From
+                <input
+                  type="date"
+                  value={auditFrom}
+                  onChange={(e) => setAuditFrom(e.target.value)}
+                  className="mt-1 block w-full rounded-lg border border-white/20 bg-[#060d18] px-3 py-2 text-sm text-white"
+                />
+              </label>
+              <label className="block text-xs font-medium text-white/70">
+                To
+                <input
+                  type="date"
+                  value={auditTo}
+                  onChange={(e) => setAuditTo(e.target.value)}
+                  className="mt-1 block w-full rounded-lg border border-white/20 bg-[#060d18] px-3 py-2 text-sm text-white"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={auditLoading}
+                onClick={() => void loadAuditAndJobs()}
+                className="rounded-lg bg-white/10 px-4 py-2 text-sm font-semibold text-white active:bg-white/20 disabled:opacity-50"
+              >
+                {auditLoading ? "Loading…" : "Refresh"}
+              </button>
+              {auditExportHref ? (
+                <a
+                  href={auditExportHref}
+                  className="inline-flex items-center justify-center rounded-lg bg-[#E8C84A] px-4 py-2 text-sm font-bold text-[#0a1628] active:opacity-90"
+                >
+                  Export payroll (CSV)
+                </a>
               ) : null}
             </div>
 
-            <label className="block text-sm font-medium text-white/90">
-              Notes
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                disabled={busy}
-                rows={3}
-                className="mt-2 w-full resize-none rounded-xl border border-white/20 bg-[#071422] px-4 py-3 text-base text-white"
-              />
-            </label>
-
-            {activeSession.on_lunch ? (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void onEndLunch()}
-                className="flex min-h-[3.5rem] w-full items-center justify-center rounded-2xl bg-emerald-500 text-lg font-bold text-white shadow-lg active:bg-emerald-400 disabled:opacity-40"
+            {auditMsg ? (
+              <p
+                className="rounded-lg bg-amber-500/15 px-3 py-2 text-sm text-amber-100"
+                role="alert"
               >
-                END LUNCH
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void onStartLunch()}
-                className="flex min-h-[3.5rem] w-full items-center justify-center rounded-2xl bg-amber-400 text-lg font-bold text-amber-950 shadow-lg active:bg-amber-300 disabled:opacity-40"
-              >
-                START LUNCH
-              </button>
-            )}
+                {auditMsg}
+              </p>
+            ) : null}
 
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void onPunchOut()}
-              className="flex min-h-[3.5rem] w-full items-center justify-center rounded-2xl bg-red-600 text-lg font-bold text-white shadow-lg active:bg-red-500 disabled:opacity-40"
-            >
-              PUNCH OUT
-            </button>
-          </>
+            <section className="overflow-hidden rounded-2xl border border-white/15">
+              <h2 className="bg-[#071422] px-3 py-2.5 text-sm font-semibold">
+                Active jobs ({auditFrom} → {auditTo})
+              </h2>
+              {jobsLoading ? (
+                <p className="px-3 py-4 text-sm text-white/50">Loading…</p>
+              ) : jobsToday.length === 0 ? (
+                <p className="px-3 py-4 text-sm text-white/50">
+                  No job activity in this range.
+                </p>
+              ) : (
+                <ul className="divide-y divide-white/10 bg-[#060d18]">
+                  {jobsToday.map((j, idx) => (
+                    <li
+                      key={`${j.jobId ?? "no-id"}-${j.jobName}-${idx}`}
+                      className="px-3 py-3"
+                    >
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <span className="font-medium text-white">
+                          {j.jobName}
+                        </span>
+                        <span className="tabular-nums text-[#E8C84A]">
+                          {j.hoursInRange.toFixed(2)} hrs
+                        </span>
+                      </div>
+                      {j.currentlyOnSite.length > 0 ? (
+                        <p className="mt-1 text-xs text-emerald-200/90">
+                          On site:{" "}
+                          {j.currentlyOnSite.map((w) => w.name).join(", ")}
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs text-white/40">
+                          No open punches on this job.
+                        </p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <section className="overflow-hidden rounded-2xl border border-white/15">
+              <h2 className="bg-[#071422] px-3 py-2.5 text-sm font-semibold">
+                Punch audit
+              </h2>
+              {auditLoading ? (
+                <p className="px-3 py-4 text-sm text-white/50">Loading…</p>
+              ) : auditPunches.length === 0 ? (
+                <p className="px-3 py-4 text-sm text-white/50">
+                  No punches in range.
+                </p>
+              ) : (
+                <div className="max-h-[70vh] overflow-y-auto bg-[#060d18]">
+                  <ul className="divide-y divide-white/10">
+                    {auditPunches.map((p) => {
+                      const busy = auditBusyId === p.id;
+                      return (
+                        <li key={p.id} className="px-3 py-3 text-sm">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="font-medium text-white">
+                                {p.employeeName}
+                              </p>
+                              <p className="text-xs text-white/55">
+                                {formatAuditTs(p.punchInAt)}
+                                {" → "}
+                                {p.punchOutAt
+                                  ? formatAuditTs(p.punchOutAt)
+                                  : "open"}
+                              </p>
+                              <p className="mt-1 text-xs text-white/70">
+                                {p.jobName} · {p.workedHours} hrs · lunch{" "}
+                                {p.lunchMinutes}m
+                              </p>
+                            </div>
+                            <span
+                              className={
+                                p.approvalStatus === "approved"
+                                  ? "text-emerald-300"
+                                  : p.approvalStatus === "rejected"
+                                    ? "text-red-300"
+                                    : "text-amber-200/90"
+                              }
+                            >
+                              {p.isOpen
+                                ? "Open"
+                                : (p.approvalStatus ?? "pending")}
+                            </span>
+                          </div>
+                          {p.discrepancyFlag || p.discrepancyNote ? (
+                            <p className="mt-2 rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-100">
+                              {p.discrepancyNote?.trim() || "Flagged"}
+                            </p>
+                          ) : null}
+                          {!p.isOpen ? (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() =>
+                                  void patchAudit(p.id, {
+                                    approvalStatus: "approved",
+                                  })
+                                }
+                                className="rounded-md bg-emerald-600/80 px-2 py-1 text-xs font-semibold disabled:opacity-40"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() =>
+                                  void patchAudit(p.id, {
+                                    approvalStatus: "rejected",
+                                  })
+                                }
+                                className="rounded-md bg-red-600/70 px-2 py-1 text-xs font-semibold disabled:opacity-40"
+                              >
+                                Reject
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() =>
+                                  void patchAudit(p.id, {
+                                    approvalStatus: "pending",
+                                  })
+                                }
+                                className="rounded-md bg-white/10 px-2 py-1 text-xs font-semibold disabled:opacity-40"
+                              >
+                                Pending
+                              </button>
+                            </div>
+                          ) : null}
+                          <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-white/80">
+                            <input
+                              type="checkbox"
+                              checked={p.discrepancyFlag}
+                              disabled={busy}
+                              onChange={(e) =>
+                                void patchAudit(p.id, {
+                                  discrepancyFlag: e.target.checked,
+                                })
+                              }
+                            />
+                            Flag discrepancy
+                          </label>
+                          <input
+                            key={`dn-${p.id}-${p.discrepancyNote ?? ""}`}
+                            type="text"
+                            disabled={busy}
+                            placeholder="Discrepancy note (save on blur)"
+                            defaultValue={p.discrepancyNote ?? ""}
+                            onBlur={(e) => {
+                              const v = e.target.value.trim();
+                              if (v === (p.discrepancyNote ?? "").trim()) return;
+                              void patchAudit(p.id, {
+                                discrepancyNote: v || null,
+                              });
+                            }}
+                            className="mt-1 w-full rounded-lg border border-white/15 bg-[#071422] px-2 py-1.5 text-xs text-white placeholder:text-white/35"
+                          />
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+            </section>
+          </div>
         )}
       </div>
     </div>

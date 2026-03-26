@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { parseUserRole, type UserRole } from "@/lib/user-roles";
 import {
+  computeDayStats,
+  type DayPunchRow,
+} from "@/lib/time-clock-day-stats";
+import {
   splitRegularOvertime,
   workedMsFromPunch,
 } from "@/lib/time-punch-worked";
@@ -63,7 +67,7 @@ function toHhMmLocal(iso: string): string {
   return `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -195,12 +199,55 @@ export async function GET() {
     .order("updated_at", { ascending: false })
     .limit(60);
 
+  let dayPunches: ReturnType<typeof computeDayStats>["punches"] | null = null;
+  let dayTotals: {
+    grossHours: number;
+    totalWorkedHours: number;
+    totalLunchMinutes: number;
+    netHours: number;
+    overtimeHours: number;
+    runningTotalHours: number;
+  } | null = null;
+
+  const url = new URL(request.url);
+  const rangeFrom = url.searchParams.get("from")?.trim();
+  const rangeTo = url.searchParams.get("to")?.trim();
+  if (showPunchInterface && rangeFrom && rangeTo) {
+    const a = new Date(rangeFrom).getTime();
+    const b = new Date(rangeTo).getTime();
+    if (!Number.isNaN(a) && !Number.isNaN(b) && b > a) {
+      const { data: dayRows, error: dayErr } = await supabase
+        .from("time_punches")
+        .select(
+          "id,punch_in_at,punch_out_at,job_name,total_lunch_ms,on_lunch,lunch_start_at",
+        )
+        .eq("employee_id", user.id)
+        .gte("punch_in_at", rangeFrom)
+        .lt("punch_in_at", rangeTo)
+        .order("punch_in_at", { ascending: false });
+      if (!dayErr && dayRows) {
+        const stats = computeDayStats(dayRows as DayPunchRow[], Date.now());
+        dayPunches = stats.punches;
+        dayTotals = {
+          grossHours: stats.grossHours,
+          totalWorkedHours: stats.totalWorkedHours,
+          totalLunchMinutes: stats.totalLunchMinutes,
+          netHours: stats.netHours,
+          overtimeHours: stats.overtimeHours,
+          runningTotalHours: stats.runningTotalHours,
+        };
+      }
+    }
+  }
+
   return NextResponse.json({
     role: role satisfies UserRole | null,
     showPunchInterface,
     activeSession,
     weekHours: Math.round(weekHours * 100) / 100,
     teamActive,
+    dayPunches,
+    dayTotals,
     jobs: (jobs ?? []).map((j) => ({
       id: j.id as string,
       job_name: (j.job_name as string | null) ?? "",
@@ -427,6 +474,9 @@ export async function POST(request: Request) {
         lunch_start_at: null,
         total_lunch_ms: totalLunchMs,
         updated_at: now,
+        approval_status: "pending",
+        approved_by: null,
+        approved_at: null,
       })
       .eq("id", row.id);
     if (upErr) {

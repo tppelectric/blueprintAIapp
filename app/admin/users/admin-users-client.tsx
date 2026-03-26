@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { DarkListSkeleton } from "@/components/app-polish";
 import { WideAppHeader } from "@/components/wide-app-header";
 import { useAppToast } from "@/components/toast-provider";
 import { useUserRole } from "@/hooks/use-user-role";
@@ -273,7 +274,9 @@ export function AdminUsersClient() {
     return (
       <div className="flex min-h-screen flex-col">
         <WideAppHeader active="jobs" showTppSubtitle />
-        <main className="p-10 text-white/60">Loading…</main>
+        <main className="app-page-shell mx-auto max-w-5xl flex-1 px-4 py-10 sm:px-6">
+          <DarkListSkeleton rows={8} />
+        </main>
       </div>
     );
   }

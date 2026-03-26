@@ -10,6 +10,7 @@ import {
   CLAUDE_OVERLOADED_USER_MESSAGE,
   withClaudeOverloadRetries,
 } from "@/lib/ai-api-retries";
+import { checkAiRouteRateLimit } from "@/lib/rate-limit";
 
 export const maxDuration = 180;
 
@@ -131,6 +132,18 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+
+  const aiRl = checkAiRouteRateLimit(request, "analyze-rooms-page");
+  if (!aiRl.allowed) {
+    return NextResponse.json(
+      { error: "Too many room scans. Try again in a minute." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(aiRl.retryAfterSeconds) },
+      },
+    );
+  }
+
   const mediaTypeRaw = body.imageMediaType?.trim().toLowerCase();
   const claudeMediaType =
     mediaTypeRaw === "image/jpeg" ? "image/jpeg" : "image/png";
@@ -252,9 +265,12 @@ export async function POST(request: Request) {
   }
 
   if (roomRows.length === 0) {
-    return NextResponse.json({
-      error: "No rooms met the confidence threshold on this page.",
-    });
+    return NextResponse.json(
+      {
+        error: "No rooms met the confidence threshold on this page.",
+      },
+      { status: 422 },
+    );
   }
 
   let supabase;

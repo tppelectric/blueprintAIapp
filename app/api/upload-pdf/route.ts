@@ -8,6 +8,8 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const BUCKET = "blueprints";
+/** Align with reference library uploads (50 MiB). */
+const MAX_UPLOAD_BYTES = 52_428_800;
 
 export async function POST(request: Request) {
   let supabase;
@@ -37,6 +39,13 @@ export async function POST(request: Request) {
 
   if (file.size <= 0) {
     return NextResponse.json({ error: "Empty file." }, { status: 400 });
+  }
+
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return NextResponse.json(
+      { error: `File too large (max ${Math.round(MAX_UPLOAD_BYTES / (1024 * 1024))} MB).` },
+      { status: 413 },
+    );
   }
 
   const type = file.type;

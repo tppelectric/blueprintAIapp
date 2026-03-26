@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { DarkListSkeleton, EmptyState } from "@/components/app-polish";
 import { WideAppHeader } from "@/components/wide-app-header";
 import { useAppToast } from "@/components/toast-provider";
 import { useUserRole } from "@/hooks/use-user-role";
@@ -69,12 +70,15 @@ export function TimeOffClient() {
       if (qe) throw qe;
       setRows((data ?? []) as TimeOffRequestRow[]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load requests.");
+      const msg =
+        e instanceof Error ? e.message : "Could not load requests.";
+      setError(msg);
       setRows([]);
+      showToast({ message: msg, variant: "error" });
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showToast]);
 
   useEffect(() => {
     void load();
@@ -307,7 +311,7 @@ export function TimeOffClient() {
         </div>
 
         {loading ? (
-          <p className="mt-8 text-sm text-white/50">Loading…</p>
+          <DarkListSkeleton className="mt-8" rows={6} />
         ) : error ? (
           <p className="mt-8 text-sm text-red-300" role="alert">
             {error}
@@ -382,7 +386,11 @@ export function TimeOffClient() {
                 </h2>
                 <div className="mt-4 space-y-3">
                   {pendingAll.length === 0 ? (
-                    <p className="text-sm text-white/45">No pending requests.</p>
+                    <EmptyState
+                      icon={<span aria-hidden>✅</span>}
+                      title="No pending requests"
+                      description="When team members submit time off, they will appear here for approval."
+                    />
                   ) : (
                     pendingAll.map((r) => <RequestCard key={r.id} r={r} />)
                   )}
@@ -396,7 +404,11 @@ export function TimeOffClient() {
               </h2>
               <div className="mt-4 space-y-3">
                 {myRequests.length === 0 ? (
-                  <p className="text-sm text-white/45">No requests yet.</p>
+                  <EmptyState
+                    icon={<span aria-hidden>🏖️</span>}
+                    title="No time off requests yet"
+                    description="Pick your dates and type above, add a short note if needed, then submit. Approved time shows on the work calendar."
+                  />
                 ) : (
                   myRequests.map((r) => <RequestCard key={r.id} r={r} />)
                 )}

@@ -2,6 +2,10 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  EmptyState,
+  TimesheetTableSkeleton,
+} from "@/components/app-polish";
 import { WideAppHeader } from "@/components/wide-app-header";
 import { useAppToast } from "@/components/toast-provider";
 import { useUserRole } from "@/hooks/use-user-role";
@@ -105,8 +109,12 @@ export function TimesheetsClient() {
       );
     } catch {
       setJobs([]);
+      showToast({
+        message: "Could not load job list for timesheets.",
+        variant: "error",
+      });
     }
-  }, []);
+  }, [showToast]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -123,12 +131,15 @@ export function TimesheetsClient() {
       if (qe) throw qe;
       setRows((data ?? []) as TimesheetRow[]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load timesheets.");
+      const msg =
+        e instanceof Error ? e.message : "Could not load timesheets.";
+      setError(msg);
       setRows([]);
+      showToast({ message: msg, variant: "error" });
     } finally {
       setLoading(false);
     }
-  }, [activeFrom, activeTo]);
+  }, [activeFrom, activeTo, showToast]);
 
   useEffect(() => {
     void loadJobs();
@@ -148,18 +159,22 @@ export function TimesheetsClient() {
         error?: string;
       };
       if (!r.ok) {
-        setTodayError(j.error ?? "Could not load today’s punches.");
+        const msg = j.error ?? "Could not load today’s punches.";
+        setTodayError(msg);
         setTodayRows([]);
+        showToast({ message: msg, variant: "error" });
         return;
       }
       setTodayRows(j.punches ?? []);
     } catch {
-      setTodayError("Could not load today’s punches.");
+      const msg = "Could not load today’s punches.";
+      setTodayError(msg);
       setTodayRows([]);
+      showToast({ message: msg, variant: "error" });
     } finally {
       setTodayLoading(false);
     }
-  }, []);
+  }, [showToast]);
 
   useEffect(() => {
     if (mainTab === "today" && showTodayPunchesTab) void loadTodayPunches();
@@ -407,15 +422,23 @@ export function TimesheetsClient() {
               Anyone currently punched in (not including completed shifts today).
             </p>
             {todayLoading ? (
-              <p className="mt-4 text-sm text-white/50">Loading…</p>
+              <div className="mt-4">
+                <TimesheetTableSkeleton />
+              </div>
             ) : todayError ? (
               <p className="mt-4 text-sm text-red-300" role="alert">
                 {todayError}
               </p>
             ) : todayRows.length === 0 ? (
-              <p className="mt-4 text-sm text-white/50">
-                No one is punched in right now.
-              </p>
+              <div className="mt-4">
+                <EmptyState
+                  icon={<span aria-hidden>🕐</span>}
+                  title="No active punches"
+                  description="Nobody is clocked in right now. When team members punch in from the field, they will appear here."
+                  actionLabel="Open field punch"
+                  actionHref="/field"
+                />
+              </div>
             ) : (
               <div className="mt-4 overflow-x-auto rounded-xl border border-white/10">
                 <table className="w-full min-w-[640px] border-collapse text-left text-sm text-white/88">
@@ -473,7 +496,9 @@ export function TimesheetsClient() {
 
         {mainTab === "week" ? (
           loading ? (
-          <p className="mt-8 text-sm text-white/50 print:hidden">Loading…</p>
+          <div className="print:hidden">
+            <TimesheetTableSkeleton />
+          </div>
         ) : error ? (
           <p className="mt-8 text-sm text-red-300 print:hidden" role="alert">
             {error}
@@ -585,13 +610,54 @@ export function TimesheetsClient() {
               ) : null}
             </section>
 
-            <section className="mt-8 print:mt-0">
+            {rows.length === 0 ? (
+              <div className="mt-8 print:hidden">
+                <EmptyState
+                  icon={<span aria-hidden>📋</span>}
+                  title="No timesheets in this range"
+                  description="There are no timesheet rows for the dates you selected. Managers can add a manual row, or entries will appear when team time is approved and synced."
+                  actionLabel={
+                    canManageTeamTime ? "Add manual row" : undefined
+                  }
+                  onAction={
+                    canManageTeamTime
+                      ? () => void addBlankRow()
+                      : undefined
+                  }
+                />
+              </div>
+            ) : null}
+
+            {rows.length > 0 && filtered.length === 0 ? (
+              <div
+                className="mt-8 rounded-xl border border-amber-500/25 bg-amber-950/20 p-5 print:hidden"
+                role="status"
+              >
+                <p className="text-sm font-medium text-amber-100">
+                  No timesheets match the employee filter.
+                </p>
+                <button
+                  type="button"
+                  className="btn-secondary btn-h-11 mt-3"
+                  onClick={() => setEmployeeFilter("")}
+                >
+                  Show all employees
+                </button>
+              </div>
+            ) : null}
+
+            <section
+              className={`mt-8 print:mt-0 ${rows.length === 0 ? "hidden print:hidden" : ""}`}
+              aria-hidden={rows.length === 0}
+            >
               <h2 className="text-sm font-bold uppercase tracking-wide text-white/55 print:text-black">
                 Weekly summary
               </h2>
               <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {summaryByEmployee.length === 0 ? (
-                  <p className="text-sm text-white/45">No rows in range.</p>
+                  <p className="text-sm text-white/45">
+                    No rows match the current filter.
+                  </p>
                 ) : (
                   summaryByEmployee.map((s) => (
                     <div
@@ -631,7 +697,8 @@ export function TimesheetsClient() {
 
             <div
               id="timesheet-print"
-              className="mt-10 overflow-x-auto rounded-xl border border-white/10 print:border-0"
+              className={`mt-10 overflow-x-auto rounded-xl border border-white/10 print:border-0 ${rows.length === 0 ? "hidden print:hidden" : ""}`}
+              aria-hidden={rows.length === 0}
             >
               <table className="min-w-full text-left text-sm text-white/85 print:text-black">
                 <thead>
@@ -651,6 +718,17 @@ export function TimesheetsClient() {
                   </tr>
                 </thead>
                 <tbody>
+                  {filtered.length === 0 && rows.length > 0 ? (
+                    <tr className="print:hidden">
+                      <td
+                        colSpan={canManageTeamTime ? 10 : 9}
+                        className="p-8 text-center text-sm text-white/50"
+                      >
+                        No rows match the employee filter — adjust the filter
+                        above.
+                      </td>
+                    </tr>
+                  ) : null}
                   {filtered.map((r) => (
                     <tr
                       key={r.id}

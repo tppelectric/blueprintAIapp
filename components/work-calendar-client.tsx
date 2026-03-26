@@ -2,7 +2,12 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  CalendarMonthSkeleton,
+  EmptyState,
+} from "@/components/app-polish";
 import { WideAppHeader } from "@/components/wide-app-header";
+import { useAppToast } from "@/components/toast-provider";
 import { useUserRole } from "@/hooks/use-user-role";
 import {
   addDays,
@@ -28,6 +33,7 @@ function empColor(name: string | null | undefined): string {
 }
 
 export function WorkCalendarClient() {
+  const { showToast } = useAppToast();
   const { canManageTeamTime } = useUserRole();
   const [view, setView] = useState<ViewMode>("month");
   const [cursor, setCursor] = useState(() => new Date());
@@ -85,12 +91,15 @@ export function WorkCalendarClient() {
         })),
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load calendar.");
+      const msg =
+        e instanceof Error ? e.message : "Could not load calendar.";
+      setError(msg);
       setRows([]);
+      showToast({ message: msg, variant: "error" });
     } finally {
       setLoading(false);
     }
-  }, [range.from, range.to]);
+  }, [range.from, range.to, showToast]);
 
   useEffect(() => {
     void load();
@@ -259,7 +268,7 @@ export function WorkCalendarClient() {
         </section>
 
         {loading ? (
-          <p className="mt-8 text-sm text-white/50">Loading…</p>
+          <CalendarMonthSkeleton />
         ) : error ? (
           <p className="mt-8 text-sm text-red-300" role="alert">
             {error}
@@ -268,6 +277,32 @@ export function WorkCalendarClient() {
             </span>
           </p>
         ) : view === "month" ? (
+          <>
+            {!loading && rows.length === 0 ? (
+              <div className="mt-6">
+                <EmptyState
+                  icon={<span aria-hidden>📅</span>}
+                  title="No calendar events yet"
+                  description="Work blocks and approved time off will appear here once daily logs and time-off requests are in the system."
+                  actionLabel="Go to time off"
+                  actionHref="/time-off"
+                />
+              </div>
+            ) : null}
+            {!loading &&
+            rows.length > 0 &&
+            filtered.length === 0 ? (
+              <div
+                className="mt-6 rounded-xl border border-amber-500/25 bg-amber-950/20 p-5"
+                role="status"
+              >
+                <p className="text-sm text-amber-100">
+                  No events match your filters for this range. Try clearing job
+                  or employee filters, or switch work / time-off toggles.
+                </p>
+              </div>
+            ) : null}
+          {rows.length > 0 ? (
           <div className="mt-6 overflow-x-auto">
             <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold uppercase text-white/45">
               {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
@@ -319,7 +354,34 @@ export function WorkCalendarClient() {
               })}
             </div>
           </div>
+          ) : null}
+          </>
         ) : view === "week" ? (
+          <>
+            {!loading && rows.length === 0 ? (
+              <div className="mt-6">
+                <EmptyState
+                  icon={<span aria-hidden>📅</span>}
+                  title="No calendar events yet"
+                  description="Work blocks and approved time off will appear here once daily logs and time-off requests are in the system."
+                  actionLabel="Go to time off"
+                  actionHref="/time-off"
+                />
+              </div>
+            ) : null}
+            {!loading &&
+            rows.length > 0 &&
+            filtered.length === 0 ? (
+              <div
+                className="mt-6 rounded-xl border border-amber-500/25 bg-amber-950/20 p-5"
+                role="status"
+              >
+                <p className="text-sm text-amber-100">
+                  No events match your filters for this week.
+                </p>
+              </div>
+            ) : null}
+          {rows.length > 0 ? (
           <div className="mt-6 grid grid-cols-1 gap-2 md:grid-cols-7">
             {eachDateInRange(range.from, range.to).map((iso) => {
               const list = byDate.get(iso) ?? [];
@@ -360,7 +422,34 @@ export function WorkCalendarClient() {
               );
             })}
           </div>
+          ) : null}
+          </>
         ) : (
+          <>
+            {!loading && rows.length === 0 ? (
+              <div className="mt-6">
+                <EmptyState
+                  icon={<span aria-hidden>📅</span>}
+                  title="No calendar events yet"
+                  description="Nothing scheduled for the team in this view yet."
+                  actionLabel="Go to time off"
+                  actionHref="/time-off"
+                />
+              </div>
+            ) : null}
+            {!loading &&
+            rows.length > 0 &&
+            filtered.length === 0 ? (
+              <div
+                className="mt-6 rounded-xl border border-amber-500/25 bg-amber-950/20 p-5"
+                role="status"
+              >
+                <p className="text-sm text-amber-100">
+                  No events match your filters for this day.
+                </p>
+              </div>
+            ) : null}
+          {rows.length > 0 ? (
           <div className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] p-4">
             <ul className="space-y-3 text-sm">
               {(byDate.get(range.from) ?? []).map((r) => (
@@ -380,6 +469,8 @@ export function WorkCalendarClient() {
               ))}
             </ul>
           </div>
+          ) : null}
+          </>
         )}
 
         {dayDetail ? (

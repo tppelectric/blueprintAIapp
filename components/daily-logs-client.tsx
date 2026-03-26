@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { DarkListSkeleton, EmptyState } from "@/components/app-polish";
 import { WideAppHeader } from "@/components/wide-app-header";
 import { useAppToast } from "@/components/toast-provider";
 import {
@@ -112,13 +113,16 @@ export function DailyLogsClient() {
         })),
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load daily logs.");
+      const msg =
+        e instanceof Error ? e.message : "Could not load daily logs.";
+      setError(msg);
       setLogs([]);
       setJobs([]);
+      showToast({ message: msg, variant: "error" });
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showToast]);
 
   useEffect(() => {
     void load();
@@ -274,7 +278,7 @@ export function DailyLogsClient() {
         </div>
 
         {loading ? (
-          <p className="mt-8 text-sm text-white/50">Loading…</p>
+          <DarkListSkeleton className="mt-8" rows={10} />
         ) : error ? (
           <p className="mt-8 text-sm text-red-300" role="alert">
             {error}
@@ -500,6 +504,29 @@ export function DailyLogsClient() {
               <h2 className="text-sm font-bold uppercase tracking-wide text-white/60">
                 All logs
               </h2>
+              {logs.length === 0 ? (
+                <div className="mt-4">
+                  <EmptyState
+                    icon={<span aria-hidden>📝</span>}
+                    title="No daily logs yet"
+                    description="Create a log from the job site or import a JobTread CSV below. Logs you add will show up in this list and on the work calendar."
+                    actionLabel="New daily log"
+                    actionHref="/jobs/daily-logs/new"
+                  />
+                </div>
+              ) : null}
+              {logs.length > 0 && filteredLogs.length === 0 ? (
+                <div
+                  className="mt-4 rounded-xl border border-amber-500/25 bg-amber-950/20 p-5"
+                  role="status"
+                >
+                  <p className="text-sm text-amber-100">
+                    No logs match your filters. Try clearing the job, date, or
+                    search filters.
+                  </p>
+                </div>
+              ) : null}
+              {logs.length > 0 ? (
               <div className="mt-4 hidden lg:block overflow-x-auto rounded-xl border border-white/10">
                 <table className="min-w-full text-left text-sm text-white/85">
                   <thead>
@@ -513,6 +540,16 @@ export function DailyLogsClient() {
                     </tr>
                   </thead>
                   <tbody>
+                    {logs.length > 0 && filteredLogs.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className="p-8 text-center text-sm text-white/45"
+                        >
+                          No logs match the current filters.
+                        </td>
+                      </tr>
+                    ) : null}
                     {filteredLogs.map((l) => {
                       const h = hoursWorked(l.check_in, l.check_out);
                       const mu = extractMaterialLines(l.materials_used);
@@ -553,7 +590,14 @@ export function DailyLogsClient() {
                   </tbody>
                 </table>
               </div>
+              ) : null}
+              {logs.length > 0 ? (
               <ul className="mt-4 space-y-3 lg:hidden">
+                {logs.length > 0 && filteredLogs.length === 0 ? (
+                  <li className="rounded-xl border border-white/10 bg-white/[0.03] p-6 text-center text-sm text-white/50">
+                    No logs match the current filters.
+                  </li>
+                ) : null}
                 {filteredLogs.map((l) => {
                   const h = hoursWorked(l.check_in, l.check_out);
                   return (
@@ -588,6 +632,7 @@ export function DailyLogsClient() {
                   );
                 })}
               </ul>
+              ) : null}
             </section>
           </>
         )}

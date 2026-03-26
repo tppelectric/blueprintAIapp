@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAppToast } from "@/components/toast-provider";
 
 type Hit = {
   id: string;
@@ -14,7 +15,7 @@ type Hit = {
 function categoryIcon(c: string): string {
   switch (c) {
     case "nec":
-      return "§";
+      return "NEC";
     case "wire":
     case "conduit":
     case "reference":
@@ -38,6 +39,7 @@ export function GlobalNavSearch({
   /** Full-width field for mobile drawer (no 🔍 icon trigger). */
   variant?: "toolbar" | "drawer";
 }) {
+  const { showToast } = useAppToast();
   const router = useRouter();
   const [expanded, setExpanded] = useState(variant === "drawer");
   const [q, setQ] = useState("");
@@ -57,14 +59,30 @@ export function GlobalNavSearch({
       const res = await fetch(
         `/api/global-search?q=${encodeURIComponent(query.trim())}`,
       );
-      const json = (await res.json()) as { results?: Hit[] };
+      const json = (await res.json()) as {
+        results?: Hit[];
+        error?: string;
+      };
+      if (!res.ok) {
+        setHits([]);
+        showToast({
+          message:
+            json.error ??
+            (res.status === 429
+              ? "Too many searches. Wait a moment and try again."
+              : "Search failed."),
+          variant: "error",
+        });
+        return;
+      }
       setHits(json.results ?? []);
     } catch {
       setHits([]);
+      showToast({ message: "Search failed.", variant: "error" });
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showToast]);
 
   useEffect(() => {
     const t = setTimeout(() => void runSearch(q), 200);

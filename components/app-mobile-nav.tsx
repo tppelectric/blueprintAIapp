@@ -19,7 +19,8 @@ type AppNavKey =
   | "upload"
   | "reference"
   | "team_time"
-  | "team_clock";
+  | "team_clock"
+  | "field";
 
 const TOOL_LINKS: { href: string; label: string }[] = [
   { href: "/tools/project-describer", label: "AI Project Describer" },
@@ -332,6 +333,16 @@ function MobileMenuPortal({
             <span className="inline-flex items-center gap-1.5">
               <span aria-hidden>📅</span>
               Calendar
+            </span>
+          </Link>
+          <Link
+            href="/field"
+            className={linkClass(pathname.startsWith("/field"))}
+            onClick={onClose}
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden>📍</span>
+              Field punch
             </span>
           </Link>
           <Link

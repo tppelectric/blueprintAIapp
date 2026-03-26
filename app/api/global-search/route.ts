@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { filterStaticSearch } from "@/lib/search-static-data";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export type SearchResultItem = {
   id: string;
@@ -28,6 +29,20 @@ export async function GET(request: Request) {
   const q = searchParams.get("q")?.trim() ?? "";
   if (!q || q.length < 2) {
     return NextResponse.json({ results: [] as SearchResultItem[] });
+  }
+
+  const rl = checkRateLimit(`global-search:${getClientIp(request)}`, 90, 60_000);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      {
+        error: "Too many searches. Try again shortly.",
+        results: [] as SearchResultItem[],
+      },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rl.retryAfterSeconds) },
+      },
+    );
   }
 
   const results: SearchResultItem[] = [];

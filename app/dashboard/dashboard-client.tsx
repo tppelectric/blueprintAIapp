@@ -587,6 +587,12 @@ export function DashboardClient() {
             <Link href="/timesheets" className="btn-secondary btn-h-11 w-full">
               Timesheets
             </Link>
+            <Link
+              href="/field"
+              className="btn-secondary btn-h-11 w-full border-emerald-500/35 text-emerald-100"
+            >
+              Field punch in/out
+            </Link>
             <Link href="/time-off" className="btn-secondary btn-h-11 w-full">
               Time off
             </Link>

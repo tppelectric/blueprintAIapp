@@ -22,7 +22,8 @@ export type NavKey =
   | "upload"
   | "reference"
   | "team_time"
-  | "team_clock";
+  | "team_clock"
+  | "field";
 
 const NAV_IDLE =
   "inline-flex items-center border-b-2 border-transparent px-2 py-1.5 text-sm font-medium text-white/85 transition-colors duration-200 hover:border-[#E8C84A]/45 hover:text-[#E8C84A]";
@@ -56,6 +57,8 @@ export function WideAppHeader({
   const timesheetsActive = pathname.startsWith("/timesheets");
   const timeOffActive = pathname.startsWith("/time-off");
   const calendarActive = pathname.startsWith("/calendar");
+  const fieldActive =
+    active === "field" || pathname.startsWith("/field");
   const teamClockActive =
     active === "team_clock" || pathname.startsWith("/team-clock");
 
@@ -119,6 +122,13 @@ export function WideAppHeader({
       ) : (
         <Link href="/calendar" className={NAV_IDLE}>
           Calendar
+        </Link>
+      )}
+      {fieldActive ? (
+        <span className={NAV_ACTIVE}>Field punch</span>
+      ) : (
+        <Link href="/field" className={NAV_IDLE}>
+          Field punch
         </Link>
       )}
       {showTeamClockNav ? (

@@ -142,3 +142,94 @@ export function ToolResultsSkeleton({ rows = 4 }: { rows?: number }) {
     </div>
   );
 }
+
+/** Generic list rows — works on dark shells (timesheets, daily logs, etc.). */
+export function DarkListSkeleton({
+  rows = 8,
+  className = "",
+}: {
+  rows?: number;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`space-y-3 ${className}`.trim()}
+      aria-busy="true"
+      aria-label="Loading"
+    >
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          key={i}
+          className="h-14 animate-pulse rounded-xl border border-white/10 bg-white/[0.06]"
+        />
+      ))}
+    </div>
+  );
+}
+
+/** Timesheet-style table placeholder. */
+export function TimesheetTableSkeleton() {
+  return (
+    <div
+      className="mt-8 overflow-hidden rounded-xl border border-white/10"
+      aria-busy="true"
+      aria-label="Loading timesheets"
+    >
+      <div className="animate-pulse space-y-2 p-4">
+        <div className="h-9 rounded bg-white/10" />
+        {Array.from({ length: 10 }).map((_, i) => (
+          <div key={i} className="h-11 rounded bg-white/[0.06]" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Month calendar grid placeholder (work calendar). */
+export function CalendarMonthSkeleton() {
+  return (
+    <div className="mt-6 overflow-x-auto" aria-busy="true" aria-label="Loading calendar">
+      <div className="grid grid-cols-7 gap-1">
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div
+            key={`h-${i}`}
+            className="h-4 animate-pulse rounded bg-white/10"
+          />
+        ))}
+        {Array.from({ length: 42 }).map((_, i) => (
+          <div
+            key={i}
+            className="min-h-[5.5rem] animate-pulse rounded-lg border border-white/10 bg-white/[0.04]"
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Team clock employee cards while loading. */
+export function TeamClockCardSkeletonGrid({ cards = 6 }: { cards?: number }) {
+  return (
+    <div
+      className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+      aria-busy="true"
+      aria-label="Loading team clock"
+    >
+      {Array.from({ length: cards }).map((_, i) => (
+        <div
+          key={i}
+          className="animate-pulse rounded-xl border-2 border-white/10 bg-[var(--surface-elevated)] p-4"
+        >
+          <div className="flex gap-3">
+            <div className="h-12 w-12 shrink-0 rounded-full bg-white/10" />
+            <div className="min-w-0 flex-1 space-y-2 pt-1">
+              <div className="h-4 w-32 rounded bg-white/10" />
+              <div className="h-3 w-20 rounded bg-white/5" />
+            </div>
+          </div>
+          <div className="mt-4 h-16 rounded-lg bg-white/[0.06]" />
+        </div>
+      ))}
+    </div>
+  );
+}

@@ -772,12 +772,25 @@ export function FieldClient() {
 
             {!activeSession ? (
               <>
-                <div className="text-center">
-                  <p className="text-sm text-white/60">Ready to start</p>
-                  <p className="mt-2 text-lg font-medium tabular-nums text-white">
+                <section
+                  className="rounded-2xl border border-white/15 bg-[#071422]/90 p-6 text-center shadow-sm"
+                  aria-labelledby="field-not-punched-heading"
+                >
+                  <h2
+                    id="field-not-punched-heading"
+                    className="text-base font-semibold text-white"
+                  >
+                    You&apos;re not punched in
+                  </h2>
+                  <p className="mt-2 text-sm text-white/60">
+                    Choose a job and tap Punch in when you arrive on site. Your
+                    time appears on timesheets after you punch out.
+                  </p>
+                  <p className="mt-4 text-sm text-white/45">Current time</p>
+                  <p className="mt-1 text-xl font-medium tabular-nums text-[#E8C84A]">
                     {nowLabel}
                   </p>
-                </div>
+                </section>
 
                 <label className="block text-sm font-medium text-white/90">
                   Job

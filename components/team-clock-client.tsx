@@ -2,7 +2,12 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  EmptyState,
+  TeamClockCardSkeletonGrid,
+} from "@/components/app-polish";
 import { WideAppHeader } from "@/components/wide-app-header";
+import { useAppToast } from "@/components/toast-provider";
 import {
   classifyEmployeeToday,
   displayName,
@@ -39,6 +44,7 @@ function defaultCostRateUsd(): number | null {
 }
 
 export function TeamClockClient() {
+  const { showToast } = useAppToast();
   const [tab, setTab] = useState<Tab>("today");
   const [clockTick, setClockTick] = useState(0);
   const [employees, setEmployees] = useState<TeamEmployee[]>([]);
@@ -156,12 +162,14 @@ export function TeamClockClient() {
       }
       setPunches(rows);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Load failed.");
+      const msg = e instanceof Error ? e.message : "Load failed.";
+      setError(msg);
       setPunches([]);
+      showToast({ message: msg, variant: "error" });
     } finally {
       setLoading(false);
     }
-  }, [tab, historyFrom, historyTo, historyEmployeeId]);
+  }, [tab, historyFrom, historyTo, historyEmployeeId, showToast]);
 
   useEffect(() => {
     void reload();
@@ -404,7 +412,19 @@ export function TeamClockClient() {
           </p>
         ) : null}
 
-        {tab === "today" && !loading ? (
+        {tab === "today" && !loading && employees.length === 0 ? (
+          <div className="mt-8">
+            <EmptyState
+              icon={<span aria-hidden>👷</span>}
+              title="No punch-enabled employees"
+              description="Turn on “Show punch interface” and keep accounts active in user profiles so field staff appear here."
+              actionLabel="Project dashboard"
+              actionHref="/dashboard"
+            />
+          </div>
+        ) : null}
+
+        {tab === "today" && !loading && employees.length > 0 ? (
           <>
             <div className="mt-6 flex flex-wrap gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-4 text-sm">
               <span className="rounded-lg bg-emerald-500/15 px-3 py-1.5 font-medium text-emerald-200">
@@ -429,6 +449,23 @@ export function TeamClockClient() {
                 </span>
               ) : null}
             </div>
+
+            {employees.length > 0 &&
+            summary.working === 0 &&
+            summary.lunch === 0 ? (
+              <div
+                className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--surface-elevated)] p-6 text-center"
+                role="status"
+              >
+                <p className="text-base font-semibold text-[var(--foreground)]">
+                  No one is on the clock right now
+                </p>
+                <p className="mt-2 text-sm text-[var(--foreground-muted)]">
+                  Everyone is punched out, on break, or has not started yet.
+                  Cards below show each person&apos;s status for today.
+                </p>
+              </div>
+            ) : null}
 
             <section className="mt-8">
               <h2 className="text-lg font-semibold text-[var(--foreground)]">
@@ -752,9 +789,7 @@ export function TeamClockClient() {
           </div>
         ) : null}
 
-        {loading ? (
-          <p className="mt-8 text-[var(--foreground-muted)]">Loading…</p>
-        ) : null}
+        {loading ? <TeamClockCardSkeletonGrid cards={6} /> : null}
       </main>
     </div>
   );

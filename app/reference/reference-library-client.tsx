@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { EmptyState, JobListSkeleton } from "@/components/app-polish";
 import { WideAppHeader } from "@/components/wide-app-header";
 import { useAppToast } from "@/components/toast-provider";
 import { useThemedPageShell } from "@/lib/theme-context";
@@ -157,18 +158,22 @@ export function ReferenceLibraryClient() {
         error?: string;
       };
       if (!r.ok) {
-        setDocsError(j.error ?? "Could not load documents.");
+        const err = j.error ?? "Could not load documents.";
+        setDocsError(err);
         setDocuments([]);
+        showToast({ message: err, variant: "error" });
         return;
       }
       setDocuments(j.documents ?? []);
     } catch {
-      setDocsError("Could not load documents.");
+      const err = "Could not load documents.";
+      setDocsError(err);
       setDocuments([]);
+      showToast({ message: err, variant: "error" });
     } finally {
       setDocsLoading(false);
     }
-  }, [profile]);
+  }, [profile, showToast]);
 
   useEffect(() => {
     if (!roleLoading && profile) void loadDocs();
@@ -520,7 +525,9 @@ export function ReferenceLibraryClient() {
           ) : null}
 
           {signedIn && docsLoading ? (
-            <p className="app-muted mt-4 text-sm">Loading documents…</p>
+            <div className="mt-4">
+              <JobListSkeleton />
+            </div>
           ) : null}
           {signedIn && docsError ? (
             <p className="mt-4 text-sm text-red-300" role="alert">
@@ -528,12 +535,17 @@ export function ReferenceLibraryClient() {
             </p>
           ) : null}
           {signedIn && !docsLoading && !docsError && documents.length === 0 ? (
-            <p className="app-muted mt-4 text-sm">
-              No uploaded documents yet.
-              {canManageReferenceDocuments
-                ? " Use the form above to add PDFs."
-                : ""}
-            </p>
+            <div className="mt-4">
+              <EmptyState
+                icon={<span aria-hidden>📄</span>}
+                title="No uploaded documents yet"
+                description={
+                  canManageReferenceDocuments
+                    ? "Use the upload form above to add PDF references for your team."
+                    : "Admins can upload PDFs for the team. You can still use cheat sheets and quick cards above."
+                }
+              />
+            </div>
           ) : null}
           {signedIn && documents.length > 0 ? (
             <ul className="mt-4 space-y-3">

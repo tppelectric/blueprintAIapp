@@ -50,17 +50,20 @@ Key differences from enterprise systems:
 ✅ Easier to install and configure
 ✅ Self-healing mesh network
 ✅ No separate controller needed (typical residential mesh)
-✅ Good for residential use
+✅ Good for basic residential use
 
 ⚠️ Limited VLAN and network segmentation
 ⚠️ Less granular management control
 ⚠️ Not recommended for commercial use
 ⚠️ Cannot mix with other vendor APs
 
-For smart home integration with Control4, Savant, or Lutron — consider Araknis or Access Networks instead.`;
+PROFESSIONAL INSTALL: eero, Google Nest WiFi, and Netgear Orbi are consumer mesh — do NOT specify for Control4, Josh.ai, Savant, or enterprise VLAN work.
+
+For integrator projects use UniFi (Wi‑Fi 7 U7 line for new construction / high device count), Access Networks (Ruckus Wi‑Fi 7), Ruckus, or Araknis.`;
 
 export const VENDOR_COMPARISON_FOOTNOTES = [
-  "eero / Nest / Orbi: mesh-focused; simpler setup; no enterprise management plane.",
+  "eero / Nest / Orbi: consumer mesh — not for professional C4 / Josh / Savant; no Chowmain-style UniFi presence integration.",
+  "Ubiquiti: UniFi 7 (U7 Pro, Pro Max, Pro Wall, Outdoor, Pro XG / XGS) for premium residential; bias Wi‑Fi 7 for new construction, smart home, 50+ devices.",
   "Ubiquiti / Omada / Araknis / Ruckus / Meraki: enterprise-grade management, VLANs, and policies (feature set varies by line).",
-  "Access Networks / Araknis: premium AV integrator lines — confirm dealer pricing on site.",
+  "Access Networks (Snap One): Ruckus Wi‑Fi 7 (e.g. A670 Unleashed, A770) — top custom-channel recommendation; verify 2026 MAP with ADI.",
 ];

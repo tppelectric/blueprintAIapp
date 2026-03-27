@@ -11,6 +11,12 @@ import {
   formatWorkedMsForPunchTable,
   workedMsFromPunch,
 } from "@/lib/time-punch-worked";
+import {
+  formatPunchGpsStatusLine,
+  parsePunchLocationJson,
+  teamClockGpsDotForOpenPunch,
+} from "@/lib/punch-gps";
+import { requestBrowserPunchLocation } from "@/lib/request-browser-punch-location";
 
 function formatYmd(d: Date): string {
   const y = d.getFullYear();
@@ -67,6 +73,14 @@ type ActivePunch = {
   on_lunch: boolean;
   lunch_start_at: string | null;
   total_lunch_ms: number;
+  punch_in_location?: Record<string, unknown> | null;
+  lunch_start_location?: Record<string, unknown> | null;
+  gps_override_at?: string | null;
+  gps_location_flagged?: boolean;
+  is_manual_entry?: boolean;
+  manual_entry_by_name?: string | null;
+  manual_entry_at?: string | null;
+  manual_entry_note?: string | null;
 };
 
 type JobOpt = { id: string; job_name: string; job_number: string };
@@ -93,6 +107,11 @@ type TeamOnSiteRow = {
   onLunch: boolean;
   totalLunchMs: number;
   lunchStartAt: string | null;
+  punchInLocation?: Record<string, unknown> | null;
+  lunchStartLocation?: Record<string, unknown> | null;
+  gpsOverrideAt?: string | null;
+  isManualEntry?: boolean;
+  manualEntryByName?: string | null;
 };
 
 type DayTotals = {
@@ -137,6 +156,37 @@ type PunchSummary = {
   checkIn: string;
   checkOut: string;
 };
+
+function fieldGpsTierClass(
+  tier: ReturnType<typeof teamClockGpsDotForOpenPunch>,
+): string {
+  if (tier === "green") return "text-emerald-200/95";
+  if (tier === "yellow") return "text-amber-200/95";
+  return "text-red-200/90";
+}
+
+function activeSessionGpsDisplay(session: ActivePunch): {
+  line: string;
+  lineClass: string;
+  overrideNote: boolean;
+} {
+  const locJson =
+    session.on_lunch && session.lunch_start_location
+      ? session.lunch_start_location
+      : session.punch_in_location;
+  const loc = parsePunchLocationJson(locJson);
+  const tier = teamClockGpsDotForOpenPunch({
+    punch_in_location: session.punch_in_location,
+    lunch_start_location: session.lunch_start_location,
+    gps_override_at: session.gps_override_at ?? null,
+    on_lunch: session.on_lunch,
+  });
+  return {
+    line: formatPunchGpsStatusLine(loc),
+    lineClass: fieldGpsTierClass(tier),
+    overrideNote: Boolean(session.gps_override_at),
+  };
+}
 
 export function FieldClient() {
   const router = useRouter();
@@ -421,6 +471,14 @@ export function FieldClient() {
     }
   };
 
+  const postPunchWithGps = async (body: Record<string, unknown>) => {
+    const location = await requestBrowserPunchLocation();
+    return postJson({
+      ...body,
+      ...(location ? { location } : {}),
+    });
+  };
+
   useEffect(() => {
     if (!activeSession || notes === notesBaseline.current) return;
     const t = window.setTimeout(() => {
@@ -443,7 +501,7 @@ export function FieldClient() {
       setMsg("Choose a job.");
       return;
     }
-    const j = await postJson({
+    const j = await postPunchWithGps({
       action: "punch_in",
       jobId,
       notes: notes.trim() || undefined,
@@ -454,7 +512,7 @@ export function FieldClient() {
 
   const onPunchOut = async () => {
     if (!window.confirm("End your shift?")) return;
-    const j = await postJson({ action: "punch_out" });
+    const j = await postPunchWithGps({ action: "punch_out" });
     if (!j || !("summary" in j) || !j.summary) return;
     setPunchSummary(j.summary);
     setActiveSession(null);
@@ -462,7 +520,7 @@ export function FieldClient() {
   };
 
   const onStartLunch = async () => {
-    const j = await postJson({ action: "start_lunch" });
+    const j = await postPunchWithGps({ action: "start_lunch" });
     if (!j || "error" in j) return;
     const nowIso = new Date().toISOString();
     setActiveSession((s) =>
@@ -472,7 +530,7 @@ export function FieldClient() {
   };
 
   const onEndLunch = async () => {
-    const j = await postJson({ action: "end_lunch" });
+    const j = await postPunchWithGps({ action: "end_lunch" });
     if (!j || "error" in j) return;
     if (typeof j.lastLunchMinutes === "number") {
       setLastLunchMinutes(j.lastLunchMinutes);
@@ -837,6 +895,10 @@ export function FieldClient() {
                   />
                 </label>
 
+                <p className="text-center text-xs text-white/45">
+                  Location is requested when you punch (you can allow or deny;
+                  punches are always saved).
+                </p>
                 <button
                   type="button"
                   disabled={busy || !jobId}
@@ -855,6 +917,29 @@ export function FieldClient() {
                   <p className="mt-2 text-xl font-semibold text-white">
                     {activeSession.job_name?.trim() || "—"}
                   </p>
+                  {(() => {
+                    const g = activeSessionGpsDisplay(activeSession);
+                    return (
+                      <>
+                        <p
+                          className={`mt-1 text-xs font-medium leading-snug ${g.lineClass}`}
+                        >
+                          {g.line}
+                        </p>
+                        {g.overrideNote ? (
+                          <p className="mt-0.5 text-[11px] text-emerald-200/75">
+                            GPS override on file
+                          </p>
+                        ) : null}
+                      </>
+                    );
+                  })()}
+                  {activeSession.is_manual_entry &&
+                  activeSession.manual_entry_by_name ? (
+                    <p className="mt-2 inline-block rounded-lg bg-amber-500/20 px-2 py-1 text-[11px] font-semibold text-amber-100">
+                      Manual entry by {activeSession.manual_entry_by_name}
+                    </p>
+                  ) : null}
                   <p className="mt-2 text-sm text-white/70">
                     Punched in at: {punchedInLabel}
                   </p>
@@ -947,16 +1032,38 @@ export function FieldClient() {
                       hour: "numeric",
                       minute: "2-digit",
                     });
+                    const gpsTier = teamClockGpsDotForOpenPunch({
+                      punch_in_location: row.punchInLocation,
+                      lunch_start_location: row.lunchStartLocation,
+                      gps_override_at: row.gpsOverrideAt ?? null,
+                      on_lunch: row.onLunch,
+                    });
+                    const dotBg =
+                      gpsTier === "green"
+                        ? "bg-emerald-400"
+                        : gpsTier === "yellow"
+                          ? "bg-amber-400"
+                          : "bg-red-500";
                     return (
                       <li key={row.id} className="px-3 py-3 text-sm">
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div>
-                            <p className="font-semibold text-white">
+                            <p className="flex items-center gap-2 font-semibold text-white">
+                              <span
+                                className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${dotBg}`}
+                                title="GPS vs job site"
+                                aria-hidden
+                              />
                               {row.fullName}
                             </p>
                             <p className="text-xs text-white/60">
                               {row.jobName?.trim() || "—"} · In {punchInDisplay}
                             </p>
+                            {row.isManualEntry && row.manualEntryByName ? (
+                              <p className="mt-1 text-[10px] font-semibold text-amber-200/90">
+                                Manual entry by {row.manualEntryByName}
+                              </p>
+                            ) : null}
                           </div>
                           <div className="text-right">
                             <p className="font-mono text-base font-bold tabular-nums text-[#E8C84A]">

@@ -9,6 +9,10 @@ import {
   splitRegularOvertime,
   workedMsFromPunch,
 } from "@/lib/time-punch-worked";
+import {
+  parseCoordsBody,
+  resolvePunchGpsForJob,
+} from "@/lib/time-clock-location-resolve";
 
 type ActivePunchRow = {
   id: string;
@@ -21,6 +25,14 @@ type ActivePunchRow = {
   lunch_start_at: string | null;
   lunch_end_at: string | null;
   total_lunch_ms: number;
+  punch_in_location: Record<string, unknown> | null;
+  lunch_start_location: Record<string, unknown> | null;
+  gps_override_at: string | null;
+  gps_location_flagged: boolean;
+  is_manual_entry: boolean;
+  manual_entry_by_name: string | null;
+  manual_entry_at: string | null;
+  manual_entry_note: string | null;
 };
 
 function displayName(p: {
@@ -119,7 +131,7 @@ export async function GET(request: Request) {
     const { data: open } = await supabase
       .from("time_punches")
       .select(
-        "id,job_id,job_name,punch_in_at,punch_out_at,notes,on_lunch,lunch_start_at,lunch_end_at,total_lunch_ms",
+        "id,job_id,job_name,punch_in_at,punch_out_at,notes,on_lunch,lunch_start_at,lunch_end_at,total_lunch_ms,punch_in_location,lunch_start_location,gps_override_at,gps_location_flagged,is_manual_entry,manual_entry_by,manual_entry_at,manual_entry_note",
       )
       .eq("employee_id", user.id)
       .is("punch_out_at", null)
@@ -127,6 +139,23 @@ export async function GET(request: Request) {
       .limit(1)
       .maybeSingle();
     if (open && !open.punch_out_at) {
+      let manualEntryByName: string | null = null;
+      const mBy = open.manual_entry_by as string | null | undefined;
+      if (mBy) {
+        const { data: mp } = await supabase
+          .from("user_profiles")
+          .select("first_name,last_name,full_name,email")
+          .eq("id", mBy)
+          .maybeSingle();
+        if (mp) {
+          manualEntryByName = displayName({
+            first_name: mp.first_name as string | null,
+            last_name: mp.last_name as string | null,
+            full_name: mp.full_name as string | null,
+            email: mp.email as string | null,
+          });
+        }
+      }
       activeSession = {
         id: open.id as string,
         job_id: (open.job_id as string | null) ?? null,
@@ -138,6 +167,16 @@ export async function GET(request: Request) {
         lunch_start_at: (open.lunch_start_at as string | null) ?? null,
         lunch_end_at: (open.lunch_end_at as string | null) ?? null,
         total_lunch_ms: Number(open.total_lunch_ms) || 0,
+        punch_in_location:
+          (open.punch_in_location as Record<string, unknown> | null) ?? null,
+        lunch_start_location:
+          (open.lunch_start_location as Record<string, unknown> | null) ?? null,
+        gps_override_at: (open.gps_override_at as string | null) ?? null,
+        gps_location_flagged: Boolean(open.gps_location_flagged),
+        is_manual_entry: Boolean(open.is_manual_entry),
+        manual_entry_by_name: manualEntryByName,
+        manual_entry_at: (open.manual_entry_at as string | null) ?? null,
+        manual_entry_note: (open.manual_entry_note as string | null) ?? null,
       };
     }
   }
@@ -151,19 +190,29 @@ export async function GET(request: Request) {
     onLunch: boolean;
     totalLunchMs: number;
     lunchStartAt: string | null;
+    punchInLocation: Record<string, unknown> | null;
+    lunchStartLocation: Record<string, unknown> | null;
+    gpsOverrideAt: string | null;
+    isManualEntry: boolean;
+    manualEntryByName: string | null;
   }> | null = null;
 
   if (role === "admin" || role === "super_admin") {
     const { data: punches } = await supabase
       .from("time_punches")
       .select(
-        "id,employee_id,job_name,punch_in_at,on_lunch,total_lunch_ms,lunch_start_at",
+        "id,employee_id,job_name,punch_in_at,on_lunch,total_lunch_ms,lunch_start_at,punch_in_location,lunch_start_location,gps_override_at,is_manual_entry,manual_entry_by",
       )
       .is("punch_out_at", null)
       .order("punch_in_at", { ascending: true });
 
     const ids = [...new Set((punches ?? []).map((s) => s.employee_id))];
     const nameById = new Map<string, string>();
+    const manualIds = new Set<string>();
+    for (const s of punches ?? []) {
+      const mb = s.manual_entry_by as string | null | undefined;
+      if (mb) manualIds.add(mb);
+    }
     if (ids.length) {
       const { data: profs } = await supabase
         .from("user_profiles")
@@ -181,16 +230,44 @@ export async function GET(request: Request) {
         );
       }
     }
-    teamActive = (punches ?? []).map((s) => ({
-      id: s.id as string,
-      employeeId: s.employee_id as string,
-      fullName: nameById.get(s.employee_id as string) ?? "—",
-      jobName: (s.job_name as string | null) ?? null,
-      punchInAt: s.punch_in_at as string,
-      onLunch: Boolean(s.on_lunch),
-      totalLunchMs: Number(s.total_lunch_ms) || 0,
-      lunchStartAt: (s.lunch_start_at as string | null) ?? null,
-    }));
+    const manualNameById = new Map<string, string>();
+    if (manualIds.size) {
+      const { data: mprofs } = await supabase
+        .from("user_profiles")
+        .select("id,first_name,last_name,full_name,email")
+        .in("id", [...manualIds]);
+      for (const p of mprofs ?? []) {
+        manualNameById.set(
+          p.id as string,
+          displayName({
+            first_name: p.first_name as string | null,
+            last_name: p.last_name as string | null,
+            full_name: p.full_name as string | null,
+            email: p.email as string | null,
+          }),
+        );
+      }
+    }
+    teamActive = (punches ?? []).map((s) => {
+      const mBy = s.manual_entry_by as string | null | undefined;
+      return {
+        id: s.id as string,
+        employeeId: s.employee_id as string,
+        fullName: nameById.get(s.employee_id as string) ?? "—",
+        jobName: (s.job_name as string | null) ?? null,
+        punchInAt: s.punch_in_at as string,
+        onLunch: Boolean(s.on_lunch),
+        totalLunchMs: Number(s.total_lunch_ms) || 0,
+        lunchStartAt: (s.lunch_start_at as string | null) ?? null,
+        punchInLocation:
+          (s.punch_in_location as Record<string, unknown> | null) ?? null,
+        lunchStartLocation:
+          (s.lunch_start_location as Record<string, unknown> | null) ?? null,
+        gpsOverrideAt: (s.gps_override_at as string | null) ?? null,
+        isManualEntry: Boolean(s.is_manual_entry),
+        manualEntryByName: mBy ? (manualNameById.get(mBy) ?? "—") : null,
+      };
+    });
   }
 
   const { data: jobs } = await supabase
@@ -269,12 +346,15 @@ export async function POST(request: Request) {
     action?: string;
     jobId?: string | null;
     notes?: string | null;
+    location?: unknown;
   };
   try {
     body = (await request.json()) as typeof body;
   } catch {
     return NextResponse.json({ error: "Invalid JSON." }, { status: 400 });
   }
+
+  const coords = parseCoordsBody(body.location);
 
   const action = body.action?.trim();
   if (
@@ -333,6 +413,8 @@ export async function POST(request: Request) {
     }
     const notes =
       typeof body.notes === "string" ? body.notes.trim().slice(0, 4000) : "";
+    const { snapshot: pinLoc, flagged: pinFlag } =
+      await resolvePunchGpsForJob(supabase, jobId, coords);
     const { data: ins, error: insErr } = await supabase
       .from("time_punches")
       .insert({
@@ -344,9 +426,11 @@ export async function POST(request: Request) {
         on_lunch: false,
         total_lunch_ms: 0,
         updated_at: now,
+        punch_in_location: pinLoc,
+        gps_location_flagged: pinFlag,
       })
       .select(
-        "id,job_id,job_name,punch_in_at,punch_out_at,notes,on_lunch,lunch_start_at,lunch_end_at,total_lunch_ms",
+        "id,job_id,job_name,punch_in_at,punch_out_at,notes,on_lunch,lunch_start_at,lunch_end_at,total_lunch_ms,punch_in_location,gps_location_flagged",
       )
       .single();
     if (insErr) {
@@ -380,7 +464,7 @@ export async function POST(request: Request) {
   if (action === "start_lunch") {
     const { data: open } = await supabase
       .from("time_punches")
-      .select("id,on_lunch")
+      .select("id,on_lunch,job_id,gps_location_flagged")
       .eq("employee_id", user.id)
       .is("punch_out_at", null)
       .maybeSingle();
@@ -390,6 +474,10 @@ export async function POST(request: Request) {
     if (open.on_lunch) {
       return NextResponse.json({ error: "Already on lunch." }, { status: 400 });
     }
+    const jobId = (open.job_id as string | null) ?? null;
+    const { snapshot: lsLoc, flagged: lsFlag } =
+      await resolvePunchGpsForJob(supabase, jobId, coords);
+    const prevFlag = Boolean(open.gps_location_flagged);
     const { error: upErr } = await supabase
       .from("time_punches")
       .update({
@@ -397,6 +485,8 @@ export async function POST(request: Request) {
         lunch_start_at: now,
         lunch_end_at: null,
         updated_at: now,
+        lunch_start_location: lsLoc,
+        gps_location_flagged: prevFlag || lsFlag,
       })
       .eq("id", open.id);
     if (upErr) {
@@ -408,7 +498,9 @@ export async function POST(request: Request) {
   if (action === "end_lunch") {
     const { data: open } = await supabase
       .from("time_punches")
-      .select("id,on_lunch,lunch_start_at,total_lunch_ms")
+      .select(
+        "id,on_lunch,lunch_start_at,total_lunch_ms,job_id,gps_location_flagged",
+      )
       .eq("employee_id", user.id)
       .is("punch_out_at", null)
       .maybeSingle();
@@ -421,6 +513,10 @@ export async function POST(request: Request) {
     const ls = new Date(open.lunch_start_at as string).getTime();
     const segment = Math.max(0, nowMs - ls);
     const prev = Number(open.total_lunch_ms) || 0;
+    const jobId = (open.job_id as string | null) ?? null;
+    const { snapshot: leLoc, flagged: leFlag } =
+      await resolvePunchGpsForJob(supabase, jobId, coords);
+    const prevFlag = Boolean(open.gps_location_flagged);
     const { error: upErr } = await supabase
       .from("time_punches")
       .update({
@@ -429,6 +525,8 @@ export async function POST(request: Request) {
         total_lunch_ms: prev + segment,
         lunch_start_at: null,
         updated_at: now,
+        lunch_end_location: leLoc,
+        gps_location_flagged: prevFlag || leFlag,
       })
       .eq("id", open.id);
     if (upErr) {
@@ -444,7 +542,7 @@ export async function POST(request: Request) {
     const { data: row } = await supabase
       .from("time_punches")
       .select(
-        "id,punch_in_at,job_id,job_name,on_lunch,lunch_start_at,total_lunch_ms",
+        "id,punch_in_at,job_id,job_name,on_lunch,lunch_start_at,total_lunch_ms,gps_location_flagged",
       )
       .eq("employee_id", user.id)
       .is("punch_out_at", null)
@@ -466,6 +564,11 @@ export async function POST(request: Request) {
     const { regular, overtime } = splitRegularOvertime(totalHours);
     const lunchMinutes = Math.round(totalLunchMs / 60000);
 
+    const jobIdOut = (row.job_id as string | null) ?? null;
+    const { snapshot: poutLoc, flagged: poutFlag } =
+      await resolvePunchGpsForJob(supabase, jobIdOut, coords);
+    const prevFlag = Boolean(row.gps_location_flagged);
+
     const { error: upErr } = await supabase
       .from("time_punches")
       .update({
@@ -477,6 +580,8 @@ export async function POST(request: Request) {
         approval_status: "pending",
         approved_by: null,
         approved_at: null,
+        punch_out_location: poutLoc,
+        gps_location_flagged: prevFlag || poutFlag,
       })
       .eq("id", row.id);
     if (upErr) {

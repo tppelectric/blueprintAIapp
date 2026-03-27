@@ -4,6 +4,7 @@ import {
   buildHardwareBomLines,
   planVendorMaterialStack,
   sumBomMaterialSubtotal,
+  UNIFI_WIFI7_PRODUCT_LINE,
   type HardwareBomLine,
   type PlanStackOptions,
 } from "@/lib/wifi-vendor-hardware";
@@ -465,6 +466,19 @@ export type ComputeWifiPlanOptions = {
   stackOpts?: PlanStackOptions;
 };
 
+/** Reference list for proposals (UniFi Wi‑Fi 7 — verify store.ui.com). */
+export const UNIFI_WIFI7_SKUS_FOR_PROPOSALS = [...UNIFI_WIFI7_PRODUCT_LINE];
+
+/** When to bias plans toward Wi‑Fi 7 (UniFi U7 / enterprise Wi‑Fi 7). */
+export function shouldBiasWifi7(inputs: WifiAnalyzerInputs, totalDevices: number): boolean {
+  return (
+    inputs.constructionType === "new_construction" ||
+    inputs.coverageGoal === "smart_home" ||
+    totalDevices >= 50 ||
+    inputs.planningPriority === "future_proof"
+  );
+}
+
 function budgetCostRange(b: BudgetTier): string {
   switch (b) {
     case "under500":
@@ -638,6 +652,12 @@ export function computeWifiPlan(
     );
   }
 
+  if (isMeshVendor(inputs.vendor)) {
+    planNotes.push(
+      "Professional install: consumer mesh (eero, Google Nest WiFi, Netgear Orbi) is NOT recommended for Control4, Josh.ai, Savant, or VLAN-heavy commercial work — specify UniFi, Access Networks (Ruckus Wi‑Fi 7), Ruckus, or Araknis.",
+    );
+  }
+
   let indoorAps = applyCoverageGoalToIndoor(baseIndoor, inputs.coverageGoal);
   let outdoorAps = baseOutdoor;
   if (indoorRooms.length === 0) indoorAps = 0;
@@ -658,6 +678,25 @@ export function computeWifiPlan(
   const recommendedAps = indoorAps + outdoorAps;
 
   const stackVendor = options?.vendorForStack ?? inputs.vendor;
+  const derivedWifi7 =
+    (stackVendor === "ubiquiti" || stackVendor === "none") &&
+    (options?.stackOpts?.ubiquitiIndoorOverride
+      ? options.stackOpts.ubiquitiIndoorOverride.label.includes("U7")
+      : shouldBiasWifi7(inputs, totalDevices));
+  const preferWifi7Bias =
+    options?.stackOpts?.preferWifi7 ?? derivedWifi7;
+  const mergedStackOpts: PlanStackOptions = {
+    ...options?.stackOpts,
+    preferWifi7: preferWifi7Bias,
+  };
+  if (
+    preferWifi7Bias &&
+    (stackVendor === "ubiquiti" || stackVendor === "none")
+  ) {
+    planNotes.push(
+      "Wi‑Fi 7 bias: new construction, smart-home / high device count, or future-proof priority — UniFi U7 family (U7 Pro, Pro Max, Pro Wall, Outdoor, Pro XG / XGS). Verify current SKUs on ui.com.",
+    );
+  }
   const stack = planVendorMaterialStack(
     stackVendor,
     indoorAps,
@@ -665,7 +704,7 @@ export function computeWifiPlan(
     Math.max(1, totalIndoorSqFt),
     totalDevices,
     inputs.planningPriority,
-    options?.stackOpts,
+    mergedStackOpts,
   );
   const equipment: EquipmentRec = { ...stack.equipment };
   const wholePlanLine = stack.line;

@@ -12,6 +12,7 @@ import {
   lastLoginToneClass,
 } from "@/lib/format-last-login";
 import { ROLE_LABELS, type UserRole } from "@/lib/user-roles";
+import { localDayBounds } from "@/lib/team-clock-utils";
 
 const ROLES: UserRole[] = [
   "super_admin",
@@ -31,6 +32,23 @@ function listDisplayName(u: AdminUserProfileRow): string {
 function listEmployeeNumber(u: AdminUserProfileRow): string {
   const e = (u.employee_number ?? "").trim();
   return e || "—";
+}
+
+type AdminDayPunch = {
+  id: string;
+  punch_in_at: string;
+  punch_out_at: string | null;
+  job_name: string | null;
+  on_lunch: boolean;
+  is_manual_entry: boolean;
+  manual_entry_by_name: string | null;
+};
+
+function toDatetimeLocalValue(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const x = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return x.toISOString().slice(0, 16);
 }
 
 function UserProfileDetailFields({
@@ -126,6 +144,16 @@ export function AdminUsersClient() {
   );
   const [resetBusy, setResetBusy] = useState(false);
   const [patchingUserId, setPatchingUserId] = useState<string | null>(null);
+  const [punchesModalUser, setPunchesModalUser] =
+    useState<AdminUserProfileRow | null>(null);
+  const [punchesToday, setPunchesToday] = useState<AdminDayPunch[]>([]);
+  const [punchesModalLoading, setPunchesModalLoading] = useState(false);
+  const [punchesModalErr, setPunchesModalErr] = useState<string | null>(null);
+  const [editPunchId, setEditPunchId] = useState<string | null>(null);
+  const [editPunchIn, setEditPunchIn] = useState("");
+  const [editPunchOut, setEditPunchOut] = useState("");
+  const [editNote, setEditNote] = useState("");
+  const [editBusy, setEditBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -224,6 +252,93 @@ export function AdminUsersClient() {
       setError("Invite failed.");
     } finally {
       setInviteBusy(false);
+    }
+  };
+
+  const openPunchesModal = useCallback(
+    async (u: AdminUserProfileRow) => {
+      setPunchesModalUser(u);
+      setPunchesModalErr(null);
+      setPunchesModalLoading(true);
+      setEditPunchId(null);
+      setEditNote("");
+      try {
+        const { fromIso, toIso } = localDayBounds(new Date());
+        const r = await fetch(
+          `/api/time-clock/admin?userId=${encodeURIComponent(u.id)}&from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`,
+          { credentials: "include" },
+        );
+        const j = (await r.json()) as {
+          punches?: AdminDayPunch[];
+          error?: string;
+        };
+        if (!r.ok) {
+          setPunchesModalErr(j.error ?? "Could not load punches.");
+          setPunchesToday([]);
+          return;
+        }
+        setPunchesToday(j.punches ?? []);
+      } catch {
+        setPunchesModalErr("Could not load punches.");
+        setPunchesToday([]);
+      } finally {
+        setPunchesModalLoading(false);
+      }
+    },
+    [],
+  );
+
+  const startEditPunch = (p: AdminDayPunch) => {
+    setEditPunchId(p.id);
+    setEditPunchIn(toDatetimeLocalValue(p.punch_in_at));
+    setEditPunchOut(
+      p.punch_out_at ? toDatetimeLocalValue(p.punch_out_at) : "",
+    );
+    setEditNote("");
+  };
+
+  const submitEditPunch = async () => {
+    if (!editPunchId || !editNote.trim()) {
+      showToast({
+        message: "A note is required for time changes.",
+        variant: "error",
+      });
+      return;
+    }
+    setEditBusy(true);
+    try {
+      const body: Record<string, unknown> = {
+        action: "edit_punch_times",
+        punchId: editPunchId,
+        note: editNote.trim(),
+      };
+      if (editPunchIn.trim()) {
+        body.punch_in_at = new Date(editPunchIn.trim()).toISOString();
+      }
+      if (editPunchOut.trim()) {
+        body.punch_out_at = new Date(editPunchOut.trim()).toISOString();
+      }
+      const r = await fetch("/api/time-clock/admin", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const j = (await r.json()) as { error?: string };
+      if (!r.ok) {
+        showToast({
+          message: j.error ?? "Update failed.",
+          variant: "error",
+        });
+        return;
+      }
+      showToast({ message: "Punch times updated.", variant: "success" });
+      setEditPunchId(null);
+      if (punchesModalUser) void openPunchesModal(punchesModalUser);
+    } catch {
+      showToast({ message: "Update failed.", variant: "error" });
+    } finally {
+      setEditBusy(false);
     }
   };
 
@@ -572,6 +687,18 @@ export function AdminUsersClient() {
                                       {u.show_punch_interface ? "ON" : "OFF"}
                                     </span>
                                   </label>
+                                  {u.show_punch_interface ? (
+                                    <button
+                                      type="button"
+                                      className="mt-3 rounded-lg border border-[#E8C84A]/50 px-3 py-2 text-xs font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void openPunchesModal(u);
+                                      }}
+                                    >
+                                      Manage today&apos;s punches
+                                    </button>
+                                  ) : null}
                                 </div>
                               </div>
                               <div
@@ -624,6 +751,149 @@ export function AdminUsersClient() {
           )}
         </section>
       </main>
+
+      {punchesModalUser ? (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !editBusy) {
+              setPunchesModalUser(null);
+              setEditPunchId(null);
+            }
+          }}
+        >
+          <div
+            className="max-h-[min(90dvh,720px)] w-full max-w-2xl overflow-y-auto rounded-2xl border border-white/15 bg-[#0a1628] p-6 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="punches-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2
+              id="punches-modal-title"
+              className="text-lg font-semibold text-white"
+            >
+              Today&apos;s punches — {listDisplayName(punchesModalUser)}
+            </h2>
+            <p className="mt-1 text-xs text-white/50">
+              Clock-in day is your local calendar day. Edits require a note for
+              the audit log.
+            </p>
+            {punchesModalErr ? (
+              <p className="mt-3 text-sm text-red-300">{punchesModalErr}</p>
+            ) : null}
+            {punchesModalLoading ? (
+              <p className="mt-6 text-sm text-white/55">Loading…</p>
+            ) : punchesToday.length === 0 ? (
+              <p className="mt-6 text-sm text-white/55">
+                No punches recorded for today yet.
+              </p>
+            ) : (
+              <ul className="mt-4 space-y-3">
+                {punchesToday.map((p) => (
+                  <li
+                    key={p.id}
+                    className="rounded-xl border border-white/12 bg-white/[0.04] p-4 text-sm"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium text-white">
+                          {p.job_name?.trim() || "—"}
+                        </p>
+                        <p className="mt-1 font-mono text-xs text-white/60">
+                          In: {new Date(p.punch_in_at).toLocaleString()}
+                          {p.punch_out_at
+                            ? ` · Out: ${new Date(p.punch_out_at).toLocaleString()}`
+                            : " · Open"}
+                        </p>
+                        {p.on_lunch ? (
+                          <p className="mt-1 text-xs text-amber-200">
+                            On lunch (open punch)
+                          </p>
+                        ) : null}
+                        {p.is_manual_entry && p.manual_entry_by_name ? (
+                          <p className="mt-2 text-[10px] font-bold uppercase tracking-wide text-amber-200/90">
+                            Manual entry by {p.manual_entry_by_name}
+                          </p>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        className="rounded-lg border border-white/20 px-3 py-1.5 text-xs font-semibold text-[#E8C84A] hover:bg-white/10"
+                        onClick={() => startEditPunch(p)}
+                      >
+                        Edit times
+                      </button>
+                    </div>
+                    {editPunchId === p.id ? (
+                      <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
+                        <label className="block text-xs text-white/55">
+                          Punch in
+                          <input
+                            type="datetime-local"
+                            className="mt-1 w-full rounded border border-white/15 bg-[#071422] px-3 py-2 text-sm text-white"
+                            value={editPunchIn}
+                            onChange={(e) => setEditPunchIn(e.target.value)}
+                          />
+                        </label>
+                        <label className="block text-xs text-white/55">
+                          Punch out (leave empty if still open)
+                          <input
+                            type="datetime-local"
+                            className="mt-1 w-full rounded border border-white/15 bg-[#071422] px-3 py-2 text-sm text-white"
+                            value={editPunchOut}
+                            onChange={(e) => setEditPunchOut(e.target.value)}
+                          />
+                        </label>
+                        <label className="block text-xs text-white/55">
+                          Note <span className="text-red-300">(required)</span>
+                          <textarea
+                            className="mt-1 min-h-[4rem] w-full resize-y rounded border border-white/15 bg-[#071422] px-3 py-2 text-sm text-white"
+                            value={editNote}
+                            onChange={(e) => setEditNote(e.target.value)}
+                            placeholder="Reason for this change…"
+                          />
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={editBusy}
+                            className="rounded-lg bg-[#E8C84A] px-4 py-2 text-sm font-semibold text-[#0a1628] disabled:opacity-40"
+                            onClick={() => void submitEditPunch()}
+                          >
+                            {editBusy ? "Saving…" : "Save changes"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={editBusy}
+                            className="rounded-lg border border-white/20 px-4 py-2 text-sm text-white/80"
+                            onClick={() => setEditPunchId(null)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                className="rounded-lg border border-white/20 px-4 py-2 text-sm text-white/85"
+                onClick={() => {
+                  setPunchesModalUser(null);
+                  setEditPunchId(null);
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {resetTarget ? (
         <div

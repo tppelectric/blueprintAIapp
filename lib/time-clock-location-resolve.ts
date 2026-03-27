@@ -36,7 +36,8 @@ export async function resolvePunchGpsForJob(
   jobId: string | null,
   coords: CoordsInput | null,
 ): Promise<{ snapshot: PunchLocationSnapshot | null; flagged: boolean }> {
-  if (!coords) return { snapshot: null, flagged: false };
+  /* No coordinates → punch allowed but flagged for review */
+  if (!coords) return { snapshot: null, flagged: true };
 
   let jobHit = null;
   if (jobId) {

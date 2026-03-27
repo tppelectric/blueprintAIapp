@@ -48,7 +48,7 @@ export function classifyPunchDistance(
     return {
       status: "unknown",
       on_site_verified: false,
-      flagged: false,
+      flagged: true,
     };
   }
   if (distanceFt <= ON_SITE_FT) {
@@ -112,13 +112,77 @@ export function formatPunchGpsStatusLine(
   return `Off site — ${mi >= 0.25 ? `${mi.toFixed(1)} miles` : `${Math.round(ft)} ft`} from job`;
 }
 
-/** Team clock / list: green | yellow | red | gray */
+/** Parse JSONB from DB into a snapshot (client or server). */
+export function parsePunchLocationJson(
+  j: unknown,
+): PunchLocationSnapshot | null {
+  if (!j || typeof j !== "object") return null;
+  const o = j as Record<string, unknown>;
+  const lat = Number(o.lat);
+  const lng = Number(o.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const acc = o.accuracy;
+  const dist = o.distance_from_job_ft;
+  const status = o.status;
+  return {
+    lat,
+    lng,
+    accuracy:
+      acc != null && Number(acc) === acc && Number.isFinite(acc)
+        ? Math.round(acc)
+        : null,
+    distance_from_job_ft:
+      dist != null && Number(dist) === dist && Number.isFinite(dist)
+        ? Math.round(dist)
+        : null,
+    on_site_verified: Boolean(o.on_site_verified),
+    status:
+      status === "on_site" ||
+      status === "near_site" ||
+      status === "off_site" ||
+      status === "unknown"
+        ? status
+        : "unknown",
+    job_geocoded: Boolean(o.job_geocoded),
+  };
+}
+
+/**
+ * Team clock card dot: green = on site or admin GPS override; yellow = near;
+ * red = off site, unknown, or no GPS (per product spec).
+ */
 export function punchGpsDotTier(
   loc: PunchLocationSnapshot | null | undefined,
-): "green" | "yellow" | "red" | "gray" {
-  if (!loc) return "gray";
+): "green" | "yellow" | "red" {
+  if (!loc) return "red";
   if (loc.status === "on_site") return "green";
   if (loc.status === "near_site") return "yellow";
   if (loc.status === "off_site") return "red";
-  return "gray";
+  return "red";
+}
+
+export type PunchRowGpsFields = {
+  punch_in_location?: unknown;
+  lunch_start_location?: unknown;
+  gps_override_at?: string | null;
+  on_lunch?: boolean;
+};
+
+/** Which GPS snapshot to show on an open punch card. */
+export function teamClockGpsDotForOpenPunch(p: PunchRowGpsFields): "green" | "yellow" | "red" {
+  if (p.gps_override_at) return "green";
+  const loc =
+    p.on_lunch
+      ? parsePunchLocationJson(p.lunch_start_location) ??
+        parsePunchLocationJson(p.punch_in_location)
+      : parsePunchLocationJson(p.punch_in_location);
+  return punchGpsDotTier(loc);
+}
+
+export function teamClockGpsDotForClosedPunch(p: {
+  punch_in_location?: unknown;
+  gps_override_at?: string | null;
+}): "green" | "yellow" | "red" {
+  if (p.gps_override_at) return "green";
+  return punchGpsDotTier(parsePunchLocationJson(p.punch_in_location));
 }

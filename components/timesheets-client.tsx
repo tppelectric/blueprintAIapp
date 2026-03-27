@@ -17,6 +17,12 @@ import {
   toIsoDate,
 } from "@/lib/time-calendar-helpers";
 import type { TimesheetRow } from "@/lib/time-management-types";
+import {
+  punchInLocalYmd,
+  workedHoursForPunchRow,
+  type PunchRow,
+} from "@/lib/team-clock-utils";
+import { splitRegularOvertime } from "@/lib/time-punch-worked";
 import { createBrowserClient } from "@/lib/supabase/client";
 
 const ENTRY_TYPES = [
@@ -59,6 +65,53 @@ type TodayPunchRow = {
   status: "working" | "lunch";
 };
 
+type CompareRow = {
+  key: string;
+  employeeId: string;
+  employeeName: string;
+  logDate: string;
+  tsHours: number;
+  punchHours: number;
+  flag:
+    | "match"
+    | "hours_mismatch"
+    | "ts_no_punch"
+    | "punch_no_ts";
+  timesheetRowIds: string[];
+};
+
+function laborHoursFromTimesheetRows(dayRows: TimesheetRow[]): number {
+  let t = 0;
+  for (const r of dayRows) {
+    if (r.entry_type === "regular") {
+      t += num(r.hours_worked) + num(r.overtime_hours);
+    } else if (r.entry_type === "overtime") {
+      t += num(r.hours_worked);
+    }
+  }
+  return Math.round(t * 100) / 100;
+}
+
+function hasLaborTimesheetRow(dayRows: TimesheetRow[]): boolean {
+  return dayRows.some((r) => {
+    if (r.entry_type === "regular") {
+      return num(r.hours_worked) + num(r.overtime_hours) > 0.005;
+    }
+    if (r.entry_type === "overtime") {
+      return num(r.hours_worked) > 0.005;
+    }
+    return false;
+  });
+}
+
+function appendTimesheetNote(existing: string | null, line: string): string {
+  const e = (existing ?? "").trim();
+  const stamp = new Date().toISOString().slice(0, 19);
+  const tagged = `[${stamp}] ${line.trim()}`;
+  const next = e ? `${e}\n${tagged}` : tagged;
+  return next.slice(0, 8000);
+}
+
 export function TimesheetsClient() {
   const { showToast } = useAppToast();
   const { profile, canManageTeamTime, role } = useUserRole();
@@ -71,13 +124,23 @@ export function TimesheetsClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
-  const [mainTab, setMainTab] = useState<"week" | "today">("week");
+  const [mainTab, setMainTab] = useState<"week" | "today" | "compare">("week");
   const [todayRows, setTodayRows] = useState<TodayPunchRow[]>([]);
   const [todayLoading, setTodayLoading] = useState(false);
   const [todayError, setTodayError] = useState<string | null>(null);
+  const [comparePunchRows, setComparePunchRows] = useState<PunchRow[]>([]);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareNoteModal, setCompareNoteModal] = useState<{
+    mode: "note" | "correction";
+    row: CompareRow;
+  } | null>(null);
+  const [compareNoteDraft, setCompareNoteDraft] = useState("");
+  const [compareNoteBusy, setCompareNoteBusy] = useState(false);
 
   const showTodayPunchesTab =
     role === "super_admin" || role === "admin" || role === "office_manager";
+
+  const showCompareTab = role === "super_admin" || role === "admin";
 
   const weekStartStr = useMemo(() => toIsoDate(anchor), [anchor]);
   const weekEndStr = useMemo(
@@ -186,6 +249,39 @@ export function TimesheetsClient() {
     return () => window.clearInterval(id);
   }, [mainTab, showTodayPunchesTab, loadTodayPunches]);
 
+  const loadComparePunches = useCallback(async () => {
+    setCompareLoading(true);
+    try {
+      const sb = createBrowserClient();
+      const start = new Date(activeFrom + "T00:00:00");
+      const endEx = new Date(activeTo + "T00:00:00");
+      endEx.setDate(endEx.getDate() + 1);
+      const { data, error: qe } = await sb
+        .from("time_punches")
+        .select(
+          "id,employee_id,job_name,punch_in_at,punch_out_at,on_lunch,lunch_start_at,total_lunch_ms",
+        )
+        .gte("punch_in_at", start.toISOString())
+        .lt("punch_in_at", endEx.toISOString());
+      if (qe) throw qe;
+      setComparePunchRows((data ?? []) as PunchRow[]);
+    } catch (e) {
+      const msg =
+        e instanceof Error ? e.message : "Could not load punches for compare.";
+      showToast({ message: msg, variant: "error" });
+      setComparePunchRows([]);
+    } finally {
+      setCompareLoading(false);
+    }
+  }, [activeFrom, activeTo, showToast]);
+
+  useEffect(() => {
+    if (mainTab !== "compare" || !showCompareTab) return;
+    void loadComparePunches();
+    const id = window.setInterval(() => void loadComparePunches(), 30000);
+    return () => window.clearInterval(id);
+  }, [mainTab, showCompareTab, loadComparePunches]);
+
   const employees = useMemo(() => {
     const s = new Set<string>();
     for (const r of rows) {
@@ -204,6 +300,71 @@ export function TimesheetsClient() {
       return r.employee_id === employeeFilter;
     });
   }, [rows, employeeFilter]);
+
+  const compareRows = useMemo((): CompareRow[] => {
+    if (!showCompareTab) return [];
+    const timesheetByKey = new Map<string, TimesheetRow[]>();
+    for (const r of rows) {
+      if (r.log_date < activeFrom || r.log_date > activeTo) continue;
+      const eid = r.employee_id?.trim();
+      if (!eid) continue;
+      const k = `${eid}|${r.log_date}`;
+      if (!timesheetByKey.has(k)) timesheetByKey.set(k, []);
+      timesheetByKey.get(k)!.push(r);
+    }
+
+    const punchByKey = new Map<string, number>();
+    const nowMs = Date.now();
+    for (const p of comparePunchRows) {
+      const ymd = punchInLocalYmd(p.punch_in_at);
+      if (ymd < activeFrom || ymd > activeTo) continue;
+      const k = `${p.employee_id}|${ymd}`;
+      const add = workedHoursForPunchRow(p, nowMs);
+      punchByKey.set(k, Math.round(((punchByKey.get(k) ?? 0) + add) * 100) / 100);
+    }
+
+    const keys = new Set<string>([
+      ...timesheetByKey.keys(),
+      ...punchByKey.keys(),
+    ]);
+    const out: CompareRow[] = [];
+    for (const key of keys) {
+      const [employeeId, logDate] = key.split("|");
+      if (!employeeId || !logDate) continue;
+      const dayRows = timesheetByKey.get(key) ?? [];
+      const tsHours = laborHoursFromTimesheetRows(dayRows);
+      const punchHours = punchByKey.get(key) ?? 0;
+      const tsLabor = hasLaborTimesheetRow(dayRows);
+      const punchLabor = punchHours > 0.05;
+      const employeeName =
+        dayRows[0]?.employee_name?.trim() ||
+        rows.find((x) => x.employee_id === employeeId)?.employee_name?.trim() ||
+        employeeId.slice(0, 8);
+
+      let flag: CompareRow["flag"] = "match";
+      if (tsLabor && !punchLabor) flag = "ts_no_punch";
+      else if (punchLabor && !tsLabor) flag = "punch_no_ts";
+      else if (tsLabor && punchLabor && Math.abs(tsHours - punchHours) > 0.25) {
+        flag = "hours_mismatch";
+      }
+
+      out.push({
+        key,
+        employeeId,
+        employeeName,
+        logDate,
+        tsHours,
+        punchHours,
+        flag,
+        timesheetRowIds: dayRows.map((r) => r.id),
+      });
+    }
+    out.sort((a, b) => {
+      if (a.logDate !== b.logDate) return a.logDate.localeCompare(b.logDate);
+      return a.employeeName.localeCompare(b.employeeName);
+    });
+    return out;
+  }, [rows, comparePunchRows, activeFrom, activeTo, showCompareTab]);
 
   const summaryByEmployee = useMemo(() => {
     const m = new Map<
@@ -245,6 +406,149 @@ export function TimesheetsClient() {
       });
     } finally {
       setSavingId(null);
+    }
+  };
+
+  const acceptCompareTimesheet = async (cr: CompareRow) => {
+    if (cr.timesheetRowIds.length === 0) return;
+    const sb = createBrowserClient();
+    const {
+      data: { session },
+    } = await sb.auth.getSession();
+    const uid = session?.user?.id ?? null;
+    const at = new Date().toISOString();
+    const { error } = await sb
+      .from("timesheets")
+      .update({
+        status: "approved",
+        approved_by: uid,
+        approved_at: at,
+      })
+      .in("id", cr.timesheetRowIds);
+    if (error) {
+      showToast({ message: error.message, variant: "error" });
+      return;
+    }
+    showToast({ message: "Timesheet rows approved.", variant: "success" });
+    void load();
+  };
+
+  const usePunchRecordForCompare = async (cr: CompareRow) => {
+    const punchH = cr.punchHours;
+    const { regular, overtime } = splitRegularOvertime(punchH);
+    const dayRows = rows.filter((r) => cr.timesheetRowIds.includes(r.id));
+    const regularRows = dayRows.filter((r) => r.entry_type === "regular");
+    const sb = createBrowserClient();
+    if (regularRows.length >= 1) {
+      try {
+        const { error: u1 } = await sb
+          .from("timesheets")
+          .update({
+            hours_worked: regular,
+            overtime_hours: overtime,
+          })
+          .eq("id", regularRows[0].id);
+        if (u1) throw u1;
+        for (let i = 1; i < regularRows.length; i++) {
+          const { error: ue } = await sb
+            .from("timesheets")
+            .update({ hours_worked: 0, overtime_hours: 0 })
+            .eq("id", regularRows[i].id);
+          if (ue) throw ue;
+        }
+        showToast({
+          message: "Regular rows updated from punch totals.",
+          variant: "success",
+        });
+        void load();
+      } catch (e) {
+        showToast({
+          message: e instanceof Error ? e.message : "Update failed.",
+          variant: "error",
+        });
+      }
+      return;
+    }
+    const {
+      data: { session },
+    } = await sb.auth.getSession();
+    try {
+      const nameFromRows = rows.find(
+        (x) => x.employee_id === cr.employeeId,
+      )?.employee_name;
+      const { error: ie } = await sb.from("timesheets").insert({
+        employee_id: cr.employeeId,
+        employee_name:
+          nameFromRows ??
+          profile?.full_name ??
+          profile?.email ??
+          session?.user?.email ??
+          null,
+        log_date: cr.logDate,
+        entry_type: "regular",
+        status: "pending",
+        hours_worked: regular,
+        overtime_hours: overtime,
+        daily_log_id: null,
+      });
+      if (ie) throw ie;
+      showToast({
+        message: "Created timesheet row from punch hours.",
+        variant: "success",
+      });
+      void load();
+    } catch (e) {
+      showToast({
+        message: e instanceof Error ? e.message : "Insert failed.",
+        variant: "error",
+      });
+    }
+  };
+
+  const submitCompareNoteModal = async () => {
+    if (!compareNoteModal || !compareNoteDraft.trim()) {
+      showToast({ message: "Note text is required.", variant: "error" });
+      return;
+    }
+    if (compareNoteModal.row.timesheetRowIds.length === 0) {
+      showToast({
+        message: "No timesheet row for this date — add a row first.",
+        variant: "error",
+      });
+      return;
+    }
+    setCompareNoteBusy(true);
+    try {
+      const sb = createBrowserClient();
+      const line =
+        compareNoteModal.mode === "correction"
+          ? `Correction requested: ${compareNoteDraft.trim()}`
+          : `Compare note: ${compareNoteDraft.trim()}`;
+      for (const id of compareNoteModal.row.timesheetRowIds) {
+        const r = rows.find((x) => x.id === id);
+        if (!r) continue;
+        const patch: Partial<TimesheetRow> = {
+          notes: appendTimesheetNote(r.notes, line),
+        };
+        if (compareNoteModal.mode === "correction") {
+          patch.status = "pending";
+          patch.approved_by = null;
+          patch.approved_at = null;
+        }
+        const { error: ue } = await sb.from("timesheets").update(patch).eq("id", id);
+        if (ue) throw ue;
+      }
+      showToast({ message: "Notes saved.", variant: "success" });
+      setCompareNoteModal(null);
+      setCompareNoteDraft("");
+      void load();
+    } catch (e) {
+      showToast({
+        message: e instanceof Error ? e.message : "Update failed.",
+        variant: "error",
+      });
+    } finally {
+      setCompareNoteBusy(false);
     }
   };
 
@@ -383,7 +687,7 @@ export function TimesheetsClient() {
             Weekly view with entries from daily logs. Managers can edit, approve,
             or add manual rows.
           </p>
-          {showTodayPunchesTab ? (
+          {showTodayPunchesTab || showCompareTab ? (
             <div className="mt-4 flex flex-wrap gap-2 border-b border-white/10 pb-1">
               <button
                 type="button"
@@ -397,18 +701,34 @@ export function TimesheetsClient() {
               >
                 Weekly timesheets
               </button>
-              <button
-                type="button"
-                onClick={() => setMainTab("today")}
-                className={[
-                  "rounded-t-lg px-4 py-2 text-sm font-semibold transition-colors",
-                  mainTab === "today"
-                    ? "bg-[#E8C84A]/20 text-[#E8C84A]"
-                    : "text-white/55 hover:bg-white/5 hover:text-white/85",
-                ].join(" ")}
-              >
-                Today&apos;s Punches
-              </button>
+              {showTodayPunchesTab ? (
+                <button
+                  type="button"
+                  onClick={() => setMainTab("today")}
+                  className={[
+                    "rounded-t-lg px-4 py-2 text-sm font-semibold transition-colors",
+                    mainTab === "today"
+                      ? "bg-[#E8C84A]/20 text-[#E8C84A]"
+                      : "text-white/55 hover:bg-white/5 hover:text-white/85",
+                  ].join(" ")}
+                >
+                  Today&apos;s Punches
+                </button>
+              ) : null}
+              {showCompareTab ? (
+                <button
+                  type="button"
+                  onClick={() => setMainTab("compare")}
+                  className={[
+                    "rounded-t-lg px-4 py-2 text-sm font-semibold transition-colors",
+                    mainTab === "compare"
+                      ? "bg-[#E8C84A]/20 text-[#E8C84A]"
+                      : "text-white/55 hover:bg-white/5 hover:text-white/85",
+                  ].join(" ")}
+                >
+                  Compare
+                </button>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -491,6 +811,184 @@ export function TimesheetsClient() {
             >
               Refresh
             </button>
+          </section>
+        ) : null}
+
+        {mainTab === "compare" && showCompareTab ? (
+          <section className="mt-8 print:hidden">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-white/55">
+              Timesheet vs punch clock
+            </h2>
+            <p className="mt-1 max-w-3xl text-sm text-white/55">
+              Left column is labor hours from submitted timesheet rows (regular +
+              overtime). Right column is net hours from punch records for the same
+              calendar day. Rows refresh every 30 seconds while this tab is open.
+            </p>
+            <div className="mt-4 flex flex-wrap items-end gap-3">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={prevWeek}
+                  className="btn-secondary btn-h-11"
+                >
+                  ← Previous week
+                </button>
+                <button
+                  type="button"
+                  onClick={nextWeek}
+                  className="btn-secondary btn-h-11"
+                >
+                  Next week →
+                </button>
+              </div>
+              <div>
+                <label className="text-xs text-white/45">From</label>
+                <input
+                  type="date"
+                  className="app-input mt-1 block"
+                  value={rangeFrom}
+                  onChange={(e) => setRangeFrom(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-white/45">To</label>
+                <input
+                  type="date"
+                  className="app-input mt-1 block"
+                  value={rangeTo}
+                  onChange={(e) => setRangeTo(e.target.value)}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  void load();
+                  void loadComparePunches();
+                }}
+                className="btn-secondary btn-h-11"
+              >
+                Refresh
+              </button>
+            </div>
+            {compareLoading ? (
+              <div className="mt-6">
+                <TimesheetTableSkeleton />
+              </div>
+            ) : compareRows.length === 0 ? (
+              <p className="mt-6 text-sm text-white/50">
+                No timesheet or punch data in this range for comparison.
+              </p>
+            ) : (
+              <div className="mt-6 overflow-x-auto rounded-xl border border-white/10">
+                <table className="w-full min-w-[960px] border-collapse text-left text-sm text-white/88">
+                  <thead>
+                    <tr className="border-b border-white/10 bg-white/[0.06] text-[11px] font-bold uppercase tracking-wide text-[#E8C84A]">
+                      <th className="px-3 py-3">Date</th>
+                      <th className="px-3 py-3">Employee</th>
+                      <th className="px-3 py-3 text-right">Timesheet hrs</th>
+                      <th className="px-3 py-3 text-right">Punch hrs</th>
+                      <th className="px-3 py-3">Flag</th>
+                      <th className="px-3 py-3">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {compareRows.map((cr) => (
+                      <tr
+                        key={cr.key}
+                        className="border-b border-white/8 odd:bg-white/[0.02]"
+                      >
+                        <td className="px-3 py-3 font-mono text-xs">
+                          {cr.logDate}
+                        </td>
+                        <td className="px-3 py-3 font-medium">
+                          {cr.employeeName}
+                        </td>
+                        <td className="px-3 py-3 text-right font-mono tabular-nums text-[#E8C84A]">
+                          {cr.tsHours.toFixed(2)}
+                        </td>
+                        <td className="px-3 py-3 text-right font-mono tabular-nums">
+                          {cr.punchHours.toFixed(2)}
+                        </td>
+                        <td className="px-3 py-3">
+                          {cr.flag === "match" ? (
+                            <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-200">
+                              Match
+                            </span>
+                          ) : null}
+                          {cr.flag === "hours_mismatch" ? (
+                            <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-100">
+                              Hours differ
+                            </span>
+                          ) : null}
+                          {cr.flag === "ts_no_punch" ? (
+                            <span className="rounded-full bg-sky-500/20 px-2 py-0.5 text-[10px] font-bold uppercase text-sky-100">
+                              TS, no punch
+                            </span>
+                          ) : null}
+                          {cr.flag === "punch_no_ts" ? (
+                            <span className="rounded-full bg-rose-500/20 px-2 py-0.5 text-[10px] font-bold uppercase text-rose-100">
+                              Punch, no TS
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="flex max-w-[22rem] flex-wrap gap-1">
+                            {cr.timesheetRowIds.length > 0 ? (
+                              <button
+                                type="button"
+                                className="rounded bg-emerald-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-emerald-500"
+                                onClick={() => void acceptCompareTimesheet(cr)}
+                              >
+                                Accept TS
+                              </button>
+                            ) : null}
+                            {cr.punchHours > 0.05 ? (
+                              <button
+                                type="button"
+                                className="rounded bg-[#E8C84A] px-2 py-1 text-[10px] font-semibold text-[#0a1628] hover:bg-[#f0d56e]"
+                                onClick={() => void usePunchRecordForCompare(cr)}
+                              >
+                                Use punch
+                              </button>
+                            ) : null}
+                            {cr.timesheetRowIds.length > 0 ? (
+                              <button
+                                type="button"
+                                className="rounded border border-amber-400/50 px-2 py-1 text-[10px] font-semibold text-amber-100 hover:bg-amber-500/10"
+                                onClick={() => {
+                                  setCompareNoteDraft("");
+                                  setCompareNoteModal({
+                                    mode: "correction",
+                                    row: cr,
+                                  });
+                                }}
+                              >
+                                Request correction
+                              </button>
+                            ) : null}
+                            {cr.timesheetRowIds.length > 0 ? (
+                              <button
+                                type="button"
+                                className="rounded border border-white/25 px-2 py-1 text-[10px] font-semibold text-white/85 hover:bg-white/10"
+                                onClick={() => {
+                                  setCompareNoteDraft("");
+                                  setCompareNoteModal({
+                                    mode: "note",
+                                    row: cr,
+                                  });
+                                }}
+                              >
+                                Add note
+                              </button>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
         ) : null}
 
@@ -918,6 +1416,71 @@ export function TimesheetsClient() {
             `}</style>
           </>
         )
+        ) : null}
+
+        {compareNoteModal ? (
+          <div
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+            role="presentation"
+            onClick={(ev) => {
+              if (ev.target === ev.currentTarget && !compareNoteBusy) {
+                setCompareNoteModal(null);
+                setCompareNoteDraft("");
+              }
+            }}
+          >
+            <div
+              className="w-full max-w-md rounded-2xl border border-white/15 bg-[#0a1628] p-5 shadow-xl"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="compare-note-title"
+              onClick={(ev) => ev.stopPropagation()}
+            >
+              <h2
+                id="compare-note-title"
+                className="text-lg font-semibold text-white"
+              >
+                {compareNoteModal.mode === "correction"
+                  ? "Request correction"
+                  : "Add compare note"}
+              </h2>
+              <p className="mt-2 text-sm text-white/55">
+                {compareNoteModal.mode === "correction"
+                  ? "Appends to every timesheet row for this employee and date, and sets status back to pending."
+                  : "Appends an audited note to every timesheet row for this employee and date."}
+              </p>
+              <label className="mt-4 block text-xs text-white/45">
+                Note
+                <textarea
+                  className="app-input mt-1 min-h-[6rem] w-full resize-y"
+                  value={compareNoteDraft}
+                  onChange={(e) => setCompareNoteDraft(e.target.value)}
+                  placeholder="Required"
+                />
+              </label>
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={compareNoteBusy}
+                  className="btn-secondary btn-h-11"
+                  onClick={() => {
+                    setCompareNoteModal(null);
+                    setCompareNoteDraft("");
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={compareNoteBusy}
+                  className="btn-primary btn-h-11"
+                  onClick={() => void submitCompareNoteModal()}
+                >
+                  {compareNoteBusy ? "Saving…" : "Confirm"}
+                </button>
+              </div>
+            </div>
+          </div>
         ) : null}
       </main>
     </div>

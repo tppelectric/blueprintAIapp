@@ -1,7 +1,15 @@
 /**
  * Vendor-specific SKUs, MSRP-style unit pricing, and material stack planning.
  * Engine passes vendor as string (VendorChoice union).
+ *
+ * Equipment tier map (reference):
+ * - Basic: Wi‑Fi 5 legacy / value (UAP-AC-* class) — new stock often Wi‑Fi 6 (U6 Lite)
+ * - Standard: Wi‑Fi 6 (U6 Pro family)
+ * - Professional: Wi‑Fi 6E (U6 Enterprise)
+ * - Premium: Wi‑Fi 7 (U7 Pro, U7 Pro Max, U7 Pro Wall, U7 Outdoor, U7‑XG, U7‑XGS)
+ * - Enterprise: Access Networks / Ruckus Wi‑Fi 7 (custom channel — verify MAP)
  */
+
 export type EquipmentRec = {
   apModel: string;
   outdoorApModel: string | null;
@@ -27,29 +35,128 @@ const LV_BRACKET_EA = 5;
 const PATCH_3FT = 5;
 const PATCH_6FT = 8;
 
-/** Ubiquiti MSRP reference (user spec). */
+/** Ubiquiti MSRP reference — round numbers; verify store.ui.com before quoting. */
 const U6_LITE = 99;
 const U6_PRO = 179;
 const U6_ENT = 299;
 const U6_MESH = 179;
 const U7_PRO = 219;
+const U7_PRO_MAX = 279;
+const U7_PRO_WALL = 189;
+const U7_OUTDOOR = 279;
+const U7_PRO_XG = 249;
+const U7_PRO_XGS = 299;
 const CGW_ULTRA = 179;
 const CGW_MAX = 299;
 const USW_LITE_8 = 109;
 const USW_PRO_16 = 299;
 const USW_PRO_24 = 499;
 
-function pickUbiquitiIndoor(totalIndoorSqFt: number): {
-  label: string;
-  unit: number;
-} {
+/** UniFi Wi‑Fi 7 lineup (Mar 2026 — confirm on ui.com). */
+export const UNIFI_WIFI7_PRODUCT_LINE = [
+  "U7 Pro — Wi‑Fi 7 tri‑band ceiling AP",
+  "U7 Pro Max — higher density Wi‑Fi 7",
+  "U7 Pro Wall — in‑wall Wi‑Fi 7 + switch ports",
+  "U7 Outdoor — weatherized Wi‑Fi 7",
+  "U7 Pro XG / U7 Pro XGS — 10GbE uplink, flagship (XGS = spectral scan radio)",
+] as const;
+
+export const CHOWMAIN_UNIFI_DRIVER_USD = 150;
+/** Snap One announced simplified optional Connect pricing — verify before quoting. */
+export const CONTROL4_CONNECT_ANNUAL_EST_USD = 249;
+
+export const CHOWMAIN_UNIFI_DRIVER_LINE: HardwareBomLine = {
+  id: "chowmain-unifi-driver",
+  description:
+    "Chowmain UniFi driver (~$150 MSRP — UniFi Protect / network presence in Control4)",
+  quantity: 1,
+  unitLabel: "ea",
+  unitPrice: CHOWMAIN_UNIFI_DRIVER_USD,
+  lineTotal: CHOWMAIN_UNIFI_DRIVER_USD,
+};
+
+export const CONTROL4_CONNECT_ANNUAL_LINE: HardwareBomLine = {
+  id: "control4-connect-annual",
+  description:
+    "Control4 Connect — annual subscription (optional; remote access, HomeKit, premium features — verify Snap One / dealer)",
+  quantity: 1,
+  unitLabel: "yr",
+  unitPrice: CONTROL4_CONNECT_ANNUAL_EST_USD,
+  lineTotal: CONTROL4_CONNECT_ANNUAL_EST_USD,
+};
+
+/** Append integration lines for C4 + UniFi proposals (BOM). */
+export function appendIntegrationBomLines(
+  lines: HardwareBomLine[],
+  opts: { chowmainUniFi?: boolean; control4ConnectAnnual?: boolean },
+): HardwareBomLine[] {
+  const out = [...lines];
+  if (opts.chowmainUniFi) out.push({ ...CHOWMAIN_UNIFI_DRIVER_LINE });
+  if (opts.control4ConnectAnnual) out.push({ ...CONTROL4_CONNECT_ANNUAL_LINE });
+  return out;
+}
+
+function pickUbiquitiIndoor(
+  totalIndoorSqFt: number,
+  totalDevices: number,
+  priority: string,
+  stackOpts?: PlanStackOptions,
+): { label: string; unit: number } {
+  const o = stackOpts?.ubiquitiIndoorOverride;
+  if (o) return o;
+
+  const preferWifi7 =
+    Boolean(stackOpts?.preferWifi7) ||
+    priority === "future_proof" ||
+    totalDevices >= 50 ||
+    totalIndoorSqFt >= 3500;
+
+  if (preferWifi7) {
+    if (totalIndoorSqFt < 1600)
+      return {
+        label: `UniFi U7 Pro ($${U7_PRO} ea.) — Wi‑Fi 7`,
+        unit: U7_PRO,
+      };
+    if (totalIndoorSqFt < 2800)
+      return {
+        label: `UniFi U7 Pro Max ($${U7_PRO_MAX} est.) — Wi‑Fi 7`,
+        unit: U7_PRO_MAX,
+      };
+    if (totalIndoorSqFt < 4200)
+      return {
+        label: `UniFi U7 Pro Wall ($${U7_PRO_WALL} est.) — Wi‑Fi 7 in‑wall`,
+        unit: U7_PRO_WALL,
+      };
+    if (totalIndoorSqFt < 5500)
+      return {
+        label: `UniFi U7 Pro XG ($${U7_PRO_XG} est.) — Wi‑Fi 7`,
+        unit: U7_PRO_XG,
+      };
+    return {
+      label: `UniFi U7 Pro XGS ($${U7_PRO_XGS} ea.) — Wi‑Fi 7 flagship`,
+      unit: U7_PRO_XGS,
+    };
+  }
+
   if (totalIndoorSqFt < 1500)
-    return { label: `UniFi U6 Lite ($${U6_LITE} ea.)`, unit: U6_LITE };
+    return {
+      label: `UniFi U6 Lite ($${U6_LITE} ea.) — Wi‑Fi 6 value (legacy Wi‑Fi 5: UAP‑AC‑* class)`,
+      unit: U6_LITE,
+    };
   if (totalIndoorSqFt < 2500)
-    return { label: `UniFi U6 Pro ($${U6_PRO} ea.)`, unit: U6_PRO };
+    return {
+      label: `UniFi U6 Pro ($${U6_PRO} ea.) — Wi‑Fi 6`,
+      unit: U6_PRO,
+    };
   if (totalIndoorSqFt < 4000)
-    return { label: `UniFi U7 Pro ($${U7_PRO} ea.)`, unit: U7_PRO };
-  return { label: `UniFi U6 Enterprise ($${U6_ENT} ea.)`, unit: U6_ENT };
+    return {
+      label: `UniFi U6 Enterprise ($${U6_ENT} ea.) — Wi‑Fi 6E`,
+      unit: U6_ENT,
+    };
+  return {
+    label: `UniFi U7 Pro ($${U7_PRO} ea.) — Wi‑Fi 7 at this scale`,
+    unit: U7_PRO,
+  };
 }
 
 function ubiquitiGateway(
@@ -106,6 +213,8 @@ export type VendorMaterialPlan = {
 export type PlanStackOptions = {
   /** Force a specific UniFi indoor AP SKU (e.g. proposal “Better” tier). */
   ubiquitiIndoorOverride?: { label: string; unit: number };
+  /** Bias UniFi stack to Wi‑Fi 7 (new construction, smart home, 50+ devices, etc.). */
+  preferWifi7?: boolean;
 };
 
 export function planVendorMaterialStack(
@@ -117,13 +226,23 @@ export function planVendorMaterialStack(
   priority: string,
   stackOpts?: PlanStackOptions,
 ): VendorMaterialPlan {
-  const outdoorUni = `UniFi U6 Mesh / outdoor ($${U6_MESH} ea.)`;
-
   const mesh = vendor === "eero" || vendor === "google_nest" || vendor === "netgear_orbi";
 
+  const outdoorUniWifi7 = `UniFi U7 Outdoor ($${U7_OUTDOOR} est.) — Wi‑Fi 7`;
+  const outdoorUniLegacy = `UniFi U6 Mesh / outdoor ($${U6_MESH} ea.)`;
+
   if (vendor === "ubiquiti" || vendor === "none") {
-    const indoor =
-      stackOpts?.ubiquitiIndoorOverride ?? pickUbiquitiIndoor(totalIndoorSqFt);
+    const useWifi7Outdoor =
+      Boolean(stackOpts?.preferWifi7) ||
+      (stackOpts?.ubiquitiIndoorOverride?.label.includes("U7") ?? false);
+    const outdoorUni = useWifi7Outdoor ? outdoorUniWifi7 : outdoorUniLegacy;
+    const outdoorUnitPrice = useWifi7Outdoor ? U7_OUTDOOR : U6_MESH;
+    const indoor = pickUbiquitiIndoor(
+      totalIndoorSqFt,
+      totalDevices,
+      priority,
+      stackOpts,
+    );
     const sw = ubiquitiSwitch(indoorAps);
     const gw = ubiquitiGateway(totalIndoorSqFt, totalDevices, priority);
     const parts: string[] = [];
@@ -142,7 +261,7 @@ export function planVendorMaterialStack(
       line,
       equipment,
       apUnit: indoor.unit,
-      outdoorUnit: outdoorAps > 0 ? U6_MESH : 0,
+      outdoorUnit: outdoorAps > 0 ? outdoorUnitPrice : 0,
       switchUnit: sw.unit,
       gatewayUnit: gw.unit,
       gatewayBomLabel: gw.label,
@@ -184,7 +303,7 @@ export function planVendorMaterialStack(
         switchSpendFactor: 0,
         mesh: true,
         gatewayRecommendation:
-          "No separate security gateway — eero mesh handles routing. Self-configuring mesh; use eero app.",
+          "No separate security gateway — eero mesh handles routing. NOT recommended for professional Control4 / Josh.ai / Savant / VLAN-heavy installs — specify UniFi, Access Networks, Ruckus, or Araknis.",
       };
     }
     if (vendor === "google_nest") {
@@ -213,7 +332,7 @@ export function planVendorMaterialStack(
         switchSpendFactor: 0,
         mesh: true,
         gatewayRecommendation:
-          "No separate gateway — Nest WiFi Pro is a mesh system. Residential-focused; limited VLAN/enterprise features.",
+          "No separate gateway — Nest WiFi Pro is a mesh system. Consumer mesh — NOT for professional C4 / Josh / Savant integration; use enterprise Wi‑Fi for integrator-grade projects.",
       };
     }
     // netgear_orbi
@@ -244,7 +363,7 @@ export function planVendorMaterialStack(
       switchSpendFactor: 0,
       mesh: true,
       gatewayRecommendation:
-        "Orbi router + satellites in mesh; ~2,500 sq ft coverage per node (manufacturer claim). Verify pack/satellite count on site.",
+        "Orbi router + satellites in mesh. Consumer mesh — avoid for professional smart-home deployments; prefer wired APs (UniFi / Access Networks / Ruckus).",
     };
   }
 
@@ -282,33 +401,42 @@ export function planVendorMaterialStack(
   }
 
   if (vendor === "access_networks") {
+    /** Ruckus technology via Access Networks (Snap One / ADI) — Wi‑Fi 7 SKUs Feb 2025+. */
     const indoor =
-      totalIndoorSqFt < 4000
-        ? { label: `AN-500-AC ($349 ea.)`, unit: 349 }
-        : { label: `AN-700-AC ($499 ea.)`, unit: 499 };
+      totalIndoorSqFt < 3500
+        ? {
+            label: `Access Networks A670 Unleashed Wi‑Fi 7 ($749 est. — verify MAP, Ruckus-based)`,
+            unit: 749,
+          }
+        : {
+            label: `Access Networks A770 Wi‑Fi 7 ($999 est. — verify MAP, Ruckus / ARCC)`,
+            unit: 999,
+          };
     const parts: string[] = [];
     if (indoorAps > 0) parts.push(`${indoorAps}× ${indoor.label}`);
-    if (outdoorAps > 0) parts.push(`${outdoorAps}× AN outdoor-rated AP (est. $449 ea.)`);
+    if (outdoorAps > 0)
+      parts.push(`${outdoorAps}× AN outdoor Wi‑Fi 7 / Ruckus-class (est. $849 ea., verify)`);
     const line = parts.join(" · ") || "—";
     return {
       line,
       equipment: {
-        apModel: indoor.label.replace(" ea.", ""),
-        outdoorApModel: outdoorAps > 0 ? "Access Networks outdoor AP" : null,
+        apModel: indoor.label.replace(" ea.", "").replace(" est.", ""),
+        outdoorApModel:
+          outdoorAps > 0 ? "Access Networks outdoor (Ruckus-class)" : null,
         switchNote: "Matched PoE switch (line card) — dealer package",
         switchPorts: 0,
-        costRangeLabel: "Access Networks",
+        costRangeLabel: "Access Networks (Ruckus Wi‑Fi 7)",
         wholeHomeApPlan: line,
       },
       apUnit: indoor.unit,
-      outdoorUnit: outdoorAps > 0 ? 449 : 0,
+      outdoorUnit: outdoorAps > 0 ? 849 : 0,
       switchUnit: 520,
       gatewayUnit: 0,
       gatewayBomLabel: null,
       switchSpendFactor: Math.min(2.2, 1 + indoorAps / 16),
       mesh: false,
       gatewayRecommendation:
-        "Access Networks: use manufacturer-recommended gateway/controller; premium AV/custom install — confirm dealer pricing.",
+        "Access Networks (Snap One): top-tier custom-install Wi‑Fi — Ruckus antenna tech; A670 Unleashed / A770 Wi‑Fi 7 (verify 2026 MAP). Pair with ARCC cloud or Unleashed + OvrC per package.",
     };
   }
 
@@ -373,10 +501,10 @@ export function planVendorMaterialStack(
   if (vendor === "ruckus") {
     const indoorPick =
       totalIndoorSqFt < 2200
-        ? { label: `Ruckus R350 ($299 ea.)`, unit: 299 }
+        ? { label: `Ruckus R560 Wi‑Fi 6E ($349 est.)`, unit: 349 }
         : totalIndoorSqFt < 4000
-          ? { label: `Ruckus R370 ($399 ea.)`, unit: 399 }
-          : { label: `Ruckus R670 ($599 ea.)`, unit: 599 };
+          ? { label: `Ruckus R670 Wi‑Fi 7 tri‑band ($599 ea.)`, unit: 599 }
+          : { label: `Ruckus R770 Wi‑Fi 7 ($799 est.)`, unit: 799 };
     const t350 = 499;
     const parts: string[] = [];
     if (indoorAps > 0) parts.push(`${indoorAps}× ${indoorPick.label}`);
@@ -402,7 +530,7 @@ export function planVendorMaterialStack(
       switchSpendFactor: Math.min(2.2, 1 + indoorAps / 16),
       mesh: false,
       gatewayRecommendation:
-        "Use Ruckus-recommended edge gateway or existing firewall; SmartZone / RUCKUS One for management.",
+        "RUCKUS Networks (Wi‑Fi 7 lines for new projects): confirm R560 / R670 / R770 with distributor; SmartZone / RUCKUS One / Unleashed per deployment. Access Networks packages same Ruckus silicon for CEDIA channel.",
     };
   }
 

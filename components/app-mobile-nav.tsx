@@ -10,7 +10,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { TeamClockNavBadge } from "@/components/team-clock-nav-badge";
 import { useUserRole } from "@/hooks/use-user-role";
 import { createBrowserClient } from "@/lib/supabase/client";
-import { ROLE_LABELS, canViewTeamClock } from "@/lib/user-roles";
+import { ROLE_LABELS, canManageIntegrations, canViewTeamClock } from "@/lib/user-roles";
 
 type AppNavKey =
   | "dashboard"
@@ -20,7 +20,8 @@ type AppNavKey =
   | "reference"
   | "team_time"
   | "team_clock"
-  | "field";
+  | "field"
+  | "settings";
 
 const TOOL_LINKS: { href: string; label: string }[] = [
   { href: "/tools/project-describer", label: "AI Project Describer" },
@@ -194,6 +195,7 @@ function MobileMenuPortal({
   const [mounted, setMounted] = useState(false);
   const { role, loading: roleLoading } = useUserRole();
   const showUserManagement = !roleLoading && role === "super_admin";
+  const showIntegrations = !roleLoading && canManageIntegrations(role);
   const showTeamClock = !roleLoading && canViewTeamClock(role);
   useEffect(() => setMounted(true), []);
 
@@ -299,6 +301,23 @@ function MobileMenuPortal({
           <p className="mt-3 border-t border-white/10 px-3 pb-2 pt-3 text-[10px] font-bold uppercase tracking-wide text-[#E8C84A]/80">
             Team
           </p>
+          {showIntegrations || showUserManagement ? (
+            <p className="mt-2 px-3 pb-1 text-[10px] font-bold uppercase tracking-wide text-white/45">
+              Admin
+            </p>
+          ) : null}
+          {showIntegrations ? (
+            <Link
+              href="/settings/integrations"
+              className={linkClass(pathname.startsWith("/settings"))}
+              onClick={onClose}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <span aria-hidden>🔌</span>
+                Settings
+              </span>
+            </Link>
+          ) : null}
           {showUserManagement ? (
             <Link
               href="/admin/users"

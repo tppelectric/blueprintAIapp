@@ -17,6 +17,18 @@ export type PunchRow = {
   on_lunch: boolean;
   lunch_start_at: string | null;
   total_lunch_ms: number;
+  punch_in_location?: unknown;
+  punch_out_location?: unknown;
+  lunch_start_location?: unknown;
+  lunch_end_location?: unknown;
+  gps_location_flagged?: boolean;
+  gps_override_at?: string | null;
+  is_manual_entry?: boolean;
+  manual_entry_by?: string | null;
+  manual_entry_at?: string | null;
+  manual_entry_note?: string | null;
+  /** Resolved client-side after load */
+  manual_entry_by_name?: string | null;
 };
 
 export type TeamEmployee = {

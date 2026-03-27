@@ -74,9 +74,9 @@ import {
 } from "@/lib/project-describer-prefill";
 import { boostWifiRoomsFromElectricalItems } from "@/lib/scan-import-from-plans";
 
-const U6_PRO_TIER_OVERRIDE = {
-  label: "UniFi U6 Pro ($179 ea.)",
-  unit: 179,
+const U7_PRO_TIER_OVERRIDE = {
+  label: "UniFi U7 Pro ($219 ea.) — Wi‑Fi 7",
+  unit: 219,
 } as const;
 
 function newId() {
@@ -806,13 +806,14 @@ export function WifiAnalyzerClient() {
           setResults(computeWifiPlan({ ...inputs, vendor: goodV }));
         } else if (tier === "better") {
           setVendor("ubiquiti");
-          setUbiquitiApOverride({ ...U6_PRO_TIER_OVERRIDE });
+          setUbiquitiApOverride({ ...U7_PRO_TIER_OVERRIDE });
           setResults(
             computeWifiPlan(
               { ...inputs, vendor: "ubiquiti" },
               {
                 stackOpts: {
-                  ubiquitiIndoorOverride: { ...U6_PRO_TIER_OVERRIDE },
+                  ubiquitiIndoorOverride: { ...U7_PRO_TIER_OVERRIDE },
+                  preferWifi7: true,
                 },
               },
             ),

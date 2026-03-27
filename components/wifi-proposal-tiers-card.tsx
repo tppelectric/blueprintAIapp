@@ -81,6 +81,26 @@ export function WifiProposalTiersCard({
                   Full materials (mid):{" "}
                   {formatMoneyCell(c.results.materialSubtotalMid)}
                 </p>
+                {c.results.hardwareBomLines?.some(
+                  (L) =>
+                    L.id === "chowmain-unifi-driver" ||
+                    L.id === "control4-connect-annual",
+                ) ? (
+                  <ul className="mt-2 space-y-0.5 border-t border-white/10 pt-2 text-[11px] text-emerald-100/85">
+                    {c.results.hardwareBomLines
+                      .filter(
+                        (L) =>
+                          L.id === "chowmain-unifi-driver" ||
+                          L.id === "control4-connect-annual",
+                      )
+                      .map((L) => (
+                        <li key={L.id}>
+                          + {L.description.split("—")[0]?.trim() ?? L.description}{" "}
+                          ({formatMoneyCell(L.lineTotal)})
+                        </li>
+                      ))}
+                  </ul>
+                ) : null}
               </div>
               <button
                 type="button"

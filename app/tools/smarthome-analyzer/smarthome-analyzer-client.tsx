@@ -934,14 +934,18 @@ export function SmartHomeAnalyzerClient() {
 
               <section className="space-y-3">
                 <SectionTitle>Good / better / best</SectionTitle>
+                <p className="text-xs text-white/55">
+                  {results.presenceDetectionProposalLine}
+                </p>
                 <div className="overflow-x-auto rounded-lg border border-white/10">
-                  <table className="w-full min-w-[720px] text-left text-sm">
+                  <table className="w-full min-w-[960px] text-left text-sm">
                     <thead className="bg-[#E8C84A]/15 text-[10px] font-bold uppercase text-[#E8C84A]">
                       <tr>
                         <th className="px-2 py-2">Tier</th>
                         <th className="px-2 py-2">Control</th>
                         <th className="px-2 py-2">Lighting</th>
                         <th className="px-2 py-2">Voice</th>
+                        <th className="px-2 py-2">Drivers / subs</th>
                         <th className="px-2 py-2">Hardware $</th>
                         <th className="px-2 py-2">Prog. hrs</th>
                         <th className="px-2 py-2">Best for</th>
@@ -959,6 +963,9 @@ export function SmartHomeAnalyzerClient() {
                           <td className="px-2 py-2 text-white/80">{t.control}</td>
                           <td className="px-2 py-2 text-white/80">{t.lighting}</td>
                           <td className="px-2 py-2 text-white/80">{t.voice}</td>
+                          <td className="max-w-[220px] px-2 py-2 text-xs text-emerald-100/90">
+                            {t.driverBom}
+                          </td>
                           <td className="px-2 py-2 text-[#E8C84A]">
                             {t.hardwareCostRange}
                           </td>

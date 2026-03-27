@@ -13,7 +13,7 @@ import { TppLogoPill } from "@/components/tpp-logo-pill";
 import { TPP_COMPANY_FULL, TPP_TAGLINE } from "@/lib/tpp-branding";
 import { AppMobileNavButton } from "@/components/app-mobile-nav";
 import { useUserRole } from "@/hooks/use-user-role";
-import { canViewTeamClock } from "@/lib/user-roles";
+import { canManageIntegrations, canViewTeamClock } from "@/lib/user-roles";
 
 export type NavKey =
   | "dashboard"
@@ -23,7 +23,8 @@ export type NavKey =
   | "reference"
   | "team_time"
   | "team_clock"
-  | "field";
+  | "field"
+  | "settings";
 
 const NAV_IDLE =
   "inline-flex items-center border-b-2 border-transparent px-2 py-1.5 text-sm font-medium text-white/85 transition-colors duration-200 hover:border-[#E8C84A]/45 hover:text-[#E8C84A]";
@@ -42,6 +43,7 @@ export function WideAppHeader({
   const pathname = usePathname() ?? "";
   const { role, loading: roleLoading } = useUserRole();
   const showAdminUsersNav = !roleLoading && role === "super_admin";
+  const showIntegrationsNav = !roleLoading && canManageIntegrations(role);
   const showTeamClockNav = !roleLoading && canViewTeamClock(role);
 
   const homeActive = pathname === "/";
@@ -61,6 +63,8 @@ export function WideAppHeader({
     active === "field" || pathname.startsWith("/field");
   const teamClockActive =
     active === "team_clock" || pathname.startsWith("/team-clock");
+  const settingsActive =
+    active === "settings" || pathname.startsWith("/settings");
 
   const navItems = (
     <>
@@ -150,6 +154,15 @@ export function WideAppHeader({
         )
       ) : null}
       <HeaderToolsMenu idleClassName={NAV_IDLE} activeClassName={NAV_ACTIVE} />
+      {showIntegrationsNav ? (
+        settingsActive ? (
+          <span className={NAV_ACTIVE}>Settings</span>
+        ) : (
+          <Link href="/settings/integrations" className={NAV_IDLE}>
+            Settings
+          </Link>
+        )
+      ) : null}
       {showAdminUsersNav ? (
         adminUsersActive ? (
           <span className={NAV_ACTIVE}>User Management</span>

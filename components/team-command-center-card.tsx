@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useTeamClockSummary } from "@/hooks/use-team-clock-summary";
+import { createBrowserClient } from "@/lib/supabase/client";
 
 type Props = {
   enabled: boolean;
@@ -30,6 +32,51 @@ export function TeamCommandCenterCard({
     stragglerCount,
   } = useTeamClockSummary(enabled);
 
+  const [unassignedReceipts, setUnassignedReceipts] = useState<number | null>(
+    null,
+  );
+  const [pendingTimeOff, setPendingTimeOff] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!enabled || !showQuickLinks) {
+      setUnassignedReceipts(null);
+      setPendingTimeOff(null);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const sb = createBrowserClient();
+        const [r1, r2] = await Promise.all([
+          sb
+            .from("receipts")
+            .select("id", { count: "exact", head: true })
+            .is("job_id", null),
+          sb
+            .from("time_off_requests")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "pending"),
+        ]);
+        if (cancelled) return;
+        setUnassignedReceipts(
+          typeof r1.count === "number" ? r1.count : 0,
+        );
+        setPendingTimeOff(typeof r2.count === "number" ? r2.count : 0);
+      } catch {
+        if (!cancelled) {
+          setUnassignedReceipts(null);
+          setPendingTimeOff(null);
+        }
+      }
+    };
+    void load();
+    const id = window.setInterval(() => void load(), 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [enabled, showQuickLinks]);
+
   if (!enabled) return null;
 
   const isMarketing = surface === "marketing";
@@ -57,7 +104,7 @@ export function TeamCommandCenterCard({
           </h2>
           {showQuickLinks ? (
             <p className={`mt-1 text-xs ${muted}`}>
-              Live team time — updates every few seconds
+              Live punch updates plus a full refresh every 30 seconds
             </p>
           ) : null}
         </div>
@@ -167,6 +214,44 @@ export function TeamCommandCenterCard({
                 ? `${otAlertNames.slice(0, 3).join(", ")} +${otAlertNames.length - 3}`
                 : otAlertNames.join(", ")}
             </p>
+          ) : null}
+
+          {showQuickLinks &&
+          (unassignedReceipts != null || pendingTimeOff != null) ? (
+            <div
+              className={`mt-3 flex flex-wrap gap-x-4 gap-y-2 border-t pt-3 text-xs ${isMarketing ? "border-white/10" : "border-[var(--border)]"}`}
+            >
+              {unassignedReceipts != null ? (
+                <p className={fg}>
+                  <span className={muted}>Unassigned receipts: </span>
+                  <span className={`font-semibold tabular-nums ${gold}`}>
+                    {unassignedReceipts}
+                  </span>
+                  {" · "}
+                  <Link
+                    href="/receipts"
+                    className={`${gold} font-medium hover:underline`}
+                  >
+                    Review
+                  </Link>
+                </p>
+              ) : null}
+              {pendingTimeOff != null ? (
+                <p className={fg}>
+                  <span className={muted}>Pending time off: </span>
+                  <span className={`font-semibold tabular-nums ${gold}`}>
+                    {pendingTimeOff}
+                  </span>
+                  {" · "}
+                  <Link
+                    href="/time-off"
+                    className={`${gold} font-medium hover:underline`}
+                  >
+                    Open
+                  </Link>
+                </p>
+              ) : null}
+            </div>
           ) : null}
 
           {stragglers.length > 0 ? (

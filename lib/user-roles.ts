@@ -31,6 +31,11 @@ export function canManageUsers(role: UserRole | null): boolean {
   return role === "super_admin";
 }
 
+/** Company integrations (e.g. JobTread) on Settings. */
+export function canManageIntegrations(role: UserRole | null): boolean {
+  return role === "super_admin" || role === "admin";
+}
+
 /** Upload/delete company reference PDFs (Reference Library). */
 export function canManageReferenceDocuments(role: UserRole | null): boolean {
   return role === "super_admin" || role === "admin";

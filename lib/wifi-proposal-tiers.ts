@@ -1,12 +1,18 @@
 import {
+  appendIntegrationBomLines,
+  sumBomMaterialSubtotal,
+} from "@/lib/wifi-vendor-hardware";
+import {
   computeWifiPlan,
   type VendorChoice,
   type WifiAnalyzerInputs,
   type WifiAnalyzerResults,
 } from "@/lib/wifi-analyzer-engine";
 
-const U6_PRO_LABEL = "UniFi U6 Pro ($179 ea.)";
-const U6_PRO_UNIT = 179;
+const U7_BETTER_OVERRIDE = {
+  label: "UniFi U7 Pro ($219 ea.) — Wi‑Fi 7",
+  unit: 219,
+};
 
 export type ProposalTierId = "good" | "better" | "best";
 
@@ -26,6 +32,21 @@ function indoorApLine(r: WifiAnalyzerResults) {
   return r.hardwareBomLines?.find((l) => l.id === "indoor-ap");
 }
 
+function cloneResultsWithBom(
+  base: WifiAnalyzerResults,
+  bom: WifiAnalyzerResults["hardwareBomLines"],
+): WifiAnalyzerResults {
+  const materialSubtotalMid = sumBomMaterialSubtotal(bom);
+  const hwLow = Math.max(0, Math.round(materialSubtotalMid * 0.85));
+  const hwHigh = Math.round(materialSubtotalMid * 1.2);
+  return {
+    ...base,
+    hardwareBomLines: bom,
+    materialSubtotalMid,
+    hardwareCostEstimateLabel: `$${hwLow.toLocaleString()} – $${hwHigh.toLocaleString()} (est., MSRP-style)`,
+  };
+}
+
 export function computeProposalTierColumns(
   inputs: WifiAnalyzerInputs,
 ): ProposalTierColumn[] {
@@ -36,15 +57,20 @@ export function computeProposalTierColumns(
   const goodR =
     goodVendor === "tp_link" ? tpR : eeR;
 
-  const betterR = computeWifiPlan(
+  const betterBase = computeWifiPlan(
     { ...inputs, vendor: "ubiquiti" },
     {
       vendorForStack: "ubiquiti",
       stackOpts: {
-        ubiquitiIndoorOverride: { label: U6_PRO_LABEL, unit: U6_PRO_UNIT },
+        ubiquitiIndoorOverride: { ...U7_BETTER_OVERRIDE },
+        preferWifi7: true,
       },
     },
   );
+  const betterBom = appendIntegrationBomLines(betterBase.hardwareBomLines, {
+    chowmainUniFi: true,
+  });
+  const betterR = cloneResultsWithBom(betterBase, betterBom);
 
   const accessR = computeWifiPlan(inputs, { vendorForStack: "access_networks" });
   const arakR = computeWifiPlan(inputs, { vendorForStack: "araknis" });
@@ -52,7 +78,12 @@ export function computeProposalTierColumns(
     accessR.materialSubtotalMid <= arakR.materialSubtotalMid
       ? "access_networks"
       : "araknis";
-  const bestR = bestVendor === "access_networks" ? accessR : arakR;
+  const bestBase = bestVendor === "access_networks" ? accessR : arakR;
+  const bestBom = appendIntegrationBomLines(bestBase.hardwareBomLines, {
+    chowmainUniFi: true,
+    control4ConnectAnnual: true,
+  });
+  const bestR = cloneResultsWithBom(bestBase, bestBom);
 
   const goodIn = indoorApLine(goodR);
   const betterIn = indoorApLine(betterR);
@@ -65,10 +96,10 @@ export function computeProposalTierColumns(
       subtitle: "Budget",
       vendor: goodVendor,
       blurb: [
-        "Entry level equipment",
+        "Entry equipment (Omada or consumer mesh)",
         goodVendor === "tp_link"
-          ? "TP-Link Omada"
-          : "eero mesh",
+          ? "TP-Link Omada — add Chowmain UniFi driver ~$150 only if pairing with Control4 + UniFi"
+          : "eero mesh — not for professional C4 / Josh / Savant",
         "Basic coverage",
       ],
       results: goodR,
@@ -82,9 +113,9 @@ export function computeProposalTierColumns(
       subtitle: "Recommended",
       vendor: "ubiquiti",
       blurb: [
-        "Mid-range equipment",
-        "Ubiquiti UniFi U6 Pro",
-        "Strong coverage & management",
+        "UniFi Wi‑Fi 7 (U7 Pro baseline)",
+        "BOM: Chowmain UniFi driver $150 (cameras + network presence in Control4)",
+        "Network presence detection enables automatic welcome scenes when you arrive home via the Chowmain driver",
       ],
       results: betterR,
       apModel: betterIn?.description ?? betterR.equipment.apModel,
@@ -97,11 +128,11 @@ export function computeProposalTierColumns(
       subtitle: "Premium",
       vendor: bestVendor,
       blurb: [
-        "Top tier equipment",
         bestVendor === "access_networks"
-          ? "Access Networks"
-          : "Araknis",
-        "Maximum coverage, smart-home ready",
+          ? "Access Networks Wi‑Fi 7 (Ruckus technology, Snap One / ADI)"
+          : "Araknis integrator line",
+        "BOM: Chowmain UniFi driver $150 + Control4 Connect ~$249/yr (optional — remote access / HomeKit; verify Snap One)",
+        "Network presence detection enables automatic welcome scenes when you arrive home via the Chowmain driver",
       ],
       results: bestR,
       apModel: bestIn?.description ?? bestR.equipment.apModel,

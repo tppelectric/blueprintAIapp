@@ -1,5 +1,17 @@
 /** Rule-based smart home / automation planning. */
 
+/**
+ * Product reference (verify MAP / dealer before quoting):
+ * - Control4: Core 1 / 3 / 5, CA-10; SR-260 (no Siri), Halo (Siri), Halo Touch; T3 / T4 / T5 (soon); Chime; lighting lines; Connect subscription.
+ * - Josh.ai: Josh One ~$769, X2 ~$1,538; Core ~$3,079, Core X2 ~$6,158; Micro / Nano endpoints; software plans monthly/yearly/5yr/lifetime.
+ * - After 2026-04-21 ADI Josh↔C4 driver: Josh = voice service only in C4 (Micro/Nano) — not Josh touchscreens/app/remotes in C4. Josh standalone = full alternative.
+ * - UniFi Protect: G5 Pro, G6 Pro; AI Multisensor 4; G4 Doorbell Pro; G6 Pro Entry; AI Pro; AI Theta 360.
+ * - UniFi Access: UA Lite, UA Pro, UA Ultra (FP), UA Hub, UA Lock, UA Intercom, UA Elevator.
+ * - Chowmain UniFi driver ~$150 — include in C4 + UniFi or Josh + UniFi BOMs.
+ */
+export const CONTROL4_CONNECT_ANNUAL_NOTE =
+  "Control4 Connect ~$249/yr (est., optional for remote access — verify Snap One; not required for in-home control)";
+
 export type ShBuildingType =
   | "new_construction"
   | "renovation"
@@ -119,6 +131,8 @@ export type ShTierColumn = {
   hardwareCostRange: string;
   programmingHours: string;
   suitedFor: string;
+  /** Driver / subscription lines for BOM-style proposals */
+  driverBom: string;
 };
 
 export type ShRoomDeviceRow = {
@@ -159,6 +173,8 @@ export type ShResults = {
   network: ShNetwork;
   wifiDeviceHint: { roomName: string; expectedDevices: number }[];
   summaryLines: string[];
+  /** Shown on reports — network presence / welcome scenes */
+  presenceDetectionProposalLine: string;
 };
 
 function sumRooms(rooms: ShRoomInput[], fn: (r: ShRoomInput) => number): number {
@@ -208,30 +224,41 @@ export function computeSmartHomePlan(inputs: ShInputs): ShResults {
   const tiers: ShTierColumn[] = [
     {
       tier: "good",
-      control: "Apple HomeKit or Amazon Alexa",
+      control:
+        "Apple HomeKit / Alexa / Google Home; optional Caseta bridge",
       lighting: "Lutron Caseta PD-6WCL ~$59",
-      voice: "Alexa or Google Assistant",
+      voice: "Alexa or Google Assistant (native); Siri via HomeKit",
       hardwareCostRange: "$5k – $25k",
       programmingHours: "4 – 12 hrs",
       suitedFor: "Condos, small homes, DIY-friendly",
+      driverBom:
+        "If UniFi backbone + future Control4: budget Chowmain UniFi driver ~$150 (not included in good-tier hardware range)",
     },
     {
       tier: "better",
-      control: "Control4 EA-1 ~$599 or EA-3 ~$1,199",
-      lighting: "Lutron RadioRA3 RRD-6ND ~$89",
-      voice: "Josh.ai Josh Micro ~$399 or Control4 voice",
+      control:
+        "Control4 Core 1 / Core 3 / Core 5 (CA-10 for flagship estates)",
+      lighting: "Lutron RadioRA3 RRD-6ND ~$89; C4 keypads (Regular / Contemporary / Lux)",
+      voice:
+        "Siri: Halo or Halo Touch only (not SR-260) · Alexa/Google native · Josh voice in C4 after Apr 21 2026 = Micro/Nano only (ADI driver)",
       hardwareCostRange: "$30k – $90k",
       programmingHours: "16 – 40 hrs",
       suitedFor: "Whole-home residential, dedicated AV rooms",
+      driverBom:
+        "Chowmain UniFi driver $150 (UniFi Protect + network presence in Control4)",
     },
     {
       tier: "best",
-      control: "Control4 CA-10 ~$2,499 or Savant SSC-1 ~$1,999",
-      lighting: "Lutron HomeWorks HQD7-WBX ~$149",
-      voice: "Josh.ai Josh Micro ~$399 / Nano ~$199",
+      control:
+        "Control4 CA-10 + expansion or Savant SSC-class; Josh standalone as alternate full platform",
+      lighting: "Lutron HomeWorks QSX ~$149+; C4 T3/T4 (T5 soon)",
+      voice:
+        "Halo / Halo Touch for Siri · Josh Micro/Nano (C4 voice service post Apr 2026) · Josh standalone = full Josh app / remotes / touchscreens",
       hardwareCostRange: "$100k – $300k+",
       programmingHours: "40 – 120+ hrs",
-      suitedFor: "Estate, commercial, mission-critical",
+      suitedFor: "Estate, theater, Control4+Josh high-end, commercial",
+      driverBom:
+        "Chowmain UniFi driver $150 + Control4 Connect ~$249/yr optional · Josh standalone + UniFi: Chowmain UniFi driver for Josh · Home Assistant bridge for niche integrations",
     },
   ];
 
@@ -248,34 +275,38 @@ export function computeSmartHomePlan(inputs: ShInputs): ShResults {
       programmingHours: 6 + Math.ceil(totalDevices / 20),
       networkNotes: "Solid Wi‑Fi coverage; segregate IoT where possible.",
       integrationNotes:
-        "Cameras: Ring Pro 2 ~$249, Nest Cam w/ Floodlight ~$279, or Hikvision DS-2CD2147G2 ~$149. Locks: Schlage Encode Plus ~$299, Yale Assure Lock 2 ~$249, August WiFi ~$199.",
+        "UniFi Protect options: G5 Pro / G6 Pro, AI Multisensor 4, G4 Doorbell Pro, G6 Pro Entry, AI Pro, AI Theta (360). Consumer mesh (eero/Orbi/Google) not recommended for pro installs.",
     };
   } else if (bIdx <= 3) {
     controller = {
       title: "Professional integrated controller",
       why: "Device density and lifestyle priority warrant a centralized control processor.",
-      model: "Control4 EA-3 ~$1,199 (typical) — EA-1 ~$599 for smaller jobs",
+      model:
+        "Control4 Core 3 ~$1,199 (typical) — Core 1 smaller jobs · Core 5 / CA-10 large",
       qty: 1,
       programmingHours: 24 + Math.ceil(totalDevices / 8),
-      networkNotes: "Wired backbone recommended; PoE for touchpanels and keypads.",
+      networkNotes:
+        "Wired backbone; PoE for T3/T4 touchscreens, Chime doorbell, keypads.",
       integrationNotes:
-        "Cameras: Luma LUM-500-DOM-IPW ~$299. URC MRX-10 ~$1,499 optional. Lutron RadioRA3 + Control4 lighting sync.",
+        "Control4 + UniFi: Chowmain UniFi driver ~$150 (BOM). Remotes: SR-260 (no Siri), Halo / Halo Touch (Siri). C4 Chime video doorbell. UniFi Access: UA Lite/Pro/Ultra, UA Hub, Lock, Intercom, Elevator. After Apr 21 2026 Josh↔C4 ADI driver: Josh Micro/Nano voice-only in C4 — not Josh touchscreens/app in C4.",
     };
   } else {
     controller = {
       title: "Flagship control platform",
       why: "Large footprint and automation scope need redundant processing and lighting-grade infrastructure.",
-      model: "Savant SSC-1 ~$1,999 or Control4 CA-10 ~$2,499 + I/O expansion",
+      model:
+        "Control4 CA-10 ~$2,499+ or Savant SSC-1 ~$1,999 · Josh standalone: Core / Core X2 with full Josh ecosystem",
       qty: 1,
       programmingHours: 60 + Math.ceil(totalDevices / 5),
       networkNotes: "Managed switches, VLANs for AV / automation / guest.",
       integrationNotes:
-        "HomeWorks QSX lighting; Josh.ai voice. Cameras: Verkada CD61 ~$999 where spec’d. Crestron CP4-R ~$4,999 for Cresnet-heavy commercial.",
+        "Josh.ai hardware: Josh One ~$769, X2 ~$1,538; Core ~$3,079, Core X2 ~$6,158 — software monthly/yearly/5yr/lifetime. Josh standalone competes as full C4 alternative; present separately when voice-first. Home Assistant bridge for obscure integrations. HomeWorks QSX where specified.",
     };
   }
 
   if (inputs.controlSystem === "josh") {
-    controller.model += " · Josh.ai Josh Micro ~$399 / Nano ~$199";
+    controller.model +=
+      " · Josh Micro / Nano endpoints · Josh One / Core lines for standalone";
   }
   if (inputs.controlSystem === "urc") {
     controller.model = "URC MRX-10 ~$1,499 (typical)";
@@ -335,12 +366,18 @@ export function computeSmartHomePlan(inputs: ShInputs): ShResults {
     return { roomName: r.name, expectedDevices: d };
   });
 
+  const presenceDetectionProposalLine =
+    "Network presence detection enables automatic welcome scenes when you arrive home via the Chowmain UniFi driver (Control4 or Josh + UniFi deployments).";
+
   const summaryLines = [
     `${inputs.projectName} · ${inputs.buildingType.replace(/_/g, " ")} · ${inputs.totalSqFt.toLocaleString()} sq ft`,
     `Budget: ${inputs.budget.replace(/_/g, " ")} · Priority: ${inputs.lifestyle.replace(/_/g, " ")}`,
     `Lighting points: ${lightingPoints} · Shades: ${shades} · Thermostats: ${thermostats}`,
     `Cameras: ${cameras} · Locks: ${locks} · Sensors: ${securitySensors} · Keypads: ${keypads}`,
     `Total controlled devices (rolled up): ${totalDevices}`,
+    presenceDetectionProposalLine,
+    CONTROL4_CONNECT_ANNUAL_NOTE,
+    "Wi‑Fi 7 recommended for new construction, Control4/Josh, theaters, 50+ devices — UniFi U7 or Access Networks / Ruckus Wi‑Fi 7.",
   ];
 
   return {
@@ -361,5 +398,6 @@ export function computeSmartHomePlan(inputs: ShInputs): ShResults {
     network,
     wifiDeviceHint,
     summaryLines,
+    presenceDetectionProposalLine,
   };
 }

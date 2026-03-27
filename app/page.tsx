@@ -184,8 +184,9 @@ export default function Home() {
         id="product"
         className="mx-auto flex w-full max-w-6xl flex-1 flex-col items-stretch px-4 py-16 text-center md:px-8 md:py-24"
       >
-        <h1 className="max-w-3xl text-2xl font-semibold leading-tight tracking-tight text-white sm:text-3xl md:text-4xl">
-          Blueprint AI — Electrical Takeoff System
+        <h1 className="mx-auto max-w-3xl text-center text-2xl font-semibold leading-snug tracking-tight text-white sm:text-3xl md:text-4xl md:leading-tight lg:text-[2.5rem]">
+          <span className="block">Blueprint AI - TPP Electrical</span>
+          <span className="block">Contractors, Inc</span>
         </h1>
         <p className="mt-5 max-w-xl text-sm text-white/50 sm:text-base">
           Est. 1982 · Powered by Blueprint AI

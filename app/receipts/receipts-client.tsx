@@ -20,7 +20,18 @@ import { createBrowserClient } from "@/lib/supabase/client";
 
 type TabKey = "all" | "unassigned" | "by_job" | "mine";
 
-type JobOpt = { id: string; label: string };
+type JobOpt = {
+  id: string;
+  label: string;
+  addressLine: string;
+};
+
+function formatJobAddress(j: Record<string, unknown>): string {
+  const parts = [j.address, j.city, j.state, j.zip]
+    .map((x) => String(x ?? "").trim())
+    .filter(Boolean);
+  return parts.join(", ");
+}
 
 type ProfileLite = {
   id: string;
@@ -52,7 +63,6 @@ export function ReceiptsClient() {
   const [profiles, setProfiles] = useState<Record<string, ProfileLite>>({});
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [byJobFilter, setByJobFilter] = useState("");
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [assignId, setAssignId] = useState<string | null>(null);
   const [assignJob, setAssignJob] = useState("");
@@ -75,14 +85,18 @@ export function ReceiptsClient() {
 
       const { data: jd } = await sb
         .from("jobs")
-        .select("id,job_name,job_number")
+        .select("id,job_name,job_number,address,city,state,zip")
         .order("updated_at", { ascending: false })
         .limit(400);
       setJobs(
-        (jd ?? []).map((j) => ({
-          id: j.id as string,
-          label: formatJobLabel(j as Record<string, unknown>),
-        })),
+        (jd ?? []).map((j) => {
+          const rec = j as Record<string, unknown>;
+          return {
+            id: j.id as string,
+            label: formatJobLabel(rec),
+            addressLine: formatJobAddress(rec),
+          };
+        }),
       );
 
       const uids = [...new Set(rows.map((r) => r.uploaded_by))];
@@ -129,12 +143,50 @@ export function ReceiptsClient() {
   const filtered = useMemo(() => {
     if (tab === "unassigned")
       return receipts.filter((r) => !r.job_id);
-    if (tab === "mine" && myId)
-      return receipts.filter((r) => r.uploaded_by === myId);
-    if (tab === "by_job" && byJobFilter)
-      return receipts.filter((r) => r.job_id === byJobFilter);
+    if (tab === "mine")
+      return myId
+        ? receipts.filter((r) => r.uploaded_by === myId)
+        : [];
+    if (tab === "by_job") return [];
     return receipts;
-  }, [receipts, tab, myId, byJobFilter]);
+  }, [receipts, tab, myId]);
+
+  const jobStatsById = useMemo(() => {
+    const m = new Map<string, { count: number; total: number }>();
+    for (const r of receipts) {
+      if (!r.job_id) continue;
+      const cur = m.get(r.job_id) ?? { count: 0, total: 0 };
+      cur.count += 1;
+      cur.total += Number(r.total_amount) || 0;
+      m.set(r.job_id, cur);
+    }
+    return m;
+  }, [receipts]);
+
+  const jobReceiptGroups = useMemo(() => {
+    const map = new Map<string, ReceiptRow[]>();
+    for (const r of receipts) {
+      if (!r.job_id) continue;
+      const arr = map.get(r.job_id) ?? [];
+      arr.push(r);
+      map.set(r.job_id, arr);
+    }
+    const list = [...map.entries()].map(([jobId, rows]) => {
+      const jm = jobs.find((j) => j.id === jobId);
+      const total = rows.reduce(
+        (s, r) => s + (Number(r.total_amount) || 0),
+        0,
+      );
+      const byCat: Record<string, number> = {};
+      for (const r of rows) {
+        const c = r.receipt_category;
+        byCat[c] = (byCat[c] ?? 0) + (Number(r.total_amount) || 0);
+      }
+      return { jobId, rows, jm, total, byCat };
+    });
+    list.sort((a, b) => b.total - a.total);
+    return list;
+  }, [receipts, jobs]);
 
   const assignToJob = async () => {
     if (!assignId || !assignJob) return;
@@ -144,13 +196,23 @@ export function ReceiptsClient() {
         .from("receipts")
         .update({ job_id: assignJob })
         .eq("id", assignId);
-      if (error) throw error;
+      if (error) {
+        const bits = [
+          error.message,
+          error.code ? `code ${error.code}` : null,
+          error.details ? String(error.details) : null,
+        ].filter(Boolean);
+        throw new Error(bits.join(" — "));
+      }
       showToast({ message: "Job assigned.", variant: "success" });
       setAssignId(null);
       setAssignJob("");
       void load();
-    } catch {
-      showToast({ message: "Could not assign.", variant: "error" });
+    } catch (e) {
+      showToast({
+        message: e instanceof Error ? e.message : "Could not assign.",
+        variant: "error",
+      });
     }
   };
 
@@ -194,6 +256,105 @@ export function ReceiptsClient() {
   };
 
   const allJobsForSelect = jobs;
+
+  function renderReceiptCard(r: ReceiptRow) {
+    const emp = profiles[r.uploaded_by];
+    const jobMeta = r.job_id ? jobs.find((j) => j.id === r.job_id) : null;
+    const jobLabel = jobMeta?.label ?? "Job";
+    const jst = r.job_id ? jobStatsById.get(r.job_id) : undefined;
+    return (
+      <div
+        key={r.id}
+        className="flex flex-wrap gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4"
+      >
+        <button
+          type="button"
+          className="shrink-0"
+          onClick={() =>
+            thumbs[r.id] ? setLightbox(thumbs[r.id]!) : undefined
+          }
+        >
+          {thumbs[r.id] ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={thumbs[r.id]}
+              alt=""
+              className="h-24 w-24 rounded-lg object-cover"
+            />
+          ) : (
+            <div className="flex h-24 w-24 items-center justify-center rounded-lg bg-white/5 text-xs text-white/40">
+              —
+            </div>
+          )}
+        </button>
+        <div className="min-w-0 flex-1">
+          <p className="font-medium text-white">{r.vendor_name ?? "—"}</p>
+          <p className="text-xs text-white/50">
+            {r.receipt_date ?? "—"} · {displayProfileName(emp ?? {})}
+          </p>
+          <p className="mt-1 text-xl font-bold text-[#E8C84A]">
+            {formatReceiptCurrency(r.total_amount)}
+          </p>
+          <span className="mt-1 inline-block rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-white/80">
+            {r.receipt_category}
+          </span>
+          <p className="mt-2 text-sm">
+            {r.job_id ? (
+              <Link
+                href={`/jobs/${r.job_id}`}
+                className="text-[#E8C84A] hover:underline"
+              >
+                {jobLabel}
+              </Link>
+            ) : (
+              <span className="font-medium text-red-400">Unassigned</span>
+            )}
+          </p>
+          {r.job_id && jobMeta?.addressLine ? (
+            <p className="mt-1 text-xs text-white/45">{jobMeta.addressLine}</p>
+          ) : null}
+          {r.job_id && jst ? (
+            <p className="mt-1 text-xs text-white/50">
+              {jst.count} receipt{jst.count === 1 ? "" : "s"} on this job ·{" "}
+              {formatReceiptCurrency(jst.total)} job total
+            </p>
+          ) : null}
+          {!r.job_id ? (
+            <button
+              type="button"
+              className="mt-2 text-sm font-medium text-[#E8C84A] hover:underline"
+              onClick={() => {
+                setAssignId(r.id);
+                setAssignJob("");
+              }}
+            >
+              Assign to job
+            </button>
+          ) : null}
+          <div className="mt-2 flex flex-wrap gap-2">
+            {isAdmin ? (
+              <>
+                <button
+                  type="button"
+                  className="text-xs text-white/70 hover:underline"
+                  onClick={() => setEditing({ ...r })}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className="text-xs text-red-300 hover:underline"
+                  onClick={() => void deleteReceipt(r)}
+                >
+                  Delete
+                </button>
+              </>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -248,27 +409,67 @@ export function ReceiptsClient() {
           ))}
         </div>
 
-        {tab === "by_job" ? (
-          <div className="mt-4">
-            <label className="text-xs text-white/50">Filter by job</label>
-            <select
-              className="app-input mt-1 max-w-md text-sm"
-              value={byJobFilter}
-              onChange={(e) => setByJobFilter(e.target.value)}
-            >
-              <option value="">— Select job —</option>
-              {allJobsForSelect.map((j) => (
-                <option key={j.id} value={j.id}>
-                  {j.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
-
         <div className="mt-6 min-w-0 space-y-4">
           {loading ? (
             <ReceiptListSkeleton count={6} />
+          ) : tab === "by_job" ? (
+            jobReceiptGroups.length === 0 ? (
+              <EmptyState
+                icon={<span aria-hidden>🏗️</span>}
+                title="No job-linked receipts"
+                description="Assign receipts to a job to see them grouped here with totals and categories."
+              />
+            ) : (
+              <div className="space-y-10">
+                {jobReceiptGroups.map(
+                  ({ jobId, rows, jm, total, byCat }) => (
+                    <section
+                      key={jobId}
+                      className="rounded-2xl border border-emerald-500/30 bg-emerald-950/15 p-4 ring-1 ring-emerald-500/15"
+                    >
+                      <div className="border-b border-white/10 pb-3">
+                        <Link
+                          href={`/jobs/${jobId}`}
+                          className="text-lg font-semibold text-[#E8C84A] hover:underline"
+                        >
+                          {jm?.label ?? "Job"}
+                        </Link>
+                        {jm?.addressLine ? (
+                          <p className="mt-1 text-sm text-white/55">
+                            {jm.addressLine}
+                          </p>
+                        ) : null}
+                        <p className="mt-2 text-sm text-white/75">
+                          <span className="font-semibold text-white">
+                            {rows.length}
+                          </span>{" "}
+                          receipt{rows.length === 1 ? "" : "s"} · Running
+                          expenses{" "}
+                          <span className="font-bold text-[#E8C84A]">
+                            {formatReceiptCurrency(total)}
+                          </span>
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {Object.entries(byCat)
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([cat, amt]) => (
+                              <span
+                                key={cat}
+                                className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-white/85"
+                              >
+                                {cat}: {formatReceiptCurrency(amt)}
+                              </span>
+                            ))}
+                        </div>
+                      </div>
+                      <div className="mt-4 space-y-4">
+                        {rows.map((r) => renderReceiptCard(r))}
+                      </div>
+                    </section>
+                  ),
+                )}
+              </div>
+            )
           ) : filtered.length === 0 ? (
             tab === "all" && receipts.length === 0 ? (
               <EmptyState
@@ -288,120 +489,15 @@ export function ReceiptsClient() {
                 title="No unassigned receipts"
                 description="Every captured receipt is linked to a job, or you have not uploaded any yet."
               />
-            ) : tab === "mine" ? (
+            ) : (
               <EmptyState
                 icon={<span aria-hidden>📷</span>}
                 title="No receipts from you"
                 description="Receipts you upload with your account show up in this tab."
               />
-            ) : tab === "by_job" && !byJobFilter ? (
-              <EmptyState
-                icon={<span aria-hidden>🏗️</span>}
-                title="Choose a job"
-                description="Select a job from the filter above to see its receipts."
-              />
-            ) : (
-              <EmptyState
-                icon={<span aria-hidden>🧾</span>}
-                title="No receipts for this job"
-                description="Try another job or capture a new receipt and assign it."
-              />
             )
           ) : (
-            filtered.map((r) => {
-              const emp = profiles[r.uploaded_by];
-              const jobLabel = r.job_id
-                ? jobs.find((j) => j.id === r.job_id)?.label ?? "Job"
-                : null;
-              return (
-                <div
-                  key={r.id}
-                  className="flex flex-wrap gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4"
-                >
-                  <button
-                    type="button"
-                    className="shrink-0"
-                    onClick={() =>
-                      thumbs[r.id] ? setLightbox(thumbs[r.id]!) : undefined
-                    }
-                  >
-                    {thumbs[r.id] ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={thumbs[r.id]}
-                        alt=""
-                        className="h-24 w-24 rounded-lg object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-24 w-24 items-center justify-center rounded-lg bg-white/5 text-xs text-white/40">
-                        —
-                      </div>
-                    )}
-                  </button>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-white">
-                      {r.vendor_name ?? "—"}
-                    </p>
-                    <p className="text-xs text-white/50">
-                      {r.receipt_date ?? "—"} ·{" "}
-                      {displayProfileName(emp ?? {})}
-                    </p>
-                    <p className="mt-1 text-xl font-bold text-[#E8C84A]">
-                      {formatReceiptCurrency(r.total_amount)}
-                    </p>
-                    <span className="mt-1 inline-block rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-white/80">
-                      {r.receipt_category}
-                    </span>
-                    <p className="mt-2 text-sm">
-                      {r.job_id ? (
-                        <Link
-                          href={`/jobs/${r.job_id}`}
-                          className="text-[#E8C84A] hover:underline"
-                        >
-                          {jobLabel}
-                        </Link>
-                      ) : (
-                        <span className="font-medium text-red-400">
-                          Unassigned
-                        </span>
-                      )}
-                    </p>
-                    {!r.job_id ? (
-                      <button
-                        type="button"
-                        className="mt-2 text-sm font-medium text-[#E8C84A] hover:underline"
-                        onClick={() => {
-                          setAssignId(r.id);
-                          setAssignJob("");
-                        }}
-                      >
-                        Assign to job
-                      </button>
-                    ) : null}
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {isAdmin ? (
-                        <>
-                          <button
-                            type="button"
-                            className="text-xs text-white/70 hover:underline"
-                            onClick={() => setEditing({ ...r })}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            className="text-xs text-red-300 hover:underline"
-                            onClick={() => void deleteReceipt(r)}
-                          >
-                            Delete
-                          </button>
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              );
-            })
+            filtered.map((r) => renderReceiptCard(r))
           )}
         </div>
       </main>

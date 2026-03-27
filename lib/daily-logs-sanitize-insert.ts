@@ -39,6 +39,14 @@ const DAILY_LOG_INSERT_KEYS = [
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+/** Keys that must never be sent on insert (handled separately or not columns). */
+const STRIP_FROM_RAW = new Set([
+  "id",
+  "created_at",
+  "pdf_storage_path",
+  "equipment_left",
+]);
+
 function toTimeOrNull(v: unknown): string | null {
   if (v == null) return null;
   const t = String(v).trim();
@@ -75,54 +83,67 @@ function textOrNull(v: unknown): string | null {
 }
 
 /**
- * Build a PostgREST-safe insert object: only known columns, valid UUID job_id, TIME strings, no undefined.
+ * Build a PostgREST-safe insert: **every** known column is set (null/boolean defaults),
+ * so missing JSON keys never omit DB columns. Maps `equipment_left` → `equipment_left_onsite`.
  */
 export function sanitizeDailyLogInsertPayload(
   raw: Record<string, unknown>,
 ): Record<string, unknown> {
+  const equipmentLeftAlias = raw.equipment_left;
+  const src: Record<string, unknown> = { ...raw };
+  for (const k of STRIP_FROM_RAW) {
+    delete src[k as string];
+  }
+  if (
+    equipmentLeftAlias !== undefined &&
+    src.equipment_left_onsite === undefined
+  ) {
+    src.equipment_left_onsite = equipmentLeftAlias;
+  }
+
   const out: Record<string, unknown> = {};
-  for (const key of DAILY_LOG_INSERT_KEYS) {
-    const v = raw[key];
-    switch (key) {
-      case "log_date": {
-        const d = textOrNull(v);
-        if (!d) throw new Error("log_date is required (YYYY-MM-DD).");
-        out[key] = d;
-        break;
-      }
-      case "job_id":
-        out[key] = jobIdOrNull(v);
-        break;
-      case "check_in":
-      case "check_out":
-        out[key] = toTimeOrNull(v);
-        break;
-      case "lunch_duration_minutes":
-        out[key] = toIntOrNull(v);
-        break;
-      case "materials_left_onsite":
-      case "tpp_equipment_left":
-      case "all_breakers_on":
-        out[key] = toBool(
-          v,
-          key === "all_breakers_on" ? true : false,
-        );
-        break;
-      case "safety_incident":
-        out[key] = toBool(v, false);
-        break;
-      default:
-        if (v === undefined) break;
-        if (typeof v === "string" || v == null) {
-          out[key] = textOrNull(v);
-        } else if (typeof v === "boolean") {
-          out[key] = v;
-        } else if (typeof v === "number" && Number.isFinite(v)) {
-          out[key] = v;
-        } else {
-          out[key] = textOrNull(v);
-        }
+
+  const logDate = textOrNull(src.log_date);
+  if (!logDate) throw new Error("log_date is required (YYYY-MM-DD).");
+
+  out.jobtread_id = textOrNull(src.jobtread_id);
+  out.log_date = logDate;
+  out.job_name = textOrNull(src.job_name);
+  out.job_id = jobIdOrNull(src.job_id);
+  out.crew_user = textOrNull(src.crew_user);
+  out.notes = textOrNull(src.notes);
+  out.employees_onsite = textOrNull(src.employees_onsite);
+  out.check_in = toTimeOrNull(src.check_in);
+  out.check_out = toTimeOrNull(src.check_out);
+  out.job_status = textOrNull(src.job_status);
+  out.trades_onsite = textOrNull(src.trades_onsite);
+  out.visitors_onsite = textOrNull(src.visitors_onsite);
+  out.additional_notes = textOrNull(src.additional_notes);
+  out.materials_used = textOrNull(src.materials_used);
+  out.materials_needed = textOrNull(src.materials_needed);
+  out.materials_left_onsite = toBool(src.materials_left_onsite, false);
+  out.equipment_left_onsite = textOrNull(src.equipment_left_onsite);
+  out.tpp_equipment_left = toBool(src.tpp_equipment_left, false);
+  out.anticipated_delays = textOrNull(src.anticipated_delays);
+  out.all_breakers_on = toBool(src.all_breakers_on, true);
+  out.breakers_off_reason = textOrNull(src.breakers_off_reason);
+  out.supply_receipts = textOrNull(src.supply_receipts);
+  out.card_type = textOrNull(src.card_type);
+  out.store_receipts = textOrNull(src.store_receipts);
+  out.internal_notes = textOrNull(src.internal_notes);
+  out.weather = textOrNull(src.weather);
+  out.lunch_duration_minutes = toIntOrNull(src.lunch_duration_minutes);
+  out.equipment_used = textOrNull(src.equipment_used);
+  out.work_completed = textOrNull(src.work_completed);
+  out.next_day_plan = textOrNull(src.next_day_plan);
+  out.safety_incident = toBool(src.safety_incident, false);
+  out.safety_incident_notes = textOrNull(src.safety_incident_notes);
+
+  for (const k of DAILY_LOG_INSERT_KEYS) {
+    if (!(k in out)) {
+      throw new Error(`Internal: missing sanitized key ${k}`);
     }
   }
+
   return out;
 }

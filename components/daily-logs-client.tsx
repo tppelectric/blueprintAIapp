@@ -85,6 +85,8 @@ export function DailyLogsClient() {
     ReturnType<typeof parseJobtreadDailyLogsCsv>["rows"]
   >([]);
   const [importing, setImporting] = useState(false);
+  const [linkingLogId, setLinkingLogId] = useState<string | null>(null);
+  const [linkJobId, setLinkJobId] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -124,6 +126,40 @@ export function DailyLogsClient() {
       setLoading(false);
     }
   }, [showToast]);
+
+  const linkLogToJob = async (logId: string) => {
+    const jid = linkJobId.trim();
+    if (!jid) {
+      showToast({ message: "Choose a job.", variant: "error" });
+      return;
+    }
+    const j = jobs.find((x) => x.id === jid);
+    try {
+      const sb = createBrowserClient();
+      const { error } = await sb
+        .from("daily_logs")
+        .update({
+          job_id: jid,
+          job_name: j ? `${j.job_number} · ${j.job_name}` : null,
+        })
+        .eq("id", logId);
+      if (error) {
+        const msg = [error.message, error.code, error.details]
+          .filter(Boolean)
+          .join(" — ");
+        throw new Error(msg);
+      }
+      showToast({ message: "Daily log linked to job.", variant: "success" });
+      setLinkingLogId(null);
+      setLinkJobId("");
+      void load();
+    } catch (e) {
+      showToast({
+        message: e instanceof Error ? e.message : "Could not link job.",
+        variant: "error",
+      });
+    }
+  };
 
   useEffect(() => {
     void load();
@@ -538,14 +574,15 @@ export function DailyLogsClient() {
                       <th className="p-3">Hours</th>
                       <th className="p-3">Status</th>
                       <th className="p-3">Materials</th>
-                      <th className="p-3 w-[200px]">PDF</th>
+                      <th className="p-3 min-w-[140px]">Link</th>
+                      <th className="p-3 w-[220px]">PDF</th>
                     </tr>
                   </thead>
                   <tbody>
                     {logs.length > 0 && filteredLogs.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={7}
+                          colSpan={8}
                           className="p-8 text-center text-sm text-white/45"
                         >
                           No logs match the current filters.
@@ -585,6 +622,60 @@ export function DailyLogsClient() {
                           <td className="max-w-xs truncate p-3 text-xs text-white/50">
                             {mu.slice(0, 3).join(" · ")}
                             {mu.length > 3 ? "…" : ""}
+                          </td>
+                          <td className="p-2 align-top">
+                            {!l.job_id ? (
+                              linkingLogId === l.id ? (
+                                <div className="flex flex-col gap-2">
+                                  <select
+                                    className="app-input w-full max-w-[10rem] text-xs"
+                                    value={linkJobId}
+                                    onChange={(e) =>
+                                      setLinkJobId(e.target.value)
+                                    }
+                                  >
+                                    <option value="">Select job…</option>
+                                    {jobs.map((j) => (
+                                      <option key={j.id} value={j.id}>
+                                        {j.job_number} · {j.job_name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <div className="flex flex-wrap gap-1">
+                                    <button
+                                      type="button"
+                                      className="rounded bg-[#E8C84A] px-2 py-1 text-[10px] font-bold text-[#0a1628]"
+                                      onClick={() => void linkLogToJob(l.id)}
+                                    >
+                                      Save
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="rounded border border-white/20 px-2 py-1 text-[10px] text-white/80"
+                                      onClick={() => {
+                                        setLinkingLogId(null);
+                                        setLinkJobId("");
+                                      }}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="text-xs font-semibold text-[#E8C84A] hover:underline"
+                                  onClick={() => {
+                                    setLinkingLogId(l.id);
+                                    setLinkJobId(jobs[0]?.id ?? "");
+                                  }}
+                                >
+                                  Link to Job
+                                </button>
+                              )
+                            ) : (
+                              <span className="text-xs text-white/35">—</span>
+                            )}
                           </td>
                           <td className="p-2 align-top">
                             <DailyLogPdfActions
@@ -639,6 +730,56 @@ export function DailyLogsClient() {
                       <p className="mt-1 text-xs text-white/50">
                         {l.crew_user ?? "—"} · {l.job_status ?? ""}
                       </p>
+                      {!l.job_id ? (
+                        <div className="mt-3 border-t border-white/10 pt-3">
+                          {linkingLogId === l.id ? (
+                            <div className="flex flex-col gap-2">
+                              <select
+                                className="app-input w-full text-sm"
+                                value={linkJobId}
+                                onChange={(e) => setLinkJobId(e.target.value)}
+                              >
+                                <option value="">Select job…</option>
+                                {jobs.map((j) => (
+                                  <option key={j.id} value={j.id}>
+                                    {j.job_number} · {j.job_name}
+                                  </option>
+                                ))}
+                              </select>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  className="rounded-lg bg-[#E8C84A] px-3 py-1.5 text-xs font-bold text-[#0a1628]"
+                                  onClick={() => void linkLogToJob(l.id)}
+                                >
+                                  Link
+                                </button>
+                                <button
+                                  type="button"
+                                  className="rounded-lg border border-white/20 px-3 py-1.5 text-xs text-white/80"
+                                  onClick={() => {
+                                    setLinkingLogId(null);
+                                    setLinkJobId("");
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className="text-sm font-semibold text-[#E8C84A] hover:underline"
+                              onClick={() => {
+                                setLinkingLogId(l.id);
+                                setLinkJobId(jobs[0]?.id ?? "");
+                              }}
+                            >
+                              Link to Job
+                            </button>
+                          )}
+                        </div>
+                      ) : null}
                       <div className="mt-3 border-t border-white/10 pt-3">
                         <DailyLogPdfActions
                           logId={l.id}

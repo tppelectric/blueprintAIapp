@@ -21,12 +21,18 @@ export function DailyLogPdfActions({
   const [busy, setBusy] = useState(false);
   const hasPdf = Boolean(pdfStoragePath?.trim());
 
-  const generate = async () => {
+  const exportUrl = `/api/daily-logs/${encodeURIComponent(logId)}/pdf?view=1`;
+
+  const savePdf = async () => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/daily-logs/${encodeURIComponent(logId)}/pdf`, {
-        method: "POST",
-      });
+      const res = await fetch(
+        `/api/daily-logs/${encodeURIComponent(logId)}/pdf`,
+        {
+          method: "POST",
+          credentials: "include",
+        },
+      );
       const j = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
         throw new Error(j.error || `Could not save PDF (${res.status})`);
@@ -39,14 +45,11 @@ export function DailyLogPdfActions({
     }
   };
 
-  const viewHref = `/api/daily-logs/${encodeURIComponent(logId)}/pdf?view=1`;
-  const downloadHref = `/api/daily-logs/${encodeURIComponent(logId)}/pdf?download=1`;
-
   const btn =
     "rounded-md border border-white/20 px-2 py-1 text-xs font-medium text-white/90 hover:bg-white/10 disabled:opacity-50";
-  const link =
-    "rounded-md border border-[#E8C84A]/40 px-2 py-1 text-xs font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10";
-  const primary =
+  const exportBtn =
+    "rounded-md border border-sky-400/40 px-2 py-1 text-xs font-semibold text-sky-200 hover:bg-sky-500/15 disabled:opacity-50";
+  const saveBtn =
     "rounded-md bg-[#E8C84A]/90 px-2 py-1 text-xs font-semibold text-[#0a1628] hover:bg-[#f0d56e] disabled:opacity-50";
 
   return (
@@ -62,33 +65,34 @@ export function DailyLogPdfActions({
           className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-200/95"
           title={`Stored: ${pdfStoragePath}`}
         >
-          PDF
+          Saved
         </span>
-      ) : null}
-      {hasPdf ? (
-        <a
-          href={viewHref}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={link}
-        >
-          View
-        </a>
-      ) : null}
-      {hasPdf ? (
-        <a href={downloadHref} className={btn}>
-          Download
-        </a>
       ) : null}
       <button
         type="button"
-        title={`Daily log ${logDate}`}
-        disabled={busy}
-        onClick={() => void generate()}
-        className={hasPdf ? btn : primary}
+        title={`Open PDF (${logDate})`}
+        className={exportBtn}
+        onClick={() => window.open(exportUrl, "_blank", "noopener,noreferrer")}
       >
-        {busy ? "Working…" : hasPdf ? "Regenerate" : "Save PDF"}
+        📄 Export PDF
       </button>
+      <button
+        type="button"
+        title={`Save PDF to storage (${logDate})`}
+        disabled={busy}
+        onClick={() => void savePdf()}
+        className={saveBtn}
+      >
+        {busy ? "…" : "💾 Save PDF"}
+      </button>
+      {hasPdf ? (
+        <a
+          href={`/api/daily-logs/${encodeURIComponent(logId)}/pdf?download=1`}
+          className={btn}
+        >
+          Download
+        </a>
+      ) : null}
     </div>
   );
 }

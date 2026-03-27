@@ -154,6 +154,25 @@ function DailyLogsClipboardIcon({ className }: { className?: string }) {
   );
 }
 
+function ReceiptDollarIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" />
+      <path d="M14 2v6h6" />
+      <path d="M12 18V6M9.5 9h4a1.5 1.5 0 0 1 0 3h-3a1.5 1.5 0 0 0 0 3h4M12 15v1.5" />
+    </svg>
+  );
+}
+
 export default function Home() {
   return (
     <div className="flex min-h-screen flex-col bg-[#060d1a] bg-gradient-to-b from-[#0c1829] via-[#060d1a] to-[#03060f]">
@@ -195,6 +214,24 @@ export default function Home() {
             </p>
             <span className="mt-4 text-sm font-medium text-orange-200 group-hover:text-orange-100">
               Open daily logs →
+            </span>
+          </Link>
+
+          <Link
+            href="/receipts"
+            className="group card-pad-mobile flex flex-col rounded-xl border border-emerald-500/30 bg-white/[0.04] p-6 text-left shadow-lg shadow-black/25 ring-1 ring-emerald-500/20 transition-colors hover:border-emerald-400/55 hover:bg-emerald-950/25 hover:ring-emerald-400/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400/50"
+          >
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-200 ring-1 ring-emerald-400/30 transition-colors group-hover:bg-emerald-500/30 group-hover:ring-emerald-300/45">
+              <ReceiptDollarIcon className="h-6 w-6" />
+            </div>
+            <h2 className="mt-4 text-base font-semibold text-white">
+              Receipts
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-white/80">
+              Capture and manage job receipts and expenses
+            </p>
+            <span className="mt-4 text-sm font-medium text-emerald-200 group-hover:text-emerald-100">
+              Open receipts →
             </span>
           </Link>
 

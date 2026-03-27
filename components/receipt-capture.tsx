@@ -77,6 +77,12 @@ export function ReceiptCapture({
   const [confidence, setConfidence] = useState(0);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [jobExpenseCtx, setJobExpenseCtx] = useState<{
+    label: string;
+    address: string;
+    receiptCount: number;
+    totalSpend: number;
+  } | null>(null);
 
   const loadJobs = useCallback(async () => {
     try {
@@ -171,6 +177,60 @@ export function ReceiptCapture({
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, [previewUrl]);
+
+  useEffect(() => {
+    const jid = assignedJobId?.trim();
+    if (!jid || phase !== "review") {
+      setJobExpenseCtx(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const sb = createBrowserClient();
+        const [{ data: job }, { data: recs }] = await Promise.all([
+          sb
+            .from("jobs")
+            .select("job_number,job_name,address,city,state,zip")
+            .eq("id", jid)
+            .maybeSingle(),
+          sb.from("receipts").select("total_amount").eq("job_id", jid),
+        ]);
+        if (cancelled) return;
+        if (!job) {
+          setJobExpenseCtx(null);
+          return;
+        }
+        const num = String(job.job_number ?? "").trim();
+        const name = String(job.job_name ?? "").trim();
+        const label = [num, name].filter(Boolean).join(" · ") || "Job";
+        const addrParts = [
+          job.address,
+          job.city,
+          job.state,
+          job.zip,
+        ]
+          .map((x) => String(x ?? "").trim())
+          .filter(Boolean);
+        const rows = recs ?? [];
+        const totalSpend = rows.reduce(
+          (s, r) => s + (Number((r as { total_amount?: unknown }).total_amount) || 0),
+          0,
+        );
+        setJobExpenseCtx({
+          label,
+          address: addrParts.join(", "),
+          receiptCount: rows.length,
+          totalSpend,
+        });
+      } catch {
+        if (!cancelled) setJobExpenseCtx(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [assignedJobId, phase]);
 
   const applyScan = (data: ScanReceiptResult) => {
     setVendorName(data.vendor_name);
@@ -320,10 +380,11 @@ export function ReceiptCapture({
 
       const sub = subtotal.trim() ? parseFloat(subtotal) : null;
       const tax = taxAmount.trim() ? parseFloat(taxAmount) : null;
+      const jobIdValue = assignedJobId?.trim() || null;
       const row = {
         id,
         uploaded_by: user.id,
-        job_id: assignedJobId,
+        job_id: jobIdValue,
         daily_log_id: dailyLogId?.trim() || null,
         storage_path: path,
         vendor_name: vendorName.trim() || null,
@@ -336,7 +397,10 @@ export function ReceiptCapture({
         card_type: cardType.trim() || null,
         receipt_category: category,
         line_items: lineItems,
-        confidence: confidence > 0 ? confidence : null,
+        confidence:
+          confidence > 0
+            ? Math.min(999.99, Math.round(confidence * 100) / 100)
+            : null,
         notes: notes.trim() || null,
       };
 
@@ -346,7 +410,15 @@ export function ReceiptCapture({
         .select("*")
         .single();
 
-      if (insErr) throw insErr;
+      if (insErr) {
+        const bits = [
+          insErr.message,
+          insErr.code ? `code ${insErr.code}` : null,
+          insErr.details ? String(insErr.details) : null,
+          insErr.hint ? `hint: ${insErr.hint}` : null,
+        ].filter(Boolean);
+        throw new Error(bits.join(" — ") || "Insert failed");
+      }
 
       const rec = inserted as ReceiptRow;
       if (Array.isArray(rec.line_items)) {
@@ -359,7 +431,16 @@ export function ReceiptCapture({
         }
       }
 
-      showToast({ message: "Receipt saved.", variant: "success" });
+      const linkedJob = jobIdValue
+        ? jobs.find((j) => j.id === jobIdValue)
+        : undefined;
+      const jobLabelForToast = linkedJob ? formatJobLabel(linkedJob) : null;
+      showToast({
+        message: jobLabelForToast
+          ? `Receipt saved — linked to ${jobLabelForToast}.`
+          : "Saved to unassigned receipts.",
+        variant: "success",
+      });
       onSaved?.(rec);
       resetCapture();
       setVendorName("");
@@ -491,6 +572,31 @@ export function ReceiptCapture({
 
       {phase === "review" && previewUrl ? (
         <div className="space-y-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+          {assignedJobId?.trim() && jobExpenseCtx ? (
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/25 px-3 py-2 text-sm text-white/90">
+              <p className="font-semibold text-emerald-200">
+                {jobExpenseCtx.label}
+              </p>
+              {jobExpenseCtx.address ? (
+                <p className="mt-1 text-xs text-white/60">
+                  {jobExpenseCtx.address}
+                </p>
+              ) : null}
+              <p className="mt-2 text-xs text-white/70">
+                {jobExpenseCtx.receiptCount} receipt
+                {jobExpenseCtx.receiptCount === 1 ? "" : "s"} on file · Running
+                total{" "}
+                <span className="font-semibold text-[#E8C84A]">
+                  $
+                  {jobExpenseCtx.totalSpend.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </span>{" "}
+                <span className="text-white/45">(before this one)</span>
+              </p>
+            </div>
+          ) : null}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={previewUrl}

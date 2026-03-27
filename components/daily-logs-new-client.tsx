@@ -257,6 +257,10 @@ export function DailyLogsNewClient() {
     crew: boolean;
     times: boolean;
     work: boolean;
+    materials: boolean;
+    safety: boolean;
+    breakers: boolean;
+    nextPlan: boolean;
   };
   const [aiFollowUp, setAiFollowUp] = useState<AiFollowUpFlags | null>(null);
   const [followUpNonce, setFollowUpNonce] = useState(0);
@@ -267,6 +271,10 @@ export function DailyLogsNewClient() {
     checkIn: "",
     checkOut: "",
     work: "",
+    materialsText: "",
+    safetyIncident: false,
+    allBreakersOn: true,
+    nextPlanText: "",
   });
 
   const formRef = useRef(form);
@@ -362,6 +370,10 @@ export function DailyLogsNewClient() {
       checkIn: f.check_in ? String(f.check_in).slice(0, 5) : "",
       checkOut: f.check_out ? String(f.check_out).slice(0, 5) : "",
       work: f.work_completed ?? "",
+      materialsText: "",
+      safetyIncident: Boolean(f.safety_incident),
+      allBreakersOn: f.all_breakers_on !== false,
+      nextPlanText: f.next_day_plan ?? "",
     });
   }, [aiFollowUp, followUpNonce, profile?.id]);
 

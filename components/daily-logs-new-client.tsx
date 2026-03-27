@@ -353,15 +353,17 @@ export function DailyLogsNewClient() {
   useEffect(() => {
     if (!aiFollowUp) return;
     const f = formRef.current;
+    const selfId = profile?.id?.trim() ?? "";
     setFollowUpDraft({
       jobId: f.job_id ?? "",
       jobCustom: "",
-      employeeIds: [],
+      employeeIds:
+        aiFollowUp.crew && selfId ? [selfId] : [],
       checkIn: f.check_in ? String(f.check_in).slice(0, 5) : "",
       checkOut: f.check_out ? String(f.check_out).slice(0, 5) : "",
       work: f.work_completed ?? "",
     });
-  }, [aiFollowUp, followUpNonce]);
+  }, [aiFollowUp, followUpNonce, profile?.id]);
 
   useEffect(() => {
     if (!jobMenuOpen) return;
@@ -699,23 +701,40 @@ export function DailyLogsNewClient() {
       try {
         const normalized = normalizeProcessDailyLogJson(j.data);
         console.log("AI result:", normalized);
+
+        const prevJobId = form.job_id?.trim() || null;
+        const prevEmployeeNames = employeeLines
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const prevCheckIn = form.check_in;
+        const prevCheckOut = form.check_out;
+        const prevWork = form.work_completed?.trim() || "";
+
         applyAiResult(normalized);
 
         const matchedAfter = matchJobIdFromAiName(normalized.job_name, jobs);
-        const hasJob = !!(
-          matchedAfter ||
-          (normalized.job_name && normalized.job_name.trim())
-        );
-        const hasCrewAi = normalized.employees_onsite.length > 0;
+        const effectiveJobId = matchedAfter ?? prevJobId;
+        const hasJob = !!effectiveJobId;
+
+        const aiEmployeeCount = normalized.employees_onsite
+          .map((s) => s.trim())
+          .filter(Boolean).length;
+        const hasCrew = aiEmployeeCount > 0 || prevEmployeeNames.length > 0;
+
         const cin = parseAiTimeToDb(normalized.check_in);
         const cout = parseAiTimeToDb(normalized.check_out);
-        const hasTimes = !!(cin && cout);
-        const hasWork = !!normalized.work_completed?.trim();
+        const hasTimes =
+          !!(cin && cout) ||
+          !!(toTimeDb(String(prevCheckIn ?? "")) &&
+            toTimeDb(String(prevCheckOut ?? "")));
 
-        if (!hasJob || !hasCrewAi || !hasTimes || !hasWork) {
+        const hasWork =
+          !!normalized.work_completed?.trim() || !!prevWork;
+
+        if (!hasJob || !hasCrew || !hasTimes || !hasWork) {
           setAiFollowUp({
             job: !hasJob,
-            crew: !hasCrewAi,
+            crew: !hasCrew,
             times: !hasTimes,
             work: !hasWork,
           });
@@ -1000,6 +1019,15 @@ export function DailyLogsNewClient() {
           !Number.isNaN(Number(form.lunch_duration_minutes))
             ? Math.round(Number(form.lunch_duration_minutes))
             : null,
+        equipment_used: form.equipment_used?.trim() || null,
+        equipment_left_onsite: form.equipment_left_onsite?.trim() || null,
+        next_day_plan: form.next_day_plan?.trim() || null,
+        safety_incident: Boolean(form.safety_incident),
+        safety_incident_notes: form.safety_incident_notes?.trim() || null,
+        all_breakers_on: form.all_breakers_on !== false,
+        breakers_off_reason: form.breakers_off_reason?.trim() || null,
+        trades_onsite: form.trades_onsite?.trim() || null,
+        visitors_onsite: form.visitors_onsite?.trim() || null,
       };
 
       const res = await fetch("/api/daily-logs", {
@@ -1032,7 +1060,7 @@ export function DailyLogsNewClient() {
 
       if (!res.ok) {
         const primary = (bodyJson.error ?? "").trim();
-        const msg = primary
+        const base = primary
           ? primary
           : formatDailyLogSaveError({
               message: bodyJson.error,
@@ -1041,6 +1069,15 @@ export function DailyLogsNewClient() {
               hint: bodyJson.hint,
               status: res.status,
             });
+        const supabaseBits = [
+          bodyJson.code ? `Supabase code: ${bodyJson.code}` : null,
+          bodyJson.details ? `Details: ${bodyJson.details}` : null,
+          bodyJson.hint ? `Hint: ${bodyJson.hint}` : null,
+        ].filter(Boolean);
+        const msg =
+          supabaseBits.length > 0
+            ? `${base} (${supabaseBits.join(" · ")})`
+            : base;
         showToast({ message: msg, variant: "error" });
         return;
       }
@@ -1113,7 +1150,36 @@ export function DailyLogsNewClient() {
         });
       }
 
-      showToast({ message: "Daily log saved.", variant: "success" });
+      let pdfOk = false;
+      try {
+        const pdfRes = await fetch(
+          `/api/daily-logs/${encodeURIComponent(logId)}/pdf`,
+          {
+            method: "POST",
+            credentials: "include",
+          },
+        );
+        pdfOk = pdfRes.ok;
+        if (!pdfRes.ok) {
+          let pdfErr = `HTTP ${pdfRes.status}`;
+          try {
+            const pj = (await pdfRes.json()) as { error?: string };
+            if (pj.error) pdfErr = pj.error;
+          } catch {
+            /* ignore */
+          }
+          console.warn("[daily-log] auto PDF failed:", pdfErr);
+        }
+      } catch (pdfE) {
+        console.warn("[daily-log] auto PDF failed:", pdfE);
+      }
+
+      showToast({
+        message: pdfOk
+          ? "Daily log saved and PDF generated."
+          : "Daily log saved. PDF was not generated — open the log on Daily Logs and tap Save PDF.",
+        variant: "success",
+      });
       if (form.job_id) {
         router.push(`/jobs/${form.job_id}`);
       } else {
@@ -1286,15 +1352,15 @@ export function DailyLogsNewClient() {
 
         {aiFollowUp ? (
           <div
-            className="mt-6 rounded-2xl border-2 border-[#E8C84A]/50 bg-[#0f1824] p-5 shadow-xl shadow-black/40"
+            className="mt-6 rounded-2xl border-2 border-[#E8C84A] bg-[#0f1824] p-5 shadow-lg shadow-[#E8C84A]/20 ring-1 ring-[#E8C84A]/30"
             role="region"
-            aria-label="AI follow-up"
+            aria-label="Follow-up"
           >
             <p className="text-lg font-bold text-[#E8C84A]">
-              AI needs a little more info
+              A little more info needed
             </p>
             <p className="mt-1 text-sm text-white/60">
-              Fill in the missing details below, then tap Done.
+              Quick inputs below, then tap Done.
             </p>
             <div className="mt-4 space-y-4">
               {aiFollowUp.job ? (
@@ -1339,10 +1405,10 @@ export function DailyLogsNewClient() {
               {aiFollowUp.crew ? (
                 <div className="rounded-xl border border-white/10 bg-black/20 p-4">
                   <p className="text-sm font-semibold text-white">
-                    Who else was on site today?
+                    Who was on site today?
                   </p>
                   <p className="mt-1 text-xs text-white/45">
-                    Hold Ctrl/Cmd to select multiple.
+                    You are pre-selected. Hold Ctrl/Cmd to add more people.
                   </p>
                   <select
                     multiple
@@ -1477,41 +1543,59 @@ export function DailyLogsNewClient() {
             </p>
           ) : null}
           <div className="mt-4 flex flex-wrap items-start gap-4">
-            {voiceEnv === "localhost" || voiceEnv === "needs_https" ? null : (
-              <div className="flex flex-col items-center gap-2">
-                <button
-                  type="button"
-                  onClick={toggleListen}
-                  disabled={processingAi}
-                  title={listening ? "Stop listening" : "Start voice input"}
-                  className={`inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-white shadow-lg transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E8C84A] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f1824] disabled:opacity-50 ${
-                    listening
-                      ? "animate-pulse bg-[#E8C84A] ring-4 ring-[#E8C84A]/90"
-                      : "bg-[#0a1628] ring-2 ring-white/15 hover:bg-[#132a45]"
-                  }`}
-                >
-                  <span className="sr-only">
-                    {listening ? "Stop listening" : "Tap to speak"}
-                  </span>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    className="h-7 w-7"
-                    aria-hidden
-                  >
-                    <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 1 1-10 0H5a7 7 0 0 0 6 6.92V20H9v2h6v-2h-2v-2.08A7 7 0 0 0 19 11h-2Z" />
-                  </svg>
-                </button>
-                <span className="text-center text-xs font-medium text-white/75">
-                  {processingAi
-                    ? "Processing…"
+            <div className="flex flex-col items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleListen}
+                disabled={
+                  processingAi ||
+                  voiceEnv === "localhost" ||
+                  voiceEnv === "needs_https"
+                }
+                title={
+                  voiceEnv === "localhost" || voiceEnv === "needs_https"
+                    ? "Voice needs HTTPS / live site"
                     : listening
-                      ? "Listening…"
-                      : "Tap to speak"}
+                      ? "Stop listening"
+                      : "Tap to speak"
+                }
+                className={`inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full shadow-lg transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E8C84A] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f1824] ${
+                  voiceEnv === "localhost" || voiceEnv === "needs_https"
+                    ? "cursor-not-allowed bg-[rgb(7,20,34)] text-white/40 opacity-60"
+                    : processingAi
+                      ? "cursor-not-allowed bg-[rgb(7,20,34)] text-white/50 opacity-70"
+                      : listening
+                        ? "animate-pulse bg-[#E8C84A] text-[rgb(7,20,34)] ring-4 ring-[#E8C84A]"
+                        : "bg-[rgb(7,20,34)] text-[#E8C84A] ring-2 ring-white/10 hover:bg-[#0d1f35] hover:ring-[#E8C84A]/40"
+                } disabled:opacity-60`}
+              >
+                <span className="sr-only">
+                  {listening ? "Stop listening" : "Tap to speak"}
                 </span>
-              </div>
-            )}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={1.75}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-7 w-7"
+                  aria-hidden
+                >
+                  <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z" />
+                  <path d="M19 11a7 7 0 0 1-14 0" />
+                  <path d="M12 18v3M8 21h8" />
+                </svg>
+              </button>
+              <span className="max-w-[9rem] text-center text-xs font-medium leading-snug text-white/80">
+                {processingAi
+                  ? "Processing..."
+                  : listening
+                    ? "Listening..."
+                    : "Tap to speak"}
+              </span>
+            </div>
           </div>
           <button
             type="button"

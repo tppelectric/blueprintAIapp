@@ -35,7 +35,8 @@ export function HeaderToolsMenu({
   const toolsPathActive =
     pathname.startsWith("/tools") ||
     pathname.startsWith("/customers") ||
-    pathname.startsWith("/admin");
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/inventory");
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -81,6 +82,18 @@ export function HeaderToolsMenu({
           onClick={() => setOpen(false)}
         >
           Customers
+        </Link>
+        <Link
+          href="/inventory"
+          role="menuitem"
+          className={`block px-4 py-2.5 text-sm font-medium transition-colors duration-200 hover:bg-white/10 ${
+            pathname.startsWith("/inventory")
+              ? "bg-violet-500/15 text-violet-200"
+              : "text-white/90"
+          }`}
+          onClick={() => setOpen(false)}
+        >
+          Inventory & QR
         </Link>
         <div className="mx-2 border-t border-white/10" />
         <p className="px-4 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-[#E8C84A]/80">

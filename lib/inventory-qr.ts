@@ -1,31 +1,34 @@
-function appOrigin(): string {
+/** Production default for printed QR when env is unset (TPP Vercel app). */
+export const INVENTORY_QR_PUBLIC_BASE =
+  "https://blueprint-a-iapp.vercel.app";
+
+function resolvedOrigin(): string {
   if (typeof window !== "undefined" && window.location?.origin) {
     return window.location.origin;
   }
-  return (
-    (typeof process !== "undefined"
+  const env =
+    typeof process !== "undefined"
       ? process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "")
-      : "") || ""
-  );
+      : "";
+  return env || INVENTORY_QR_PUBLIC_BASE;
 }
 
-/** Absolute URL for QR codes when possible (phone cameras). */
 export function qrUrlForAsset(assetId: string): string {
-  const o = appOrigin();
+  const o = resolvedOrigin();
   const path = `/inventory/scan?id=${encodeURIComponent(assetId)}`;
-  return o ? `${o}${path}` : path;
+  return `${o}${path}`;
 }
 
 export function qrUrlForLocation(locationId: string): string {
-  const o = appOrigin();
+  const o = resolvedOrigin();
   const path = `/inventory/scan?location=${encodeURIComponent(locationId)}`;
-  return o ? `${o}${path}` : path;
+  return `${o}${path}`;
 }
 
 export function qrUrlForMaterial(materialId: string): string {
-  const o = appOrigin();
+  const o = resolvedOrigin();
   const path = `/inventory/scan?material=${encodeURIComponent(materialId)}`;
-  return o ? `${o}${path}` : path;
+  return `${o}${path}`;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -41,7 +44,7 @@ export function parseScanPayload(text: string): {
     const base =
       typeof window !== "undefined"
         ? window.location.origin
-        : "https://inventory.local";
+        : INVENTORY_QR_PUBLIC_BASE;
     const u = /^https?:\/\//i.test(t)
       ? new URL(t)
       : new URL(t.startsWith("/") ? t : `/${t}`, base);

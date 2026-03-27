@@ -4,6 +4,12 @@ import { ToolsHubGrid, type ToolCard } from "./tools-hub-grid";
 
 const tools: ToolCard[] = [
   {
+    href: "/inventory",
+    title: "Inventory & QR",
+    desc: "Tools, materials, equipment, and QR scan check-in/out",
+    tone: "border-violet-500/45 text-violet-100",
+  },
+  {
     href: "/tools/load-calculator",
     title: "Load Calculator",
     desc: "NEC Article 220 service sizing",

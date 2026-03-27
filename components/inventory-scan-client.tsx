@@ -69,14 +69,16 @@ export function InventoryScanClient() {
   const loadContext = useCallback(async () => {
     try {
       const sb = createBrowserClient();
-      const [{ data: locs }, { data: jobRows }] = await Promise.all([
-        sb.from("asset_locations").select("*").order("name"),
-        sb
-          .from("jobs")
-          .select("id,job_name,job_number")
-          .order("updated_at", { ascending: false })
-          .limit(200),
-      ]);
+      const [{ data: locs }, { data: jobRows }, { data: matRows }] =
+        await Promise.all([
+          sb.from("asset_locations").select("*").order("name"),
+          sb
+            .from("jobs")
+            .select("id,job_name,job_number")
+            .order("updated_at", { ascending: false })
+            .limit(200),
+          sb.from("materials_inventory").select("*").order("name").limit(500),
+        ]);
       setLocations((locs ?? []).map((r) => mapLocationRow(r as Record<string, unknown>)));
       setJobs(
         (jobRows ?? []).map((j) => ({
@@ -84,8 +86,12 @@ export function InventoryScanClient() {
           label: `${String(j.job_number ?? "").trim() || "—"} · ${String(j.job_name ?? "").trim() || "Job"}`,
         })),
       );
+      setAllMaterials(
+        (matRows ?? []).map((r) => mapMaterialRow(r as Record<string, unknown>)),
+      );
     } catch {
       setLocations([]);
+      setAllMaterials([]);
     }
   }, []);
 
@@ -371,6 +377,10 @@ export function InventoryScanClient() {
     if (!locationId || !userId) return;
     const mid = modal.materialId;
     const qty = modal.qty;
+    if (!mid.trim()) {
+      showToast({ message: "Select a material.", variant: "error" });
+      return;
+    }
     if (!Number.isFinite(qty) || qty <= 0) {
       showToast({ message: "Invalid quantity.", variant: "error" });
       return;
@@ -384,6 +394,13 @@ export function InventoryScanClient() {
         .maybeSingle();
       if (fe || !row) throw fe ?? new Error("Material not found");
       const m = mapMaterialRow(row as Record<string, unknown>);
+      if (!add && m.location_id !== locationId) {
+        showToast({
+          message: "That material is not stored at this location.",
+          variant: "error",
+        });
+        return;
+      }
       const next = add ? m.current_quantity + qty : m.current_quantity - qty;
       if (next < 0) {
         showToast({ message: "Not enough stock.", variant: "error" });
@@ -415,15 +432,22 @@ export function InventoryScanClient() {
     }
   };
 
-  const applyMaterialScan = async (mode: "add" | "use" | "job") => {
+  const applyMaterialScan = async () => {
     if (!material || !userId) return;
-    if (modal.kind !== "mat_add" && modal.kind !== "mat_use" && modal.kind !== "mat_job")
+    if (
+      modal.kind !== "mat_add" &&
+      modal.kind !== "mat_use" &&
+      modal.kind !== "mat_job"
+    ) {
       return;
-    const qty =
-      modal.kind === "mat_job" ? modal.qty : modal.qty;
-    const jobId = modal.kind === "mat_job" ? modal.jobId : "";
+    }
+    const qty = modal.qty;
     if (!Number.isFinite(qty) || qty <= 0) {
       showToast({ message: "Invalid quantity.", variant: "error" });
+      return;
+    }
+    if (modal.kind === "mat_job" && !modal.jobId.trim()) {
+      showToast({ message: "Choose a job.", variant: "error" });
       return;
     }
     try {
@@ -449,7 +473,7 @@ export function InventoryScanClient() {
               ? "material_use_job"
               : "material_use",
         quantity_delta: modal.kind === "mat_add" ? qty : -qty,
-        job_id: modal.kind === "mat_job" ? jobId || null : null,
+        job_id: modal.kind === "mat_job" ? modal.jobId.trim() : null,
         from_location_id: material.location_id,
       });
       showToast({ message: "Updated.", variant: "success" });
@@ -579,7 +603,7 @@ export function InventoryScanClient() {
                   className="rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white"
                   onClick={() => void checkOut(asset)}
                 >
-                  Check Out (assign to me)
+                  ✅ Check Out — assign to me
                 </button>
               ) : null}
               {asset.status === "checked_out" ? (
@@ -593,7 +617,7 @@ export function InventoryScanClient() {
                     })
                   }
                 >
-                  Check In
+                  📦 Check In
                 </button>
               ) : null}
               <button
@@ -606,14 +630,14 @@ export function InventoryScanClient() {
                   })
                 }
               >
-                Move location
+                📍 Move
               </button>
               <button
                 type="button"
                 className="rounded-lg border border-orange-400/50 py-2.5 text-sm text-orange-200"
                 onClick={() => void reportRepair(asset)}
               >
-                Report issue (repair)
+                🔧 Report issue
               </button>
             </div>
           </section>
@@ -636,12 +660,13 @@ export function InventoryScanClient() {
                 onClick={() =>
                   setModal({
                     kind: "loc_add",
-                    materialId: materialsAtLoc[0]?.id ?? "",
+                    materialId:
+                      allMaterials[0]?.id ?? materialsAtLoc[0]?.id ?? "",
                     qty: 1,
                   })
                 }
               >
-                Add item (delivery)
+                ➕ Add item (delivery)
               </button>
               <button
                 type="button"
@@ -654,13 +679,13 @@ export function InventoryScanClient() {
                   })
                 }
               >
-                Remove item (usage)
+                ➖ Remove item (usage)
               </button>
               <Link
                 href={`/inventory?tab=assets&locationId=${location.id}`}
                 className="rounded-lg border border-violet-400/40 py-2.5 text-center text-sm font-semibold text-violet-200"
               >
-                View items
+                📋 View items
               </Link>
             </div>
             {materialsAtLoc.length === 0 ? (
@@ -693,14 +718,14 @@ export function InventoryScanClient() {
                   })
                 }
               >
-                Use on job
+                📤 Use on job
               </button>
               <button
                 type="button"
                 className="rounded-lg bg-emerald-600/90 py-2.5 text-sm font-semibold text-white"
                 onClick={() => setModal({ kind: "mat_add", qty: 1 })}
               >
-                Add stock
+                📥 Add stock
               </button>
               <button
                 type="button"
@@ -714,7 +739,7 @@ export function InventoryScanClient() {
                 className="rounded-lg border border-red-400/40 py-2.5 text-sm text-red-200"
                 onClick={() => void flagLowStock()}
               >
-                Flag low stock
+                ⚠️ Flag low stock
               </button>
             </div>
           </section>
@@ -789,15 +814,20 @@ export function InventoryScanClient() {
                   }
                 >
                   <option value="">Select material…</option>
-                  {(materialsAtLoc.length
+                  {(modal.kind === "loc_remove"
                     ? materialsAtLoc
-                    : []
+                    : allMaterials
                   ).map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.name}
                     </option>
                   ))}
                 </select>
+                {modal.kind === "loc_remove" && materialsAtLoc.length === 0 ? (
+                  <p className="mt-2 text-xs text-amber-200/90">
+                    No materials assigned to this location yet.
+                  </p>
+                ) : null}
                 <input
                   type="number"
                   min={1}
@@ -872,15 +902,7 @@ export function InventoryScanClient() {
                   <button
                     type="button"
                     className="btn-primary btn-h-11 flex-1"
-                    onClick={() =>
-                      void applyMaterialScan(
-                        modal.kind === "mat_add"
-                          ? "add"
-                          : modal.kind === "mat_job"
-                            ? "job"
-                            : "use",
-                      )
-                    }
+                    onClick={() => void applyMaterialScan()}
                   >
                     Confirm
                   </button>

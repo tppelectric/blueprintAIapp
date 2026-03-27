@@ -1,11 +1,6 @@
-import type { Metadata } from "next";
-import { InventoryCheckoutClient } from "./inventory-checkout-client";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: "Inventory checkouts",
-  description: "View and check in tools assigned to you.",
-};
-
-export default function InventoryCheckoutPage() {
-  return <InventoryCheckoutClient />;
+/** Legacy URL — inventory lives at `/inventory`. */
+export default function InventoryCheckoutRedirectPage() {
+  redirect("/inventory");
 }

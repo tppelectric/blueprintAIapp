@@ -22,6 +22,7 @@ import {
 export type NavKey =
   | "dashboard"
   | "jobs"
+  | "inventory"
   | "customers"
   | "upload"
   | "reference"
@@ -56,6 +57,8 @@ export function WideAppHeader({
   const dashActive =
     active === "dashboard" || pathname.startsWith("/dashboard");
   const jobsActive = active === "jobs" || pathname.startsWith("/jobs");
+  const inventoryActive =
+    active === "inventory" || pathname.startsWith("/inventory");
   const custActive =
     active === "customers" || pathname.startsWith("/customers");
   const uploadActive = active === "upload" || pathname === "/upload";
@@ -93,6 +96,13 @@ export function WideAppHeader({
       ) : (
         <Link href="/jobs" className={NAV_IDLE}>
           Jobs
+        </Link>
+      )}
+      {inventoryActive ? (
+        <span className={NAV_ACTIVE}>Inventory</span>
+      ) : (
+        <Link href="/inventory" className={NAV_IDLE}>
+          Inventory
         </Link>
       )}
       {custActive ? (

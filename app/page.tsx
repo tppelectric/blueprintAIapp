@@ -175,6 +175,26 @@ function ReceiptDollarIcon({ className }: { className?: string }) {
   );
 }
 
+function InventoryQrIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <path d="M14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z" />
+    </svg>
+  );
+}
+
 export default function Home() {
   return (
     <div className="flex min-h-screen flex-col bg-[#060d1a] bg-gradient-to-b from-[#0c1829] via-[#060d1a] to-[#03060f]">
@@ -237,6 +257,24 @@ export default function Home() {
             </p>
             <span className="mt-4 text-sm font-medium text-emerald-200 group-hover:text-emerald-100">
               Open receipts →
+            </span>
+          </Link>
+
+          <Link
+            href="/inventory"
+            className="group card-pad-mobile flex flex-col rounded-xl border border-violet-500/35 bg-white/[0.04] p-6 text-left shadow-lg shadow-black/25 ring-1 ring-violet-500/20 transition-colors hover:border-violet-400/60 hover:bg-violet-950/30 hover:ring-violet-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400/50"
+          >
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-500/20 text-violet-200 ring-1 ring-violet-400/35 transition-colors group-hover:bg-violet-500/30 group-hover:ring-violet-300/50">
+              <InventoryQrIcon className="h-6 w-6" />
+            </div>
+            <h2 className="mt-4 text-base font-semibold text-white">
+              Inventory
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-white/80">
+              Track tools, materials and equipment with QR codes
+            </p>
+            <span className="mt-4 text-sm font-medium text-violet-200 group-hover:text-violet-100">
+              Open inventory →
             </span>
           </Link>
 

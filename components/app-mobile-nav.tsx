@@ -20,6 +20,7 @@ import {
 type AppNavKey =
   | "dashboard"
   | "jobs"
+  | "inventory"
   | "customers"
   | "upload"
   | "reference"
@@ -307,6 +308,16 @@ function MobileMenuPortal({
             onClick={onClose}
           >
             Receipts
+          </Link>
+          <Link
+            href="/inventory"
+            className={linkClass(pathname.startsWith("/inventory"))}
+            onClick={onClose}
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden>📦</span>
+              Inventory
+            </span>
           </Link>
           <Link
             href="/customers"

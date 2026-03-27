@@ -617,6 +617,12 @@ export function DashboardClient() {
             >
               📷 Receipts
             </Link>
+            <Link
+              href="/inventory"
+              className="btn-secondary btn-h-11 w-full border-violet-500/35 text-violet-200"
+            >
+              📦 Inventory & QR
+            </Link>
             <Link href="/timesheets" className="btn-secondary btn-h-11 w-full">
               Timesheets
             </Link>

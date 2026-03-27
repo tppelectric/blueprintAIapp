@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { WideAppHeader } from "@/components/wide-app-header";
 import { useAppToast } from "@/components/toast-provider";
@@ -27,6 +27,60 @@ function statusColor(status: string): string {
   return "text-white/60";
 }
 
+function applyJobtreadPublicToDrafts(
+  s: JobtreadSettingsPublic,
+  setters: {
+    setSettings: (v: JobtreadSettingsPublic) => void;
+    setCompanyIdDraft: (v: string) => void;
+    setAutoSync: (v: boolean) => void;
+    setSyncInterval: (v: SyncInterval) => void;
+    setImportCustomers: (v: boolean) => void;
+    setImportJobs: (v: boolean) => void;
+    setExportDailyLogs: (v: boolean) => void;
+    setExportPhotos: (v: boolean) => void;
+    setExportTimeEntries: (v: boolean) => void;
+  },
+) {
+  setters.setSettings(s);
+  setters.setCompanyIdDraft(s.companyId);
+  setters.setAutoSync(s.autoSyncEnabled);
+  setters.setSyncInterval(s.syncInterval);
+  setters.setImportCustomers(s.importCustomers);
+  setters.setImportJobs(s.importJobs);
+  setters.setExportDailyLogs(s.exportDailyLogs);
+  setters.setExportPhotos(s.exportPhotos);
+  setters.setExportTimeEntries(s.exportTimeEntries);
+}
+
+function EyeToggleIcon({ visible }: { visible: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-5 w-5"
+      aria-hidden
+    >
+      {visible ? (
+        <>
+          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+          <circle cx="12" cy="12" r="3" />
+        </>
+      ) : (
+        <>
+          <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+          <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+          <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+          <line x1="2" x2="22" y1="2" y2="22" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 export function IntegrationsSettingsClient() {
   const { showToast } = useAppToast();
   const { role, loading: roleLoading } = useUserRole();
@@ -46,6 +100,47 @@ export function IntegrationsSettingsClient() {
   const [exportPhotos, setExportPhotos] = useState(false);
   const [exportTimeEntries, setExportTimeEntries] = useState(false);
 
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [connectionTest, setConnectionTest] = useState<{
+    ok: boolean;
+    fading: boolean;
+  } | null>(null);
+  const connectionTestTimersRef = useRef<{
+    fade: ReturnType<typeof setTimeout>;
+    clear: ReturnType<typeof setTimeout>;
+  } | null>(null);
+
+  const clearConnectionTestTimers = useCallback(() => {
+    const t = connectionTestTimersRef.current;
+    if (t) {
+      clearTimeout(t.fade);
+      clearTimeout(t.clear);
+      connectionTestTimersRef.current = null;
+    }
+  }, []);
+
+  const showConnectionTestResult = useCallback(
+    (ok: boolean) => {
+      clearConnectionTestTimers();
+      setConnectionTest({ ok, fading: false });
+      const fade = window.setTimeout(() => {
+        setConnectionTest((prev) =>
+          prev ? { ...prev, fading: true } : null,
+        );
+      }, 5000);
+      const clear = window.setTimeout(() => {
+        setConnectionTest(null);
+        connectionTestTimersRef.current = null;
+      }, 5500);
+      connectionTestTimersRef.current = { fade, clear };
+    },
+    [clearConnectionTestTimers],
+  );
+
+  useEffect(() => {
+    return () => clearConnectionTestTimers();
+  }, [clearConnectionTestTimers]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -60,15 +155,17 @@ export function IntegrationsSettingsClient() {
         throw new Error(j.error ?? "Could not load settings.");
       }
       const s = j.settings!;
-      setSettings(s);
-      setCompanyIdDraft(s.companyId);
-      setAutoSync(s.autoSyncEnabled);
-      setSyncInterval(s.syncInterval);
-      setImportCustomers(s.importCustomers);
-      setImportJobs(s.importJobs);
-      setExportDailyLogs(s.exportDailyLogs);
-      setExportPhotos(s.exportPhotos);
-      setExportTimeEntries(s.exportTimeEntries);
+      applyJobtreadPublicToDrafts(s, {
+        setSettings,
+        setCompanyIdDraft,
+        setAutoSync,
+        setSyncInterval,
+        setImportCustomers,
+        setImportJobs,
+        setExportDailyLogs,
+        setExportPhotos,
+        setExportTimeEntries,
+      });
       setApiKeyDraft("");
     } catch (e) {
       showToast({
@@ -113,10 +210,21 @@ export function IntegrationsSettingsClient() {
       if (!r.ok) {
         throw new Error(j.error ?? "Save failed.");
       }
-      setSettings(j.settings!);
+      const s = j.settings!;
+      applyJobtreadPublicToDrafts(s, {
+        setSettings,
+        setCompanyIdDraft,
+        setAutoSync,
+        setSyncInterval,
+        setImportCustomers,
+        setImportJobs,
+        setExportDailyLogs,
+        setExportPhotos,
+        setExportTimeEntries,
+      });
       setApiKeyDraft("");
-      showToast({ message: "Settings saved.", variant: "success" });
-      void load();
+      setShowApiKey(false);
+      showToast({ message: "Settings saved", variant: "success" });
     } catch (e) {
       showToast({
         message: e instanceof Error ? e.message : "Save failed.",
@@ -152,10 +260,21 @@ export function IntegrationsSettingsClient() {
         error?: string;
       };
       if (!r.ok) throw new Error(j.error ?? "Update failed.");
-      setSettings(j.settings!);
+      const s = j.settings!;
+      applyJobtreadPublicToDrafts(s, {
+        setSettings,
+        setCompanyIdDraft,
+        setAutoSync,
+        setSyncInterval,
+        setImportCustomers,
+        setImportJobs,
+        setExportDailyLogs,
+        setExportPhotos,
+        setExportTimeEntries,
+      });
       setApiKeyDraft("");
+      setShowApiKey(false);
       showToast({ message: "API key removed.", variant: "success" });
-      void load();
     } catch (e) {
       showToast({
         message: e instanceof Error ? e.message : "Update failed.",
@@ -182,19 +301,36 @@ export function IntegrationsSettingsClient() {
         error?: string;
         message?: string;
       };
-      if (!r.ok) {
-        throw new Error(j.error ?? "Test failed.");
+      if (!r.ok || !j.ok) {
+        showConnectionTestResult(false);
+        return;
       }
-      showToast({
-        message: j.message ?? "Connection test recorded.",
-        variant: "success",
-      });
-      void load();
-    } catch (e) {
-      showToast({
-        message: e instanceof Error ? e.message : "Test failed.",
-        variant: "error",
-      });
+      showConnectionTestResult(true);
+      const s = settings;
+      if (s) {
+        applyJobtreadPublicToDrafts(
+          {
+            ...s,
+            connectionStatus: "ok",
+            connectionMessage:
+              j.message ??
+              "Test recorded — JobTread API client not wired yet; credentials accepted.",
+          },
+          {
+            setSettings,
+            setCompanyIdDraft,
+            setAutoSync,
+            setSyncInterval,
+            setImportCustomers,
+            setImportJobs,
+            setExportDailyLogs,
+            setExportPhotos,
+            setExportTimeEntries,
+          },
+        );
+      }
+    } catch {
+      showConnectionTestResult(false);
     }
   };
 

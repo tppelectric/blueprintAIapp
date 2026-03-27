@@ -4,6 +4,12 @@ import type { DailyLogInsert } from "@/lib/daily-logs-types";
  * Set `DAILY_LOG_INSERT_WEATHER=true` (or `1`) when `daily_logs.weather` exists
  * (see `supabase/daily_logs_extensions_and_attachments.sql`). Otherwise the
  * `weather` column is omitted so inserts succeed on databases without it.
+ *
+ * Insert payload matches:
+ * - `supabase/daily_logs.sql` (base columns, including additional_notes, internal_notes)
+ * - `supabase/daily_logs_extensions_and_attachments.sql` (weather optional, lunch_*, equipment_used,
+ *   work_completed, next_day_plan, safety_*)
+ * - `supabase/daily_logs_pdf_storage.sql` (pdf_storage_path — never sent on insert)
  */
 const WEATHER_COLUMN_ENABLED =
   process.env.DAILY_LOG_INSERT_WEATHER === "1" ||

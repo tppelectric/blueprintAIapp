@@ -22,6 +22,15 @@ function formatJobLabel(j: JobOpt): string {
   return a || b || "";
 }
 
+/** Persist as 0–1 (2 decimal places); treat ≤0 as unknown (null). */
+function receiptConfidenceToDb(raw: number): number | null {
+  if (!Number.isFinite(raw) || raw <= 0) return null;
+  let v = raw;
+  if (v > 1) v = v / 100;
+  v = Math.max(0, Math.min(1, v));
+  return Math.round(v * 100) / 100;
+}
+
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -507,10 +516,7 @@ export function ReceiptCapture({
         card_type: cardType.trim() || null,
         receipt_category: category,
         line_items: lineItems,
-        confidence:
-          confidence > 0
-            ? Math.min(999.99, Math.round(confidence * 100) / 100)
-            : null,
+        confidence: receiptConfidenceToDb(confidence),
         notes: notes.trim() || null,
       };
 

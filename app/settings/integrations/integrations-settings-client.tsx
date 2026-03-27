@@ -312,6 +312,13 @@ export function IntegrationsSettingsClient() {
                   value={companyIdDraft}
                   onChange={(e) => setCompanyIdDraft(e.target.value)}
                 />
+                <span className="mt-2 block text-[11px] leading-relaxed text-white/45">
+                  Find your Company ID in JobTread: Settings → Company → Account
+                  Info, or check your JobTread URL:{" "}
+                  <span className="font-mono text-white/55">
+                    app.jobtread.com/company/[YOUR-ID]
+                  </span>
+                </span>
               </label>
             </div>
 

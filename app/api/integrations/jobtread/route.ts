@@ -148,6 +148,8 @@ export async function PATCH(request: Request) {
         : 0;
 
     const payload = {
+      provider: JOBTREAD_PROVIDER,
+      integration_name: JOBTREAD_PROVIDER,
       company_id,
       api_key_ciphertext,
       auto_sync_enabled,
@@ -172,10 +174,7 @@ export async function PATCH(request: Request) {
         .eq("id", existing.id);
       if (error) throw new Error(error.message);
     } else {
-      const { error } = await admin.from("integration_settings").insert({
-        provider: JOBTREAD_PROVIDER,
-        ...payload,
-      });
+      const { error } = await admin.from("integration_settings").insert(payload);
       if (error) throw new Error(error.message);
     }
 

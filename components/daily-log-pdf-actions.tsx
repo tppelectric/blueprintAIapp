@@ -8,6 +8,8 @@ type Props = {
   pdfStoragePath?: string | null;
   /** Smaller controls for dense tables / cards */
   compact?: boolean;
+  /** Larger primary “Export PDF” for list rows */
+  prominentExport?: boolean;
   onPdfSaved?: () => void;
 };
 
@@ -16,6 +18,7 @@ export function DailyLogPdfActions({
   logDate,
   pdfStoragePath,
   compact,
+  prominentExport,
   onPdfSaved,
 }: Props) {
   const [busy, setBusy] = useState(false);
@@ -48,7 +51,11 @@ export function DailyLogPdfActions({
   const btn =
     "rounded-md border border-white/20 px-2 py-1 text-xs font-medium text-white/90 hover:bg-white/10 disabled:opacity-50";
   const exportBtn =
-    "rounded-md border border-sky-400/40 px-2 py-1 text-xs font-semibold text-sky-200 hover:bg-sky-500/15 disabled:opacity-50";
+    prominentExport && !compact
+      ? "rounded-lg bg-[#E8C84A] px-4 py-2.5 text-sm font-bold text-[#0a1628] shadow-md hover:bg-[#f0d56e] disabled:opacity-50"
+      : prominentExport
+        ? "rounded-lg bg-[#E8C84A] px-3 py-2 text-xs font-bold text-[#0a1628] shadow hover:bg-[#f0d56e] disabled:opacity-50"
+        : "rounded-md border border-sky-400/40 px-2 py-1 text-xs font-semibold text-sky-200 hover:bg-sky-500/15 disabled:opacity-50";
   const saveBtn =
     "rounded-md bg-[#E8C84A]/90 px-2 py-1 text-xs font-semibold text-[#0a1628] hover:bg-[#f0d56e] disabled:opacity-50";
 

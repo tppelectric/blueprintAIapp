@@ -2,6 +2,7 @@
 export type JobtreadIntegrationRow = {
   id: string;
   provider: string;
+  integration_name?: string | null;
   company_id: string | null;
   api_key_ciphertext: string | null;
   auto_sync_enabled: boolean;

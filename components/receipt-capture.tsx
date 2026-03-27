@@ -415,6 +415,13 @@ export function ReceiptCapture({
     });
   };
 
+  const flushSaveProgressUi = () =>
+    new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => resolve());
+      });
+    });
+
   const saveReceipt = async () => {
     if (!file) {
       showToast({ message: "No receipt image.", variant: "error" });
@@ -427,11 +434,12 @@ export function ReceiptCapture({
     }
 
     setSaving(true);
-      setReceiptProgress({
-        pct: 70,
-        label: "Uploading image...",
-        variant: "normal",
-      });
+    setReceiptProgress({
+      pct: 0,
+      label: "Starting save...",
+      variant: "normal",
+    });
+    await flushSaveProgressUi();
     try {
       const sb = createBrowserClient();
       const {
@@ -448,6 +456,13 @@ export function ReceiptCapture({
         window.setTimeout(() => setReceiptProgress(null), 5000);
         return;
       }
+
+      setReceiptProgress({
+        pct: 30,
+        label: "Uploading image...",
+        variant: "normal",
+      });
+      await flushSaveProgressUi();
 
       const id = crypto.randomUUID();
       const ext = file.type.includes("png")
@@ -467,10 +482,11 @@ export function ReceiptCapture({
       if (upErr) throw upErr;
 
       setReceiptProgress({
-        pct: 85,
-        label: "Saving receipt...",
+        pct: 60,
+        label: "Saving to database...",
         variant: "normal",
       });
+      await flushSaveProgressUi();
 
       const sub = subtotal.trim() ? parseFloat(subtotal) : null;
       const tax = taxAmount.trim() ? parseFloat(taxAmount) : null;
@@ -543,7 +559,7 @@ export function ReceiptCapture({
       });
       setReceiptProgress({
         pct: 100,
-        label: "",
+        label: "Receipt saved!",
         variant: "success",
       });
       onSaved?.(rec);
@@ -722,7 +738,7 @@ export function ReceiptCapture({
             }`}
           >
             {receiptProgress.variant === "success"
-              ? "✅ Receipt saved!"
+              ? receiptProgress.label || "Receipt saved!"
               : receiptProgress.variant === "error"
                 ? receiptProgress.errorDetail ?? "Something went wrong."
                 : `${Math.round(receiptProgress.pct)}% - ${receiptProgress.label}`}

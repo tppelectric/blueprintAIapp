@@ -575,7 +575,7 @@ export function DailyLogsClient() {
                       <th className="p-3">Status</th>
                       <th className="p-3">Materials</th>
                       <th className="p-3 min-w-[140px]">Link</th>
-                      <th className="p-3 w-[220px]">PDF</th>
+                      <th className="p-3 min-w-[200px]">PDF / export</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -785,6 +785,7 @@ export function DailyLogsClient() {
                           logId={l.id}
                           logDate={l.log_date}
                           pdfStoragePath={l.pdf_storage_path ?? null}
+                          prominentExport
                           onPdfSaved={() => void load()}
                         />
                       </div>

@@ -213,6 +213,10 @@ export function DailyLogsNewClient() {
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const [weatherLoading, setWeatherLoading] = useState(false);
+  const [savedLogBanner, setSavedLogBanner] = useState<{
+    logId: string;
+    jobId: string | null;
+  } | null>(null);
   const [punchHint, setPunchHint] = useState<{
     found: boolean;
     jobName?: string;
@@ -1243,13 +1247,14 @@ export function DailyLogsNewClient() {
       showToast({
         message: pdfOk
           ? "Daily log saved and PDF generated."
-          : "Daily log saved. PDF was not generated — open the log on Daily Logs and tap Save PDF.",
+          : "Daily log saved. PDF was not generated — use Export PDF below or Save PDF from Daily Logs.",
         variant: "success",
       });
-      if (form.job_id) {
-        router.push(`/jobs/${form.job_id}`);
-      } else {
-        router.push("/jobs/daily-logs");
+      setSavedLogBanner({ logId, jobId: form.job_id });
+      try {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } catch {
+        window.scrollTo(0, 0);
       }
     } catch (e) {
       let msg = "Save failed.";
@@ -1344,6 +1349,50 @@ export function DailyLogsNewClient() {
         <p className="mt-1 text-sm text-white/50">
           Describe your day with voice or text, then review and save.
         </p>
+
+        {savedLogBanner ? (
+          <div
+            className="mt-6 rounded-2xl border-2 border-emerald-500/50 bg-emerald-950/35 p-5 shadow-lg shadow-emerald-900/20"
+            role="status"
+          >
+            <p className="text-lg font-bold text-emerald-200">
+              ✅ Daily log saved!
+            </p>
+            <p className="mt-2 text-sm text-white/75">
+              A PDF was generated in the background when possible. You can open
+              or save it anytime from Daily Logs.
+            </p>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+              <button
+                type="button"
+                className="rounded-xl bg-[#E8C84A] px-5 py-3 text-sm font-bold text-[#0a1628] shadow-md transition-colors hover:bg-[#f0d56e]"
+                onClick={() =>
+                  window.open(
+                    `/api/daily-logs/${encodeURIComponent(savedLogBanner.logId)}/pdf?view=1`,
+                    "_blank",
+                    "noopener,noreferrer",
+                  )
+                }
+              >
+                📄 Export PDF
+              </button>
+              <Link
+                href="/jobs/daily-logs"
+                className="inline-flex items-center justify-center rounded-xl border-2 border-white/25 bg-white/[0.06] px-5 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              >
+                📋 View All Logs
+              </Link>
+              {savedLogBanner.jobId ? (
+                <Link
+                  href={`/jobs/${savedLogBanner.jobId}`}
+                  className="inline-flex items-center justify-center rounded-xl border border-white/20 px-5 py-3 text-sm font-medium text-[#E8C84A] hover:bg-white/[0.04]"
+                >
+                  Open job
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         {punchHint?.found ? (
           <div className="mt-6 rounded-xl border-2 border-[#E8C84A] bg-[#E8C84A]/12 px-5 py-4 shadow-lg shadow-black/30 ring-1 ring-[#E8C84A]/30">

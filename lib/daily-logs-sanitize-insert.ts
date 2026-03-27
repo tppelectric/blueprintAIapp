@@ -1,5 +1,14 @@
 import type { DailyLogInsert } from "@/lib/daily-logs-types";
 
+/**
+ * Set `DAILY_LOG_INSERT_WEATHER=true` (or `1`) when `daily_logs.weather` exists
+ * (see `supabase/daily_logs_extensions_and_attachments.sql`). Otherwise the
+ * `weather` column is omitted so inserts succeed on databases without it.
+ */
+const WEATHER_COLUMN_ENABLED =
+  process.env.DAILY_LOG_INSERT_WEATHER === "1" ||
+  process.env.DAILY_LOG_INSERT_WEATHER === "true";
+
 /** Columns on `public.daily_logs` (base + extensions). Keep in sync with Supabase migrations. */
 const DAILY_LOG_INSERT_KEYS = [
   "jobtread_id",
@@ -27,7 +36,6 @@ const DAILY_LOG_INSERT_KEYS = [
   "card_type",
   "store_receipts",
   "internal_notes",
-  "weather",
   "lunch_duration_minutes",
   "equipment_used",
   "work_completed",
@@ -45,6 +53,9 @@ const STRIP_FROM_RAW = new Set([
   "created_at",
   "pdf_storage_path",
   "equipment_left",
+  /** Legacy / mistaken keys — not columns on `daily_logs`. */
+  "weather_temp",
+  "weather_conditions",
 ]);
 
 function toTimeOrNull(v: unknown): string | null {
@@ -131,7 +142,9 @@ export function sanitizeDailyLogInsertPayload(
   out.card_type = textOrNull(src.card_type);
   out.store_receipts = textOrNull(src.store_receipts);
   out.internal_notes = textOrNull(src.internal_notes);
-  out.weather = textOrNull(src.weather);
+  if (WEATHER_COLUMN_ENABLED) {
+    out.weather = textOrNull(src.weather);
+  }
   out.lunch_duration_minutes = toIntOrNull(src.lunch_duration_minutes);
   out.equipment_used = textOrNull(src.equipment_used);
   out.work_completed = textOrNull(src.work_completed);

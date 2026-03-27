@@ -258,3 +258,38 @@ export function TeamClockCardSkeletonGrid({ cards = 6 }: { cards?: number }) {
     </div>
   );
 }
+
+/** Inventory dashboard asset cards while loading (dark / violet shell). */
+export function InventoryDashboardSkeleton({ cards = 6 }: { cards?: number }) {
+  return (
+    <div
+      className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+      aria-busy="true"
+      aria-label="Loading inventory"
+    >
+      {Array.from({ length: cards }).map((_, i) => (
+        <div
+          key={i}
+          className="animate-pulse rounded-xl border border-white/10 bg-white/[0.03] p-4 ring-1 ring-violet-500/10"
+        >
+          <div className="flex gap-3">
+            <div className="h-20 w-20 shrink-0 rounded-lg bg-white/10" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="h-5 w-3/4 rounded bg-white/10" />
+              <div className="h-3 w-24 rounded bg-white/5" />
+              <div className="flex gap-1.5 pt-1">
+                <div className="h-5 w-14 rounded-full bg-white/10" />
+                <div className="h-5 w-20 rounded-full bg-white/10" />
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 h-3 w-full rounded bg-white/5" />
+          <div className="mt-3 flex gap-2">
+            <div className="h-8 w-20 rounded-lg bg-white/10" />
+            <div className="h-8 w-16 rounded-lg bg-white/10" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}

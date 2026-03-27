@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import jsQR from "jsqr";
 import { WideAppHeader } from "@/components/wide-app-header";
@@ -9,7 +9,16 @@ import { useAppToast } from "@/components/toast-provider";
 import { useUserRole } from "@/hooks/use-user-role";
 import { mapAssetRow, mapLocationRow, mapMaterialRow } from "@/lib/inventory-mappers";
 import type { AssetLocationRow, AssetRow, MaterialRow } from "@/lib/inventory-types";
+import { formatEmployeeName } from "@/lib/inventory-employee";
 import { parseScanPayload } from "@/lib/inventory-qr";
+import { insertInventoryTransaction } from "@/lib/inventory-tx";
+import {
+  enqueueInventoryOp,
+  isOffline,
+  peekOfflineQueue,
+} from "@/lib/inventory-offline-queue";
+import { flushInventoryOfflineQueue } from "@/lib/inventory-offline-flush";
+import { isUuid } from "@/lib/is-uuid";
 import { createBrowserClient } from "@/lib/supabase/client";
 
 export function InventoryScanClient() {
@@ -18,6 +27,10 @@ export function InventoryScanClient() {
   const searchParams = useSearchParams();
   const { profile } = useUserRole();
   const userId = profile?.id ?? null;
+  const employeeName = useMemo(
+    () => formatEmployeeName(profile ?? {}),
+    [profile],
+  );
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -29,8 +42,10 @@ export function InventoryScanClient() {
   const [lastDecoded, setLastDecoded] = useState<string | null>(null);
 
   const [assetId, setAssetId] = useState<string | null>(null);
+  const [assetNumber, setAssetNumber] = useState<string | null>(null);
   const [locationId, setLocationId] = useState<string | null>(null);
   const [materialId, setMaterialId] = useState<string | null>(null);
+  const [offlinePending, setOfflinePending] = useState(0);
 
   const [asset, setAsset] = useState<AssetRow | null>(null);
   const [location, setLocation] = useState<AssetLocationRow | null>(null);
@@ -53,11 +68,17 @@ export function InventoryScanClient() {
 
   const [jobs, setJobs] = useState<{ id: string; label: string }[]>([]);
 
+  const refreshOfflineCount = useCallback(() => {
+    setOfflinePending(peekOfflineQueue().length);
+  }, []);
+
   const applyQuery = useCallback(() => {
     const id = searchParams.get("id")?.trim() || null;
     const loc = searchParams.get("location")?.trim() || null;
     const mat = searchParams.get("material")?.trim() || null;
+    const num = searchParams.get("number")?.trim() || null;
     setAssetId(id);
+    setAssetNumber(num && !id ? num : null);
     setLocationId(loc);
     setMaterialId(mat);
   }, [searchParams]);
@@ -65,6 +86,12 @@ export function InventoryScanClient() {
   useEffect(() => {
     applyQuery();
   }, [applyQuery]);
+
+  useEffect(() => {
+    refreshOfflineCount();
+    const id = window.setInterval(refreshOfflineCount, 2500);
+    return () => window.clearInterval(id);
+  }, [refreshOfflineCount]);
 
   const loadContext = useCallback(async () => {
     try {
@@ -105,7 +132,29 @@ export function InventoryScanClient() {
     setMaterial(null);
     setLocItemCount(0);
     setMaterialsAtLoc([]);
-    if (!assetId && !locationId && !materialId) return;
+    if (!assetId && !assetNumber && !locationId && !materialId) return;
+    if (assetId && !isUuid(assetId)) {
+      showToast({
+        message:
+          "This link does not contain a valid item ID. Use a QR from the inventory dashboard or a correct UUID.",
+        variant: "error",
+      });
+      return;
+    }
+    if (locationId && !isUuid(locationId)) {
+      showToast({
+        message: "Invalid location ID in link.",
+        variant: "error",
+      });
+      return;
+    }
+    if (materialId && !isUuid(materialId)) {
+      showToast({
+        message: "Invalid material ID in link.",
+        variant: "error",
+      });
+      return;
+    }
     try {
       const sb = createBrowserClient();
       if (assetId) {
@@ -113,6 +162,14 @@ export function InventoryScanClient() {
           .from("assets")
           .select("*")
           .eq("id", assetId)
+          .maybeSingle();
+        if (error) throw error;
+        if (data) setAsset(mapAssetRow(data as Record<string, unknown>));
+      } else if (assetNumber) {
+        const { data, error } = await sb
+          .from("assets")
+          .select("*")
+          .eq("asset_number", assetNumber)
           .maybeSingle();
         if (error) throw error;
         if (data) setAsset(mapAssetRow(data as Record<string, unknown>));
@@ -161,26 +218,45 @@ export function InventoryScanClient() {
         variant: "error",
       });
     }
-  }, [assetId, locationId, materialId, showToast]);
+  }, [assetId, assetNumber, locationId, materialId, showToast]);
 
   useEffect(() => {
     void loadEntity();
   }, [loadEntity]);
 
-  const logTx = async (row: {
-    asset_id?: string | null;
-    material_id?: string | null;
-    transaction_type: string;
-    quantity_delta?: number | null;
-    from_location_id?: string | null;
-    to_location_id?: string | null;
-    job_id?: string | null;
-    notes?: string | null;
-  }) => {
-    if (!userId) return;
-    const sb = createBrowserClient();
-    await sb.from("asset_transactions").insert({ ...row, user_id: userId });
-  };
+  useEffect(() => {
+    const runFlush = () => {
+      if (!userId || !navigator.onLine) return;
+      void (async () => {
+        try {
+          const sb = createBrowserClient();
+          const n = await flushInventoryOfflineQueue(sb, {
+            userId,
+            employeeName,
+          });
+          if (n > 0) {
+            refreshOfflineCount();
+            showToast({
+              message: `Synced ${n} offline action(s).`,
+              variant: "success",
+            });
+            void loadEntity();
+          }
+        } catch {
+          /* keep queue for retry */
+        }
+      })();
+    };
+    window.addEventListener("online", runFlush);
+    runFlush();
+    return () => window.removeEventListener("online", runFlush);
+  }, [
+    userId,
+    employeeName,
+    showToast,
+    refreshOfflineCount,
+    loadEntity,
+  ]);
 
   const stopCamera = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -252,16 +328,26 @@ export function InventoryScanClient() {
   }, [stopCamera]);
 
   const applyManual = () => {
-    const p = parseScanPayload(manual);
+    const raw = manual.trim();
+    const p = parseScanPayload(raw);
     const qs = new URLSearchParams();
     if (p.assetId) qs.set("id", p.assetId);
     if (p.locationId) qs.set("location", p.locationId);
     if (p.materialId) qs.set("material", p.materialId);
-    if ([...qs.keys()].length === 0) {
-      showToast({ message: "Enter a valid scan URL or UUID.", variant: "error" });
+    if ([...qs.keys()].length > 0) {
+      router.replace(`/inventory/scan?${qs.toString()}`);
       return;
     }
-    router.replace(`/inventory/scan?${qs.toString()}`);
+    if (raw && !/^https?:\/\//i.test(raw)) {
+      router.replace(
+        `/inventory/scan?number=${encodeURIComponent(raw)}`,
+      );
+      return;
+    }
+    showToast({
+      message: "Enter a valid scan URL, UUID, or asset number (e.g. TPP-001).",
+      variant: "error",
+    });
   };
 
   const checkOut = async (a: AssetRow) => {
@@ -269,16 +355,35 @@ export function InventoryScanClient() {
       showToast({ message: "Sign in to check out.", variant: "error" });
       return;
     }
+    if (isOffline()) {
+      enqueueInventoryOp({
+        kind: "asset_checkout",
+        assetId: a.id,
+        fromLocationId: a.location_id,
+      });
+      refreshOfflineCount();
+      showToast({
+        message: "Offline — check-out queued. Will sync when you are online.",
+        variant: "success",
+      });
+      return;
+    }
     try {
       const sb = createBrowserClient();
       const { error } = await sb
         .from("assets")
-        .update({ status: "checked_out", checked_out_to: userId })
+        .update({
+          status: "checked_out",
+          assigned_to: userId,
+          assigned_to_name: employeeName,
+        })
         .eq("id", a.id);
       if (error) throw error;
-      await logTx({
+      await insertInventoryTransaction(sb, {
         asset_id: a.id,
-        transaction_type: "check_out",
+        employee_id: userId,
+        employee_name: employeeName,
+        transaction_type: "checkout",
         from_location_id: a.location_id,
       });
       showToast({ message: "Checked out to you.", variant: "success" });
@@ -294,20 +399,37 @@ export function InventoryScanClient() {
   const submitCheckIn = async () => {
     if (modal.kind !== "checkin" || !asset || !userId) return;
     const loc = modal.locationId.trim() || null;
+    if (isOffline()) {
+      enqueueInventoryOp({
+        kind: "asset_checkin",
+        assetId: asset.id,
+        locationId: loc,
+      });
+      refreshOfflineCount();
+      showToast({
+        message: "Offline — check-in queued. Will sync when you are online.",
+        variant: "success",
+      });
+      setModal({ kind: "none" });
+      return;
+    }
     try {
       const sb = createBrowserClient();
       const { error } = await sb
         .from("assets")
         .update({
           status: "available",
-          checked_out_to: null,
+          assigned_to: null,
+          assigned_to_name: null,
           location_id: loc,
         })
         .eq("id", asset.id);
       if (error) throw error;
-      await logTx({
+      await insertInventoryTransaction(sb, {
         asset_id: asset.id,
-        transaction_type: "check_in",
+        employee_id: userId,
+        employee_name: employeeName,
+        transaction_type: "checkin",
         to_location_id: loc,
       });
       showToast({ message: "Checked in.", variant: "success" });
@@ -331,8 +453,10 @@ export function InventoryScanClient() {
         .update({ location_id: to })
         .eq("id", asset.id);
       if (error) throw error;
-      await logTx({
+      await insertInventoryTransaction(sb, {
         asset_id: asset.id,
+        employee_id: userId,
+        employee_name: employeeName,
         transaction_type: "move",
         from_location_id: asset.location_id,
         to_location_id: to,
@@ -354,12 +478,18 @@ export function InventoryScanClient() {
       const sb = createBrowserClient();
       const { error } = await sb
         .from("assets")
-        .update({ status: "in_repair", checked_out_to: null })
+        .update({
+          status: "in_repair",
+          assigned_to: null,
+          assigned_to_name: null,
+        })
         .eq("id", a.id);
       if (error) throw error;
-      await logTx({
+      await insertInventoryTransaction(sb, {
         asset_id: a.id,
-        transaction_type: "repair_report",
+        employee_id: userId,
+        employee_name: employeeName,
+        transaction_type: "report_issue",
         notes: "Flagged from scan",
       });
       showToast({ message: "Flagged for repair.", variant: "success" });
@@ -414,10 +544,12 @@ export function InventoryScanClient() {
         })
         .eq("id", mid);
       if (error) throw error;
-      await logTx({
+      await insertInventoryTransaction(sb, {
         material_id: mid,
-        transaction_type: add ? "location_add_item" : "location_remove_item",
-        quantity_delta: add ? qty : -qty,
+        employee_id: userId,
+        employee_name: employeeName,
+        transaction_type: add ? "deliver" : "use",
+        quantity: qty,
         to_location_id: add ? locationId : null,
         from_location_id: add ? m.location_id : locationId,
       });
@@ -464,17 +596,20 @@ export function InventoryScanClient() {
         .update({ current_quantity: next })
         .eq("id", material.id);
       if (error) throw error;
-      await logTx({
+      await insertInventoryTransaction(sb, {
         material_id: material.id,
+        employee_id: userId,
+        employee_name: employeeName,
         transaction_type:
           modal.kind === "mat_add"
-            ? "material_add"
-            : modal.kind === "mat_job"
-              ? "material_use_job"
-              : "material_use",
-        quantity_delta: modal.kind === "mat_add" ? qty : -qty,
+            ? "deliver"
+            : "use",
+        quantity: qty,
         job_id: modal.kind === "mat_job" ? modal.jobId.trim() : null,
-        from_location_id: material.location_id,
+        from_location_id:
+          modal.kind === "mat_add" ? null : material.location_id,
+        to_location_id:
+          modal.kind === "mat_add" ? material.location_id : null,
       });
       showToast({ message: "Updated.", variant: "success" });
       setModal({ kind: "none" });
@@ -491,10 +626,12 @@ export function InventoryScanClient() {
     if (!material || !userId) return;
     try {
       const sb = createBrowserClient();
-      await logTx({
+      await insertInventoryTransaction(sb, {
         material_id: material.id,
-        transaction_type: "low_stock_flag",
-        notes: `Qty ${material.current_quantity} (min ${material.minimum_quantity})`,
+        employee_id: userId,
+        employee_name: employeeName,
+        transaction_type: "report_issue",
+        notes: `Low stock: qty ${material.current_quantity} (min ${material.minimum_quantity})`,
         from_location_id: material.location_id,
       });
       showToast({ message: "Low stock flagged.", variant: "success" });
@@ -520,9 +657,16 @@ export function InventoryScanClient() {
         >
           ← Inventory
         </Link>
-        <h1 className="mt-3 text-xl font-semibold text-white">Scan QR</h1>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-xl font-semibold text-white">Scan QR</h1>
+          {offlinePending > 0 ? (
+            <span className="rounded-full bg-amber-500/25 px-3 py-1 text-xs font-bold text-amber-100">
+              {offlinePending} offline
+            </span>
+          ) : null}
+        </div>
         <p className="mt-1 text-sm text-white/55">
-          Point at a code or paste the URL / ID below.
+          Point at a code or paste URL, UUID, or asset number (e.g. TPP-001).
         </p>
 
         <div className="relative mt-6 aspect-[4/3] w-full overflow-hidden rounded-2xl border-2 border-violet-500/40 bg-black ring-2 ring-violet-500/20">
@@ -544,7 +688,7 @@ export function InventoryScanClient() {
           {!scanning ? (
             <button
               type="button"
-              className="flex-1 rounded-xl bg-violet-500 py-3 text-sm font-bold text-white hover:bg-violet-400"
+              className="flex-1 rounded-xl bg-violet-500 py-4 text-base font-bold text-white hover:bg-violet-400"
               onClick={() => void startCamera()}
             >
               Start camera
@@ -552,7 +696,7 @@ export function InventoryScanClient() {
           ) : (
             <button
               type="button"
-              className="flex-1 rounded-xl border border-white/25 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              className="flex-1 rounded-xl border border-white/25 py-4 text-base font-semibold text-white hover:bg-white/10"
               onClick={stopCamera}
             >
               Stop camera
@@ -566,7 +710,7 @@ export function InventoryScanClient() {
           </label>
           <textarea
             className="app-input mt-2 min-h-[4rem] w-full text-sm"
-            placeholder="Paste scan URL or UUID"
+            placeholder="Paste scan URL, UUID, or asset number"
             value={manual}
             onChange={(e) => setManual(e.target.value)}
           />
@@ -597,10 +741,10 @@ export function InventoryScanClient() {
               {asset.status === "available" &&
               (asset.asset_type === "tool" ||
                 asset.asset_type === "equipment" ||
-                asset.asset_type === "other") ? (
+                asset.asset_type === "material") ? (
                 <button
                   type="button"
-                  className="rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white"
+                  className="rounded-lg bg-emerald-600 py-4 text-base font-semibold text-white"
                   onClick={() => void checkOut(asset)}
                 >
                   ✅ Check Out — assign to me
@@ -609,7 +753,7 @@ export function InventoryScanClient() {
               {asset.status === "checked_out" ? (
                 <button
                   type="button"
-                  className="rounded-lg bg-amber-500 py-2.5 text-sm font-bold text-[#0a1628]"
+                  className="rounded-lg bg-amber-500 py-4 text-base font-bold text-[#0a1628]"
                   onClick={() =>
                     setModal({
                       kind: "checkin",
@@ -622,7 +766,7 @@ export function InventoryScanClient() {
               ) : null}
               <button
                 type="button"
-                className="rounded-lg border border-white/20 py-2.5 text-sm text-white/85"
+                className="rounded-lg border border-white/20 py-4 text-base text-white/85"
                 onClick={() =>
                   setModal({
                     kind: "move",
@@ -634,7 +778,7 @@ export function InventoryScanClient() {
               </button>
               <button
                 type="button"
-                className="rounded-lg border border-orange-400/50 py-2.5 text-sm text-orange-200"
+                className="rounded-lg border border-orange-400/50 py-4 text-base text-orange-200"
                 onClick={() => void reportRepair(asset)}
               >
                 🔧 Report issue
@@ -745,11 +889,34 @@ export function InventoryScanClient() {
           </section>
         ) : null}
 
-        {!asset && !location && !material && (assetId || locationId || materialId) ? (
-          <p className="mt-8 text-sm text-white/50">Item not found.</p>
+        {!asset &&
+        !location &&
+        !material &&
+        (assetId || assetNumber || locationId || materialId) ? (
+          <div className="mt-8 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-8 text-center">
+            <p className="text-base font-semibold text-white">Item not found</p>
+            <p className="mt-2 text-sm text-white/55">
+              The ID may be wrong, the item was removed, or you do not have
+              access. Try scanning again or open the dashboard to verify.
+            </p>
+            <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
+              <Link
+                href="/inventory"
+                className="btn-primary btn-h-11 inline-flex justify-center"
+              >
+                Open inventory
+              </Link>
+              <Link
+                href="/inventory/scan"
+                className="btn-secondary btn-h-11 inline-flex justify-center"
+              >
+                Clear scan
+              </Link>
+            </div>
+          </div>
         ) : null}
 
-        {!assetId && !locationId && !materialId ? (
+        {!assetId && !assetNumber && !locationId && !materialId ? (
           <p className="mt-8 text-center text-sm text-white/45">
             Scan a code to see actions.
           </p>

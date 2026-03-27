@@ -1,25 +1,16 @@
 const KEY = "tpp_inventory_offline_queue";
 
+/** Minimal offline ops the scan page can replay when back online. */
 export type OfflineInventoryOp =
   | {
       kind: "asset_checkout";
       assetId: string;
+      fromLocationId: string | null;
     }
   | {
       kind: "asset_checkin";
       assetId: string;
       locationId: string | null;
-    }
-  | {
-      kind: "asset_move";
-      assetId: string;
-      locationId: string | null;
-    }
-  | {
-      kind: "material_delta";
-      materialId: string;
-      delta: number;
-      transactionType: "deliver" | "use";
     };
 
 export type QueuedItem = {

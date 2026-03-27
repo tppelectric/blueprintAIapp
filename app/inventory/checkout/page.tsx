@@ -1,6 +1,11 @@
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+import { InventoryCheckoutClient } from "@/components/inventory-checkout-client";
 
-/** Legacy URL — inventory lives at `/inventory`. */
-export default function InventoryCheckoutRedirectPage() {
-  redirect("/inventory");
+export const metadata: Metadata = {
+  title: "My inventory checkouts",
+  description: "View and check in tools assigned to you (TPP Electric).",
+};
+
+export default function InventoryCheckoutPage() {
+  return <InventoryCheckoutClient />;
 }

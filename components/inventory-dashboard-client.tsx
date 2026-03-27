@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import QRCode from "qrcode";
+import { EmptyState, InventoryDashboardSkeleton } from "@/components/app-polish";
 import { WideAppHeader } from "@/components/wide-app-header";
 import { useAppToast } from "@/components/toast-provider";
 import { useUserRole } from "@/hooks/use-user-role";
@@ -11,12 +12,14 @@ import {
   mapAssetRow,
   mapLocationRow,
   mapMaterialRow,
+  mapTransactionRow,
   isLowStock,
 } from "@/lib/inventory-mappers";
 import type {
   AssetLocationRow,
   AssetLocationType,
   AssetRow,
+  AssetTransactionRow,
   InventoryAssetStatus,
   InventoryAssetType,
   MaterialRow,
@@ -26,11 +29,22 @@ import {
   qrUrlForLocation,
   qrUrlForMaterial,
 } from "@/lib/inventory-qr";
-import { downloadInventoryQrPdfSheet } from "@/lib/inventory-qr-pdf";
+import {
+  downloadInventoryQrPdfSheet,
+  type QrPdfGrid,
+} from "@/lib/inventory-qr-pdf";
+import { insertInventoryTransaction } from "@/lib/inventory-tx";
+import { formatEmployeeName } from "@/lib/inventory-employee";
+import {
+  exportAssignmentReportPdf,
+  exportInventoryCsv,
+  exportInventorySummaryPdf,
+  exportTransactionsCsv,
+} from "@/lib/inventory-export";
 import { canManageInventoryAdmin } from "@/lib/user-roles";
 import { createBrowserClient } from "@/lib/supabase/client";
 
-type TabKey = "assets" | "materials" | "locations" | "qr";
+type TabKey = "assets" | "materials" | "locations" | "qr" | "admin";
 
 const LOC_LABEL: Record<AssetLocationType, string> = {
   warehouse: "Warehouse",
@@ -42,8 +56,8 @@ const LOC_LABEL: Record<AssetLocationType, string> = {
 
 const ASSET_TYPE_LABEL: Record<InventoryAssetType, string> = {
   tool: "Tool",
+  material: "Material",
   equipment: "Equipment",
-  other: "Other",
 };
 
 function statusBadgeClass(s: InventoryAssetStatus): string {
@@ -91,6 +105,10 @@ export function InventoryDashboardClient() {
   const { role, profile } = useUserRole();
   const isAdmin = canManageInventoryAdmin(role);
   const userId = profile?.id ?? null;
+  const employeeName = useMemo(
+    () => formatEmployeeName(profile ?? {}),
+    [profile],
+  );
 
   const [tab, setTab] = useState<TabKey>("assets");
   const [locations, setLocations] = useState<AssetLocationRow[]>([]);
@@ -112,9 +130,14 @@ export function InventoryDashboardClient() {
   const [assetLocF, setAssetLocF] = useState("");
 
   const [matSearch, setMatSearch] = useState("");
+  const [matLocF, setMatLocF] = useState("");
 
   const [qrPick, setQrPick] = useState<Set<string>>(new Set());
   const [qrBusy, setQrBusy] = useState(false);
+  const [qrGrid, setQrGrid] = useState<QrPdfGrid>("4x4");
+
+  const [transactions, setTransactions] = useState<AssetTransactionRow[]>([]);
+  const [txLoading, setTxLoading] = useState(false);
 
   const [modal, setModal] = useState<
     | { kind: "none" }
@@ -122,7 +145,6 @@ export function InventoryDashboardClient() {
     | { kind: "material_form"; mode: "add" | "edit"; draft: Partial<MaterialRow> & { id?: string } }
     | { kind: "location_form"; mode: "add" | "edit"; draft: Partial<AssetLocationRow> & { id?: string } }
     | { kind: "checkin"; asset: AssetRow; locationId: string }
-    | { kind: "move_asset"; asset: AssetRow; locationId: string }
     | { kind: "mat_qty"; material: MaterialRow; delta: number; mode: "add" | "use" }
     | { kind: "mat_job"; material: MaterialRow; qty: number; jobId: string }
   >({ kind: "none" });
@@ -162,7 +184,7 @@ export function InventoryDashboardClient() {
       );
 
       const uids = [
-        ...new Set(asts.map((a) => a.checked_out_to).filter(Boolean)),
+        ...new Set(asts.map((a) => a.assigned_to).filter(Boolean)),
       ] as string[];
       const pmap: typeof profiles = {};
       if (uids.length) {
@@ -206,7 +228,13 @@ export function InventoryDashboardClient() {
 
   useEffect(() => {
     const t = searchParams.get("tab");
-    if (t === "materials" || t === "locations" || t === "qr") setTab(t);
+    if (
+      t === "materials" ||
+      t === "locations" ||
+      t === "qr" ||
+      t === "admin"
+    )
+      setTab(t);
     const lid = searchParams.get("locationId");
     if (lid) setAssetLocF(lid);
   }, [searchParams]);
@@ -247,31 +275,42 @@ export function InventoryDashboardClient() {
   const filteredMaterials = useMemo(() => {
     const q = matSearch.trim().toLowerCase();
     return materials.filter((m) => {
+      if (matLocF && m.location_id !== matLocF) return false;
       if (!q) return true;
       const hay = `${m.name} ${m.part_number ?? ""}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [materials, matSearch]);
+  }, [materials, matSearch, matLocF]);
 
-  const logTransaction = async (
-    sb: ReturnType<typeof createBrowserClient>,
-    row: {
-      asset_id?: string | null;
-      material_id?: string | null;
-      transaction_type: string;
-      quantity_delta?: number | null;
-      from_location_id?: string | null;
-      to_location_id?: string | null;
-      job_id?: string | null;
-      notes?: string | null;
-    },
-  ) => {
-    if (!userId) return;
-    await sb.from("asset_transactions").insert({
-      ...row,
-      user_id: userId,
-    });
-  };
+  const lowStockMaterials = useMemo(
+    () => materials.filter((m) => isLowStock(m)),
+    [materials],
+  );
+
+  const loadTransactions = useCallback(async () => {
+    if (!isAdmin) return;
+    setTxLoading(true);
+    try {
+      const sb = createBrowserClient();
+      const { data, error } = await sb
+        .from("asset_transactions")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(800);
+      if (error) throw error;
+      setTransactions(
+        (data ?? []).map((r) => mapTransactionRow(r as Record<string, unknown>)),
+      );
+    } catch {
+      setTransactions([]);
+    } finally {
+      setTxLoading(false);
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (tab === "admin" && isAdmin) void loadTransactions();
+  }, [tab, isAdmin, loadTransactions]);
 
   const checkOut = async (a: AssetRow) => {
     if (!userId) {
@@ -282,14 +321,19 @@ export function InventoryDashboardClient() {
       const sb = createBrowserClient();
       const { error } = await sb
         .from("assets")
-        .update({ status: "checked_out", checked_out_to: userId })
+        .update({
+          status: "checked_out",
+          assigned_to: userId,
+          assigned_to_name: employeeName,
+        })
         .eq("id", a.id);
       if (error) throw error;
-      await logTransaction(sb, {
+      await insertInventoryTransaction(sb, {
         asset_id: a.id,
-        transaction_type: "check_out",
+        employee_id: userId,
+        employee_name: employeeName,
+        transaction_type: "checkout",
         from_location_id: a.location_id,
-        notes: null,
       });
       showToast({ message: `Checked out: ${a.name}`, variant: "success" });
       void load();
@@ -318,16 +362,18 @@ export function InventoryDashboardClient() {
         .from("assets")
         .update({
           status: "available",
-          checked_out_to: null,
+          assigned_to: null,
+          assigned_to_name: null,
           location_id: locId,
         })
         .eq("id", modal.asset.id);
       if (error) throw error;
-      await logTransaction(sb, {
+      await insertInventoryTransaction(sb, {
         asset_id: modal.asset.id,
-        transaction_type: "check_in",
+        employee_id: userId,
+        employee_name: employeeName,
+        transaction_type: "checkin",
         to_location_id: locId,
-        notes: null,
       });
       showToast({ message: "Checked in.", variant: "success" });
       setModal({ kind: "none" });
@@ -340,42 +386,6 @@ export function InventoryDashboardClient() {
     }
   };
 
-  const openMove = (a: AssetRow) => {
-    setModal({
-      kind: "move_asset",
-      asset: a,
-      locationId: a.location_id ?? locations[0]?.id ?? "",
-    });
-  };
-
-  const submitMove = async () => {
-    if (modal.kind !== "move_asset" || !userId) return;
-    const from = modal.asset.location_id;
-    const to = modal.locationId.trim() || null;
-    try {
-      const sb = createBrowserClient();
-      const { error } = await sb
-        .from("assets")
-        .update({ location_id: to })
-        .eq("id", modal.asset.id);
-      if (error) throw error;
-      await logTransaction(sb, {
-        asset_id: modal.asset.id,
-        transaction_type: "move",
-        from_location_id: from,
-        to_location_id: to,
-      });
-      showToast({ message: "Location updated.", variant: "success" });
-      setModal({ kind: "none" });
-      void load();
-    } catch (e) {
-      showToast({
-        message: e instanceof Error ? e.message : "Move failed.",
-        variant: "error",
-      });
-    }
-  };
-
   const saveAsset = async () => {
     if (modal.kind !== "asset_form" || !userId) return;
     const d = modal.draft;
@@ -383,12 +393,27 @@ export function InventoryDashboardClient() {
       asset_number: String(d.asset_number ?? "").trim(),
       name: String(d.name ?? "").trim(),
       asset_type: d.asset_type ?? "tool",
+      description: d.description?.trim() || null,
       status: d.status ?? "available",
       location_id: d.location_id?.trim() || null,
-      checked_out_to:
-        d.status === "checked_out" ? d.checked_out_to ?? userId : null,
+      assigned_to:
+        d.status === "checked_out" ? d.assigned_to ?? userId : null,
+      assigned_to_name:
+        d.status === "checked_out"
+          ? d.assigned_to_name?.trim() || employeeName
+          : null,
+      purchase_date: d.purchase_date?.trim() || null,
+      purchase_price:
+        d.purchase_price != null && !Number.isNaN(Number(d.purchase_price))
+          ? Number(d.purchase_price)
+          : null,
+      serial_number: d.serial_number?.trim() || null,
       photo_path: d.photo_path?.trim() || null,
       photo_url: d.photo_url?.trim() || null,
+      qr_code_url:
+        modal.mode === "edit" && d.id
+          ? d.qr_code_url?.trim() || qrUrlForAsset(d.id)
+          : null,
       notes: d.notes?.trim() || null,
     };
     if (!row.asset_number || !row.name) {
@@ -398,8 +423,19 @@ export function InventoryDashboardClient() {
     try {
       const sb = createBrowserClient();
       if (modal.mode === "add") {
-        const { error } = await sb.from("assets").insert(row);
+        const { data: created, error } = await sb
+          .from("assets")
+          .insert(row)
+          .select("id")
+          .single();
         if (error) throw error;
+        const newId = (created as { id?: string } | null)?.id;
+        if (newId) {
+          await sb
+            .from("assets")
+            .update({ qr_code_url: qrUrlForAsset(newId) })
+            .eq("id", newId);
+        }
         showToast({ message: "Asset created.", variant: "success" });
       } else if (d.id) {
         const { error } = await sb.from("assets").update(row).eq("id", d.id);
@@ -426,6 +462,16 @@ export function InventoryDashboardClient() {
       minimum_quantity: Number(d.minimum_quantity ?? 0),
       unit: String(d.unit ?? "ea").trim() || "ea",
       location_id: d.location_id?.trim() || null,
+      unit_cost:
+        d.unit_cost != null && !Number.isNaN(Number(d.unit_cost))
+          ? Number(d.unit_cost)
+          : null,
+      supplier: d.supplier?.trim() || null,
+      low_stock_alert: d.low_stock_alert !== false,
+      qr_code_url:
+        modal.mode === "edit" && d.id
+          ? d.qr_code_url?.trim() || qrUrlForMaterial(d.id)
+          : null,
     };
     if (!row.name) {
       showToast({ message: "Material name required.", variant: "error" });
@@ -461,6 +507,12 @@ export function InventoryDashboardClient() {
     const row = {
       name: String(d.name ?? "").trim(),
       location_type: d.location_type ?? "warehouse",
+      description: d.description?.trim() || null,
+      address: d.address?.trim() || null,
+      qr_code_url:
+        modal.mode === "edit" && d.id
+          ? d.qr_code_url?.trim() || qrUrlForLocation(d.id)
+          : null,
     };
     if (!row.name) {
       showToast({ message: "Location name required.", variant: "error" });
@@ -512,11 +564,14 @@ export function InventoryDashboardClient() {
         .update({ current_quantity: next })
         .eq("id", material.id);
       if (error) throw error;
-      await logTransaction(sb, {
+      await insertInventoryTransaction(sb, {
         material_id: material.id,
-        transaction_type: mode === "add" ? "material_add" : "material_use",
-        quantity_delta: mode === "add" ? delta : -delta,
-        to_location_id: material.location_id,
+        employee_id: userId,
+        employee_name: employeeName,
+        transaction_type: mode === "add" ? "deliver" : "use",
+        quantity: delta,
+        to_location_id: mode === "add" ? material.location_id : null,
+        from_location_id: mode === "add" ? null : material.location_id,
       });
       showToast({ message: "Quantity updated.", variant: "success" });
       setModal({ kind: "none" });
@@ -552,10 +607,12 @@ export function InventoryDashboardClient() {
         .update({ current_quantity: next })
         .eq("id", material.id);
       if (error) throw error;
-      await logTransaction(sb, {
+      await insertInventoryTransaction(sb, {
         material_id: material.id,
-        transaction_type: "material_use_job",
-        quantity_delta: -qty,
+        employee_id: userId,
+        employee_name: employeeName,
+        transaction_type: "use",
+        quantity: qty,
         job_id: jobId.trim(),
         from_location_id: material.location_id,
       });
@@ -620,7 +677,11 @@ export function InventoryDashboardClient() {
         showToast({ message: "Select at least one item.", variant: "error" });
         return;
       }
-      await downloadInventoryQrPdfSheet(items, "Inventory QR codes");
+      await downloadInventoryQrPdfSheet(
+        items,
+        "TPP Electric — Inventory QR",
+        qrGrid,
+      );
       showToast({ message: "PDF downloaded.", variant: "success" });
     } catch (e) {
       showToast({
@@ -637,7 +698,25 @@ export function InventoryDashboardClient() {
     { k: "materials", label: "Materials" },
     { k: "locations", label: "Locations" },
     { k: "qr", label: "QR Codes" },
+    ...(isAdmin ? ([{ k: "admin" as const, label: "Admin" }] as const) : []),
   ];
+
+  const deleteMaterial = async (m: MaterialRow) => {
+    if (!isAdmin) return;
+    if (!window.confirm(`Delete material “${m.name}”?`)) return;
+    try {
+      const sb = createBrowserClient();
+      const { error } = await sb.from("materials_inventory").delete().eq("id", m.id);
+      if (error) throw error;
+      showToast({ message: "Material deleted.", variant: "success" });
+      void load();
+    } catch (e) {
+      showToast({
+        message: e instanceof Error ? e.message : "Delete failed.",
+        variant: "error",
+      });
+    }
+  };
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -655,13 +734,34 @@ export function InventoryDashboardClient() {
               Tools, materials, and storage locations with QR tracking.
             </p>
           </div>
-          <Link
-            href="/inventory/scan"
-            className="rounded-xl bg-violet-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-violet-900/40 hover:bg-violet-400"
-          >
-            Scan QR
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/inventory/checkout"
+              className="rounded-xl border border-white/20 px-4 py-2.5 text-sm font-semibold text-white/90 hover:bg-white/[0.06]"
+            >
+              My checkouts
+            </Link>
+            <Link
+              href="/inventory/scan"
+              className="rounded-xl bg-violet-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-violet-900/40 hover:bg-violet-400"
+            >
+              Scan QR
+            </Link>
+          </div>
         </div>
+
+        {!loading && lowStockMaterials.length > 0 ? (
+          <div
+            className="mt-6 rounded-xl border border-red-400/35 bg-red-500/10 px-4 py-3 text-sm text-red-100"
+            role="status"
+          >
+            <span className="font-semibold">Low stock: </span>
+            {lowStockMaterials.map((m) => m.name).slice(0, 8).join(" · ")}
+            {lowStockMaterials.length > 8
+              ? ` · +${lowStockMaterials.length - 8} more`
+              : null}
+          </div>
+        ) : null}
 
         <div
           className="mt-8 flex min-w-0 flex-wrap gap-1 border-b border-violet-500/20 pb-0"
@@ -685,9 +785,7 @@ export function InventoryDashboardClient() {
           ))}
         </div>
 
-        {loading ? (
-          <p className="mt-8 text-sm text-white/50">Loading inventory…</p>
-        ) : null}
+        {loading ? <InventoryDashboardSkeleton cards={6} /> : null}
 
         {!loading && tab === "assets" ? (
           <section className="mt-6 space-y-4">
@@ -711,7 +809,7 @@ export function InventoryDashboardClient() {
                   <option value="">All</option>
                   <option value="tool">Tool</option>
                   <option value="equipment">Equipment</option>
-                  <option value="other">Other</option>
+                  <option value="material">Material</option>
                 </select>
               </label>
               <label className="text-xs text-white/50">
@@ -763,6 +861,29 @@ export function InventoryDashboardClient() {
                 </button>
               ) : null}
             </div>
+            {assets.length === 0 ? (
+              <EmptyState
+                icon={<span aria-hidden>📦</span>}
+                title="No assets yet"
+                description="Add tools, materials, and equipment to track them with QR codes, locations, and check-in/out."
+                actionLabel={isAdmin ? "Add asset" : undefined}
+                onAction={
+                  isAdmin
+                    ? () =>
+                        setModal({
+                          kind: "asset_form",
+                          mode: "add",
+                          draft: {
+                            asset_type: "tool",
+                            status: "available",
+                            location_id: locations[0]?.id ?? null,
+                          },
+                        })
+                    : undefined
+                }
+              />
+            ) : null}
+            {assets.length > 0 ? (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {filteredAssets.map((a) => (
                 <div
@@ -811,7 +932,8 @@ export function InventoryDashboardClient() {
                     <p className="mt-1 text-xs text-white/50">
                       Assigned to:{" "}
                       <span className="text-amber-200/90">
-                        {displayName(profiles, a.checked_out_to)}
+                        {a.assigned_to_name?.trim() ||
+                          displayName(profiles, a.assigned_to)}
                       </span>
                     </p>
                   ) : null}
@@ -834,13 +956,6 @@ export function InventoryDashboardClient() {
                         Check In
                       </button>
                     ) : null}
-                    <button
-                      type="button"
-                      className="rounded-lg border border-white/20 px-2.5 py-1.5 text-xs text-white/80"
-                      onClick={() => openMove(a)}
-                    >
-                      Move
-                    </button>
                     {isAdmin ? (
                       <button
                         type="button"
@@ -872,6 +987,7 @@ export function InventoryDashboardClient() {
             {filteredAssets.length === 0 ? (
               <p className="text-sm text-white/45">No assets match filters.</p>
             ) : null}
+            ) : null}
           </section>
         ) : null}
 
@@ -886,6 +1002,21 @@ export function InventoryDashboardClient() {
                   onChange={(e) => setMatSearch(e.target.value)}
                   placeholder="Name or part #"
                 />
+              </label>
+              <label className="text-xs text-white/50">
+                Location
+                <select
+                  className="app-input mt-1 block min-w-[10rem] text-sm"
+                  value={matLocF}
+                  onChange={(e) => setMatLocF(e.target.value)}
+                >
+                  <option value="">All</option>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
               </label>
               {isAdmin ? (
                 <button
@@ -908,6 +1039,31 @@ export function InventoryDashboardClient() {
                 </button>
               ) : null}
             </div>
+            {materials.length === 0 ? (
+              <EmptyState
+                icon={<span aria-hidden>📋</span>}
+                title="No materials yet"
+                description="Track wire, fittings, and consumables with quantities, low-stock alerts, and locations."
+                actionLabel={isAdmin ? "Add material" : undefined}
+                onAction={
+                  isAdmin
+                    ? () =>
+                        setModal({
+                          kind: "material_form",
+                          mode: "add",
+                          draft: {
+                            unit: "ea",
+                            current_quantity: 0,
+                            minimum_quantity: 0,
+                            location_id: locations[0]?.id ?? null,
+                            low_stock_alert: true,
+                          },
+                        })
+                    : undefined
+                }
+              />
+            ) : null}
+            {materials.length > 0 ? (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {filteredMaterials.map((m) => (
                 <div
@@ -982,27 +1138,42 @@ export function InventoryDashboardClient() {
                         })
                       }
                     >
-                      Use (internal)
+                      Use
                     </button>
                     {isAdmin ? (
-                      <button
-                        type="button"
-                        className="rounded-lg border border-violet-400/40 px-2.5 py-1.5 text-xs text-violet-200"
-                        onClick={() =>
-                          setModal({
-                            kind: "material_form",
-                            mode: "edit",
-                            draft: { ...m },
-                          })
-                        }
-                      >
-                        Edit
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          className="rounded-lg border border-violet-400/40 px-2.5 py-1.5 text-xs text-violet-200"
+                          onClick={() =>
+                            setModal({
+                              kind: "material_form",
+                              mode: "edit",
+                              draft: { ...m },
+                            })
+                          }
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg border border-red-400/40 px-2.5 py-1.5 text-xs text-red-200"
+                          onClick={() => void deleteMaterial(m)}
+                        >
+                          Delete
+                        </button>
+                      </>
                     ) : null}
                   </div>
                 </div>
               ))}
             </div>
+            ) : null}
+            {materials.length > 0 && filteredMaterials.length === 0 ? (
+              <p className="text-sm text-white/45">
+                No materials match your filters.
+              </p>
+            ) : null}
           </section>
         ) : null}
 
@@ -1023,6 +1194,25 @@ export function InventoryDashboardClient() {
                 Add Location
               </button>
             ) : null}
+            {locations.length === 0 ? (
+              <EmptyState
+                icon={<span aria-hidden>📍</span>}
+                title="No storage locations yet"
+                description="Add warehouses, trucks, job sites, and other bins so assets and materials can be organized."
+                actionLabel={isAdmin ? "Add location" : undefined}
+                onAction={
+                  isAdmin
+                    ? () =>
+                        setModal({
+                          kind: "location_form",
+                          mode: "add",
+                          draft: { location_type: "warehouse" },
+                        })
+                    : undefined
+                }
+              />
+            ) : null}
+            {locations.length > 0 ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {locations.map((l) => (
                 <div
@@ -1074,6 +1264,7 @@ export function InventoryDashboardClient() {
                 </div>
               ))}
             </div>
+            ) : null}
           </section>
         ) : null}
 
@@ -1083,6 +1274,33 @@ export function InventoryDashboardClient() {
               Select assets, locations, or materials, then download a PDF sheet
               of QR codes. Codes open the scan page for quick check-in/out.
             </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-xs text-white/50">Grid per page</span>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                    qrGrid === "4x4"
+                      ? "bg-violet-500 text-white"
+                      : "border border-white/20 text-white/75"
+                  }`}
+                  onClick={() => setQrGrid("4x4")}
+                >
+                  4×4
+                </button>
+                <button
+                  type="button"
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                    qrGrid === "8x8"
+                      ? "bg-violet-500 text-white"
+                      : "border border-white/20 text-white/75"
+                  }`}
+                  onClick={() => setQrGrid("8x8")}
+                >
+                  8×8
+                </button>
+              </div>
+            </div>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -1170,6 +1388,128 @@ export function InventoryDashboardClient() {
             </div>
           </section>
         ) : null}
+
+        {!loading && tab === "admin" && isAdmin ? (
+          <section className="mt-6 space-y-4">
+            <h2 className="text-lg font-semibold text-white">
+              Admin — history &amp; exports
+            </h2>
+            <p className="text-sm text-white/55">
+              Full transaction log, inventory exports, and assignment reports.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded-lg bg-violet-500 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-400"
+                onClick={() =>
+                  exportInventoryCsv({ assets, materials, locations })
+                }
+              >
+                Export inventory CSV
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-white/20 px-3 py-2 text-sm text-white/85"
+                onClick={() => exportTransactionsCsv(transactions)}
+              >
+                Transactions CSV
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-white/20 px-3 py-2 text-sm text-white/85"
+                onClick={() =>
+                  exportInventorySummaryPdf({
+                    assets,
+                    materials,
+                    locations,
+                  })
+                }
+              >
+                Summary PDF
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-white/20 px-3 py-2 text-sm text-white/85"
+                onClick={() => exportAssignmentReportPdf(assets, profiles)}
+              >
+                Assignment PDF
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-violet-400/40 px-3 py-2 text-sm text-violet-200"
+                onClick={() => void loadTransactions()}
+              >
+                Refresh log
+              </button>
+            </div>
+            {txLoading ? (
+              <p className="text-sm text-white/50">Loading transactions…</p>
+            ) : (
+              <div className="max-h-[min(28rem,55vh)] overflow-auto rounded-xl border border-white/10">
+                <table className="w-full min-w-[640px] border-collapse text-left text-xs text-white/80">
+                  <thead className="sticky top-0 bg-[#0a1628] text-[10px] uppercase tracking-wide text-white/45">
+                    <tr>
+                      <th className="border-b border-white/10 px-2 py-2">
+                        When
+                      </th>
+                      <th className="border-b border-white/10 px-2 py-2">
+                        Type
+                      </th>
+                      <th className="border-b border-white/10 px-2 py-2">
+                        Employee
+                      </th>
+                      <th className="border-b border-white/10 px-2 py-2">
+                        Asset
+                      </th>
+                      <th className="border-b border-white/10 px-2 py-2">
+                        Material
+                      </th>
+                      <th className="border-b border-white/10 px-2 py-2">
+                        Qty
+                      </th>
+                      <th className="border-b border-white/10 px-2 py-2">
+                        Notes
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {transactions.map((tx) => (
+                      <tr
+                        key={tx.id}
+                        className="odd:bg-white/[0.02] hover:bg-white/[0.04]"
+                      >
+                        <td className="border-b border-white/5 px-2 py-1.5 whitespace-nowrap">
+                          {new Date(tx.created_at).toLocaleString()}
+                        </td>
+                        <td className="border-b border-white/5 px-2 py-1.5">
+                          {tx.transaction_type}
+                        </td>
+                        <td className="border-b border-white/5 px-2 py-1.5">
+                          {tx.employee_name ?? "—"}
+                        </td>
+                        <td className="border-b border-white/5 px-2 py-1.5 font-mono text-[10px]">
+                          {tx.asset_id?.slice(0, 8) ?? "—"}
+                        </td>
+                        <td className="border-b border-white/5 px-2 py-1.5 font-mono text-[10px]">
+                          {tx.material_id?.slice(0, 8) ?? "—"}
+                        </td>
+                        <td className="border-b border-white/5 px-2 py-1.5">
+                          {tx.quantity != null ? String(tx.quantity) : "—"}
+                        </td>
+                        <td className="border-b border-white/5 px-2 py-1.5 text-white/60">
+                          {tx.notes ?? "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {transactions.length === 0 ? (
+                  <p className="p-4 text-sm text-white/45">No transactions yet.</p>
+                ) : null}
+              </div>
+            )}
+          </section>
+        ) : null}
       </main>
 
       {modal.kind !== "none" ? (
@@ -1203,45 +1543,6 @@ export function InventoryDashboardClient() {
                     onClick={() => void submitCheckIn()}
                   >
                     Confirm
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-secondary btn-h-11"
-                    onClick={() => setModal({ kind: "none" })}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </>
-            ) : null}
-            {modal.kind === "move_asset" ? (
-              <>
-                <h3 className="text-lg font-semibold text-white">Move asset</h3>
-                <p className="mt-1 text-sm text-white/55">{modal.asset.name}</p>
-                <label className="mt-4 block text-xs text-white/50">
-                  New location
-                  <select
-                    className="app-input mt-1 w-full text-sm"
-                    value={modal.locationId}
-                    onChange={(e) =>
-                      setModal({ ...modal, locationId: e.target.value })
-                    }
-                  >
-                    <option value="">— None —</option>
-                    {locations.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {l.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className="mt-4 flex gap-2">
-                  <button
-                    type="button"
-                    className="btn-primary btn-h-11"
-                    onClick={() => void submitMove()}
-                  >
-                    Save
                   </button>
                   <button
                     type="button"
@@ -1403,8 +1704,8 @@ export function InventoryDashboardClient() {
                       }
                     >
                       <option value="tool">Tool</option>
+                      <option value="material">Material</option>
                       <option value="equipment">Equipment</option>
-                      <option value="other">Other</option>
                     </select>
                   </label>
                   <label className="block text-xs text-white/50">
@@ -1450,6 +1751,76 @@ export function InventoryDashboardClient() {
                         </option>
                       ))}
                     </select>
+                  </label>
+                  <label className="block text-xs text-white/50">
+                    Description
+                    <textarea
+                      className="app-input mt-1 min-h-[2.5rem] w-full text-sm"
+                      value={modal.draft.description ?? ""}
+                      onChange={(e) =>
+                        setModal({
+                          ...modal,
+                          draft: {
+                            ...modal.draft,
+                            description: e.target.value || null,
+                          },
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="block text-xs text-white/50">
+                    Purchase date
+                    <input
+                      type="date"
+                      className="app-input mt-1 w-full text-sm"
+                      value={modal.draft.purchase_date ?? ""}
+                      onChange={(e) =>
+                        setModal({
+                          ...modal,
+                          draft: {
+                            ...modal.draft,
+                            purchase_date: e.target.value || null,
+                          },
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="block text-xs text-white/50">
+                    Purchase price
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="app-input mt-1 w-full text-sm"
+                      value={modal.draft.purchase_price ?? ""}
+                      onChange={(e) =>
+                        setModal({
+                          ...modal,
+                          draft: {
+                            ...modal.draft,
+                            purchase_price:
+                              e.target.value === ""
+                                ? null
+                                : parseFloat(e.target.value),
+                          },
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="block text-xs text-white/50">
+                    Serial number
+                    <input
+                      className="app-input mt-1 w-full text-sm"
+                      value={modal.draft.serial_number ?? ""}
+                      onChange={(e) =>
+                        setModal({
+                          ...modal,
+                          draft: {
+                            ...modal.draft,
+                            serial_number: e.target.value || null,
+                          },
+                        })
+                      }
+                    />
                   </label>
                   <label className="block text-xs text-white/50">
                     Photo URL (optional)
@@ -1621,6 +1992,60 @@ export function InventoryDashboardClient() {
                       ))}
                     </select>
                   </label>
+                  <label className="block text-xs text-white/50">
+                    Unit cost
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="app-input mt-1 w-full text-sm"
+                      value={modal.draft.unit_cost ?? ""}
+                      onChange={(e) =>
+                        setModal({
+                          ...modal,
+                          draft: {
+                            ...modal.draft,
+                            unit_cost:
+                              e.target.value === ""
+                                ? null
+                                : parseFloat(e.target.value),
+                          },
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="block text-xs text-white/50">
+                    Supplier
+                    <input
+                      className="app-input mt-1 w-full text-sm"
+                      value={modal.draft.supplier ?? ""}
+                      onChange={(e) =>
+                        setModal({
+                          ...modal,
+                          draft: {
+                            ...modal.draft,
+                            supplier: e.target.value || null,
+                          },
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2 text-xs text-white/70">
+                    <input
+                      type="checkbox"
+                      className="rounded border-white/30"
+                      checked={modal.draft.low_stock_alert !== false}
+                      onChange={(e) =>
+                        setModal({
+                          ...modal,
+                          draft: {
+                            ...modal.draft,
+                            low_stock_alert: e.target.checked,
+                          },
+                        })
+                      }
+                    />
+                    Low stock alerts
+                  </label>
                 </div>
                 <div className="mt-4 flex gap-2">
                   <button
@@ -1680,6 +2105,38 @@ export function InventoryDashboardClient() {
                       <option value="boiler_room">Boiler Room</option>
                       <option value="office">Office</option>
                     </select>
+                  </label>
+                  <label className="block text-xs text-white/50">
+                    Description
+                    <textarea
+                      className="app-input mt-1 min-h-[2.5rem] w-full text-sm"
+                      value={modal.draft.description ?? ""}
+                      onChange={(e) =>
+                        setModal({
+                          ...modal,
+                          draft: {
+                            ...modal.draft,
+                            description: e.target.value || null,
+                          },
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="block text-xs text-white/50">
+                    Address (job sites)
+                    <input
+                      className="app-input mt-1 w-full text-sm"
+                      value={modal.draft.address ?? ""}
+                      onChange={(e) =>
+                        setModal({
+                          ...modal,
+                          draft: {
+                            ...modal.draft,
+                            address: e.target.value || null,
+                          },
+                        })
+                      }
+                    />
                   </label>
                 </div>
                 <div className="mt-4 flex gap-2">

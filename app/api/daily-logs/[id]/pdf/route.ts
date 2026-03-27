@@ -3,6 +3,7 @@ import { buildDailyLogPdf } from "@/lib/daily-log-pdf";
 import type { DailyLogPhotoAttachment } from "@/lib/daily-log-pdf";
 import { dailyLogPdfObjectPath } from "@/lib/daily-log-pdf-path";
 import type { DailyLogRow } from "@/lib/daily-logs-types";
+import { isUuid } from "@/lib/is-uuid";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -11,6 +12,11 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   const { id } = await context.params;
+  if (!isUuid(id)) {
+    return NextResponse.json({ error: "Invalid log id." }, { status: 400 });
+  }
+
+  try {
   const url = new URL(request.url);
   const download = url.searchParams.get("download") === "1";
 
@@ -51,6 +57,10 @@ export async function GET(
   }
 
   return NextResponse.redirect(signed.signedUrl);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Unexpected error.";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }
 
 export async function POST(
@@ -58,7 +68,11 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ) {
   const { id } = await context.params;
+  if (!isUuid(id)) {
+    return NextResponse.json({ error: "Invalid log id." }, { status: 400 });
+  }
 
+  try {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -144,4 +158,8 @@ export async function POST(
   }
 
   return NextResponse.json({ ok: true, path: objectPath });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Unexpected error.";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }

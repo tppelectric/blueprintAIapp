@@ -2,10 +2,12 @@
 
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import type { AssetRow } from "@/lib/inventory-types";
-import type { MaterialRow } from "@/lib/inventory-types";
-import type { AssetLocationRow } from "@/lib/inventory-types";
-import type { AssetTransactionRow } from "@/lib/inventory-types";
+import type {
+  AssetLocationRow,
+  AssetRow,
+  AssetTransactionRow,
+  MaterialRow,
+} from "@/lib/inventory-types";
 import { formatEmployeeName } from "@/lib/inventory-employee";
 
 function downloadText(filename: string, content: string, mime: string) {

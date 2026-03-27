@@ -37,29 +37,34 @@ export async function GET(request: Request) {
     );
   }
 
-  const row = await fetchJobtreadRow();
-  const syncedAt = new Date().toISOString();
+  try {
+    const row = await fetchJobtreadRow();
+    const syncedAt = new Date().toISOString();
 
-  if (row) {
-    const { error } = await admin
-      .from("integration_settings")
-      .update({
-        last_sync_at: syncedAt,
-        updated_at: syncedAt,
-        connection_message:
-          `Last manual sync (${target}) — implementation pending; timestamp recorded.`,
-      })
-      .eq("id", row.id);
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (row) {
+      const { error } = await admin
+        .from("integration_settings")
+        .update({
+          last_sync_at: syncedAt,
+          updated_at: syncedAt,
+          connection_message:
+            `Last manual sync (${target}) — implementation pending; timestamp recorded.`,
+        })
+        .eq("id", row.id);
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
     }
-  }
 
-  return NextResponse.json({
-    ok: true,
-    target,
-    syncedAt,
-    message:
-      "Sync stub completed — JobTread import/export logic will run here later.",
-  });
+    return NextResponse.json({
+      ok: true,
+      target,
+      syncedAt,
+      message:
+        "Sync stub completed — JobTread import/export logic will run here later.",
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Sync failed.";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }

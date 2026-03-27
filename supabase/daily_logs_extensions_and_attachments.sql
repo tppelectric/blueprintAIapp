@@ -56,6 +56,8 @@ CREATE POLICY "daily_log_attachments_delete"
   USING (public.app_user_is_active());
 
 GRANT SELECT, INSERT, DELETE ON public.daily_log_attachments TO authenticated;
+-- service_role used by triggers / maintenance
+GRANT SELECT, INSERT, DELETE, UPDATE ON public.daily_log_attachments TO service_role;
 
 -- Storage bucket (create in Dashboard if INSERT fails — then keep policies only)
 INSERT INTO storage.buckets (id, name, public)

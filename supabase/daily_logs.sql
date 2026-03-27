@@ -62,3 +62,5 @@ CREATE POLICY "daily_logs_update_auth"
 CREATE POLICY "daily_logs_delete_auth"
   ON public.daily_logs FOR DELETE TO authenticated
   USING (public.app_user_is_active());
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.daily_logs TO authenticated;

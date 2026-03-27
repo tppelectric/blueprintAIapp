@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { EmptyState, ReceiptListSkeleton } from "@/components/app-polish";
 import { ReceiptCapture } from "@/components/receipt-capture";
 import { WideAppHeader } from "@/components/wide-app-header";
 import { useAppToast } from "@/components/toast-provider";
@@ -197,7 +198,7 @@ export function ReceiptsClient() {
   return (
     <div className="flex min-h-screen flex-col">
       <WideAppHeader active="dashboard" showTppSubtitle />
-      <main className="app-page-shell mx-auto w-full max-w-4xl flex-1 py-8 md:py-10">
+      <main className="app-page-shell mx-auto w-full min-w-0 max-w-4xl flex-1 py-8 md:py-10">
         <Link
           href="/dashboard"
           className="text-sm text-[#E8C84A] hover:underline"
@@ -209,12 +210,12 @@ export function ReceiptsClient() {
           Capture, review, and assign expense receipts to jobs.
         </p>
 
-        <div className="mt-6">
+        <div className="mt-6" data-receipt-capture-anchor>
           <ReceiptCapture title="📷 Capture receipt" onSaved={() => void load()} />
         </div>
 
         <div
-          className="mt-8 flex flex-wrap gap-1 border-b border-white/10 pb-0"
+          className="mt-8 flex min-w-0 flex-wrap gap-1 overflow-x-auto border-b border-white/10 pb-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           role="tablist"
         >
           {(
@@ -265,11 +266,47 @@ export function ReceiptsClient() {
           </div>
         ) : null}
 
-        <div className="mt-6 space-y-4">
+        <div className="mt-6 min-w-0 space-y-4">
           {loading ? (
-            <p className="text-sm text-white/50">Loading…</p>
+            <ReceiptListSkeleton count={6} />
           ) : filtered.length === 0 ? (
-            <p className="text-sm text-white/50">No receipts in this view.</p>
+            tab === "all" && receipts.length === 0 ? (
+              <EmptyState
+                icon={<span aria-hidden>🧾</span>}
+                title="No receipts yet"
+                description="Capture a receipt above to save it here. Assigned receipts appear on jobs."
+                actionLabel="Scroll to capture"
+                onAction={() => {
+                  document
+                    .querySelector<HTMLElement>("[data-receipt-capture-anchor]")
+                    ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+              />
+            ) : tab === "unassigned" ? (
+              <EmptyState
+                icon={<span aria-hidden>✅</span>}
+                title="No unassigned receipts"
+                description="Every captured receipt is linked to a job, or you have not uploaded any yet."
+              />
+            ) : tab === "mine" ? (
+              <EmptyState
+                icon={<span aria-hidden>📷</span>}
+                title="No receipts from you"
+                description="Receipts you upload with your account show up in this tab."
+              />
+            ) : tab === "by_job" && !byJobFilter ? (
+              <EmptyState
+                icon={<span aria-hidden>🏗️</span>}
+                title="Choose a job"
+                description="Select a job from the filter above to see its receipts."
+              />
+            ) : (
+              <EmptyState
+                icon={<span aria-hidden>🧾</span>}
+                title="No receipts for this job"
+                description="Try another job or capture a new receipt and assign it."
+              />
+            )
           ) : (
             filtered.map((r) => {
               const emp = profiles[r.uploaded_by];

@@ -27,6 +27,7 @@ import {
 } from "@/lib/daily-logs-helpers";
 import type { DailyLogInsert, DailyLogRow } from "@/lib/daily-logs-types";
 import { dailyLogsToJobtreadCsv } from "@/lib/jobtread-csv";
+import { formatDailyLogSaveError } from "@/lib/daily-logs-api-errors";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { formatReceiptCurrency } from "@/lib/receipts-types";
 import { useUserRole } from "@/hooks/use-user-role";
@@ -91,7 +92,7 @@ function toTimeDb(v: string): string | null {
   if (!t) return null;
   if (/^\d{1,2}:\d{2}$/.test(t)) return `${t.padStart(5, "0")}:00`;
   if (/^\d{2}:\d{2}:\d{2}$/.test(t)) return t;
-  return t;
+  return null;
 }
 
 function readActiveZip(): string {
@@ -1001,8 +1002,6 @@ export function DailyLogsNewClient() {
             : null,
       };
 
-      console.log("Save data:", formData);
-
       const res = await fetch("/api/daily-logs", {
         method: "POST",
         credentials: "include",
@@ -1010,33 +1009,47 @@ export function DailyLogsNewClient() {
         body: JSON.stringify(formData),
       });
 
-      const bodyJson = (await res.json()) as {
+      const text = await res.text();
+      let bodyJson: {
         id?: string;
         error?: string;
         details?: string | null;
         hint?: string | null;
         code?: string | null;
-      };
+      } = {};
+      try {
+        bodyJson = text ? (JSON.parse(text) as typeof bodyJson) : {};
+      } catch {
+        showToast({
+          message:
+            res.ok && !text.trim()
+              ? "Save failed: empty response from server."
+              : `Save failed (${res.status}). The server returned an invalid response.`,
+          variant: "error",
+        });
+        return;
+      }
 
       if (!res.ok) {
-        const errParts = [
-          bodyJson.error,
-          bodyJson.details,
-          bodyJson.hint,
-          bodyJson.code ? `(${bodyJson.code})` : "",
-        ].filter(Boolean);
-        const msg =
-          errParts.join(" — ") || `Save failed (${res.status}).`;
-        console.log("Save error:", bodyJson);
+        const primary = (bodyJson.error ?? "").trim();
+        const msg = primary
+          ? primary
+          : formatDailyLogSaveError({
+              message: bodyJson.error,
+              code: bodyJson.code,
+              details: bodyJson.details,
+              hint: bodyJson.hint,
+              status: res.status,
+            });
         showToast({ message: msg, variant: "error" });
         return;
       }
 
       const logId = bodyJson.id;
       if (!logId) {
-        console.log("Save error:", bodyJson);
         showToast({
-          message: "Save failed: no log id returned.",
+          message:
+            "Save failed: the server did not return a log id. Your account may lack permission to insert into daily_logs.",
           variant: "error",
         });
         return;
@@ -1049,7 +1062,10 @@ export function DailyLogsNewClient() {
             .update({ daily_log_id: logId })
             .eq("id", rid);
           if (linkErr) {
-            console.log("Receipt link error:", linkErr);
+            showToast({
+              message: `Log saved, but linking a receipt failed: ${linkErr.message}. You can assign it from Receipts.`,
+              variant: "error",
+            });
           }
         }
         sessionReceiptIdsRef.current = [];
@@ -1104,10 +1120,16 @@ export function DailyLogsNewClient() {
         router.push("/jobs/daily-logs");
       }
     } catch (e) {
-      console.log("Save error:", e);
       let msg = "Save failed.";
-      if (e instanceof Error) msg = e.message;
-      else if (e && typeof e === "object" && "message" in e) {
+      if (e instanceof Error) {
+        msg =
+          e.message.includes("Bucket not found") ||
+          e.message.includes("new row violates row-level security")
+            ? `Upload failed: ${e.message}. Check storage bucket “daily-log-attachments” and RLS policies.`
+            : e.message.includes("JWT")
+              ? "Your session expired. Sign in again and retry."
+              : e.message;
+      } else if (e && typeof e === "object" && "message" in e) {
         msg = String((e as { message: unknown }).message);
       }
       showToast({ message: msg, variant: "error" });

@@ -36,3 +36,7 @@ create policy "integration_settings_no_client_access"
 
 comment on table public.integration_settings is
   'External integrations; API keys stored encrypted via app server (INTEGRATIONS_ENCRYPTION_KEY).';
+
+-- RLS: policies that always deny JWT roles are intentional — only service_role API routes
+-- (SUPABASE_SERVICE_ROLE_KEY) read/write this table. Do not add permissive policies
+-- without a security review.

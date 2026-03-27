@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { formatDailyLogSaveError } from "@/lib/daily-logs-api-errors";
 import { sanitizeDailyLogInsertPayload } from "@/lib/daily-logs-sanitize-insert";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -23,14 +24,11 @@ export async function POST(request: Request) {
       ? (body as Record<string, unknown>)
       : {};
 
-  console.log("Save data:", JSON.stringify(formData, null, 2));
-
   let payload: Record<string, unknown>;
   try {
     payload = sanitizeDailyLogInsertPayload(formData);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Invalid payload.";
-    console.log("Save error (sanitize):", msg);
     return NextResponse.json({ error: msg, code: "sanitize" }, { status: 400 });
   }
 
@@ -41,23 +39,34 @@ export async function POST(request: Request) {
     .single();
 
   if (error) {
-    console.log("Save error:", error);
+    const status = error.code === "42501" ? 403 : 400;
+    const friendly = formatDailyLogSaveError({
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      status,
+    });
     return NextResponse.json(
       {
-        error: error.message,
+        error: friendly,
         details: error.details ?? null,
         hint: error.hint ?? null,
         code: error.code ?? null,
       },
-      { status: 400 },
+      { status },
     );
   }
 
   const id = data?.id as string | undefined;
   if (!id) {
-    console.log("Save error: no id returned from insert");
     return NextResponse.json(
-      { error: "Insert succeeded but no row id was returned." },
+      {
+        error: formatDailyLogSaveError({
+          message: "Insert succeeded but no row id was returned.",
+          status: 500,
+        }),
+      },
       { status: 500 },
     );
   }

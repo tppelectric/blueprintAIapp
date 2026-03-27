@@ -870,7 +870,7 @@ export function TeamClockClient() {
   return (
     <div className="flex min-h-screen flex-col bg-[var(--surface-card)]">
       <WideAppHeader active="team_clock" showTppSubtitle />
-      <main className="app-page-shell mx-auto max-w-6xl flex-1 py-8">
+      <main className="app-page-shell mx-auto min-w-0 max-w-6xl flex-1 overflow-x-hidden py-8">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-[var(--foreground)]">

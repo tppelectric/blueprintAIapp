@@ -97,6 +97,15 @@ export function canViewTeamClock(role: UserRole | null): boolean {
   return role === "super_admin" || role === "admin";
 }
 
+/** Field punch page (`/field`) — profile flag from user_profiles. */
+export function canUseFieldPunch(profile: {
+  show_punch_interface?: boolean;
+  is_active?: boolean;
+} | null): boolean {
+  if (!profile || profile.is_active === false) return false;
+  return Boolean(profile.show_punch_interface);
+}
+
 const FINANCIAL_TOOL_HREFS = new Set([
   "/tools/wifi-analyzer",
   "/tools/av-analyzer",

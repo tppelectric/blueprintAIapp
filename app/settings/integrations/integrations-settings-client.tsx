@@ -223,7 +223,7 @@ export function IntegrationsSettingsClient() {
     return (
       <div className="flex min-h-screen flex-col">
         <WideAppHeader active="settings" showTppSubtitle />
-        <main className="app-page-shell flex-1 py-10">
+        <main className="app-page-shell min-w-0 flex-1 py-10">
           <div className="h-40 animate-pulse rounded-xl bg-white/10" />
         </main>
       </div>
@@ -234,7 +234,7 @@ export function IntegrationsSettingsClient() {
     return (
       <div className="flex min-h-screen flex-col">
         <WideAppHeader active="dashboard" showTppSubtitle />
-        <main className="app-page-shell flex-1 py-10">
+        <main className="app-page-shell min-w-0 flex-1 py-10">
           <p className="text-white/80">You don&apos;t have access to this page.</p>
           <Link href="/dashboard" className="mt-4 inline-block text-[#E8C84A] hover:underline">
             ← Dashboard
@@ -247,7 +247,7 @@ export function IntegrationsSettingsClient() {
   return (
     <div className="flex min-h-screen flex-col">
       <WideAppHeader active="settings" showTppSubtitle />
-      <main className="app-page-shell mx-auto max-w-3xl flex-1 py-8 md:py-10">
+      <main className="app-page-shell mx-auto min-w-0 max-w-3xl flex-1 py-8 md:py-10">
         <Link
           href="/dashboard"
           className="text-sm text-[#E8C84A] hover:underline"
@@ -262,7 +262,7 @@ export function IntegrationsSettingsClient() {
         {loading ? (
           <div className="mt-8 h-64 animate-pulse rounded-xl bg-white/10" />
         ) : (
-          <section className="mt-8 rounded-xl border border-white/10 bg-white/[0.04] p-6">
+          <section className="mt-8 min-w-0 rounded-xl border border-white/10 bg-white/[0.04] p-4 sm:p-6">
             <h2 className="text-lg font-semibold text-white">
               JobTread Integration
             </h2>

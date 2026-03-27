@@ -207,6 +207,31 @@ export function CalendarMonthSkeleton() {
   );
 }
 
+/** Receipt list rows (thumbnail + summary). */
+export function ReceiptListSkeleton({ count = 5 }: { count?: number }) {
+  return (
+    <div
+      className="space-y-4"
+      aria-busy="true"
+      aria-label="Loading receipts"
+    >
+      {Array.from({ length: count }).map((_, i) => (
+        <div
+          key={i}
+          className="flex animate-pulse flex-wrap gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4"
+        >
+          <div className="h-24 w-24 shrink-0 rounded-lg bg-white/10" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="h-5 max-w-[14rem] rounded bg-white/10" />
+            <div className="h-3 max-w-xs rounded bg-white/5" />
+            <div className="h-8 max-w-[6rem] rounded bg-white/10" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** Team clock employee cards while loading. */
 export function TeamClockCardSkeletonGrid({ cards = 6 }: { cards?: number }) {
   return (

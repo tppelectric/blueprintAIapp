@@ -1,0 +1,17 @@
+-- Reference: time_punches columns after base + audit + GPS/manual + team clock migrations.
+-- Apply migrations in order: time_punches.sql, time_punches_audit.sql, time_punches_gps_manual.sql
+-- (and any job-specific patches). Use information_schema if you need to diff a live DB:
+--
+-- SELECT column_name, data_type, is_nullable
+-- FROM information_schema.columns
+-- WHERE table_schema = 'public' AND table_name = 'time_punches'
+-- ORDER BY ordinal_position;
+
+-- Expected columns (conceptual checklist):
+-- id, employee_id, job_id, job_name, punch_in_at, punch_out_at, notes,
+-- on_lunch, lunch_start_at, lunch_end_at, total_lunch_ms,
+-- punch_in_location, punch_out_location, lunch_start_location, lunch_end_location,
+-- gps_location_flagged, gps_override_at,
+-- is_manual_entry, manual_entry_by, manual_entry_at, manual_entry_note,
+-- approval_status, approved_by, approved_at, discrepancy_flag,
+-- created_at, updated_at (if present)

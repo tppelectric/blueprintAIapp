@@ -13,7 +13,11 @@ import { TppLogoPill } from "@/components/tpp-logo-pill";
 import { TPP_COMPANY_FULL, TPP_TAGLINE } from "@/lib/tpp-branding";
 import { AppMobileNavButton } from "@/components/app-mobile-nav";
 import { useUserRole } from "@/hooks/use-user-role";
-import { canManageIntegrations, canViewTeamClock } from "@/lib/user-roles";
+import {
+  canManageIntegrations,
+  canUseFieldPunch,
+  canViewTeamClock,
+} from "@/lib/user-roles";
 
 export type NavKey =
   | "dashboard"
@@ -41,10 +45,12 @@ export function WideAppHeader({
   extraLinks?: ReactNode;
 }) {
   const pathname = usePathname() ?? "";
-  const { role, loading: roleLoading } = useUserRole();
+  const { role, loading: roleLoading, profile } = useUserRole();
   const showAdminUsersNav = !roleLoading && role === "super_admin";
   const showIntegrationsNav = !roleLoading && canManageIntegrations(role);
   const showTeamClockNav = !roleLoading && canViewTeamClock(role);
+  const showFieldPunchNav =
+    !roleLoading && canUseFieldPunch(profile ?? null);
 
   const homeActive = pathname === "/";
   const dashActive =
@@ -128,13 +134,15 @@ export function WideAppHeader({
           Calendar
         </Link>
       )}
-      {fieldActive ? (
-        <span className={NAV_ACTIVE}>Field punch</span>
-      ) : (
-        <Link href="/field" className={NAV_IDLE}>
-          Field punch
-        </Link>
-      )}
+      {showFieldPunchNav ? (
+        fieldActive ? (
+          <span className={NAV_ACTIVE}>Field punch</span>
+        ) : (
+          <Link href="/field" className={NAV_IDLE}>
+            Field punch
+          </Link>
+        )
+      ) : null}
       {showTeamClockNav ? (
         teamClockActive ? (
           <span

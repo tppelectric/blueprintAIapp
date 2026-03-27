@@ -57,7 +57,13 @@ CREATE POLICY "receipts_update_auth"
       OR public.app_user_role() IN ('super_admin', 'admin')
     )
   )
-  WITH CHECK (public.app_user_is_active());
+  WITH CHECK (
+    public.app_user_is_active()
+    AND (
+      uploaded_by = auth.uid()
+      OR public.app_user_role() IN ('super_admin', 'admin')
+    )
+  );
 
 CREATE POLICY "receipts_delete_auth"
   ON public.receipts FOR DELETE TO authenticated

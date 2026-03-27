@@ -10,7 +10,12 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { TeamClockNavBadge } from "@/components/team-clock-nav-badge";
 import { useUserRole } from "@/hooks/use-user-role";
 import { createBrowserClient } from "@/lib/supabase/client";
-import { ROLE_LABELS, canManageIntegrations, canViewTeamClock } from "@/lib/user-roles";
+import {
+  ROLE_LABELS,
+  canManageIntegrations,
+  canUseFieldPunch,
+  canViewTeamClock,
+} from "@/lib/user-roles";
 
 type AppNavKey =
   | "dashboard"
@@ -118,6 +123,8 @@ function MobileDrawerUserSection({ onNavigate }: { onNavigate: () => void }) {
 
   const roleLabel =
     !roleLoading && role ? ROLE_LABELS[role] : roleLoading ? "…" : null;
+  const showSettingsLink =
+    !roleLoading && canManageIntegrations(role);
 
   return (
     <div className="mx-1 rounded-xl border border-white/12 bg-[#071422]/60 px-3 py-3">
@@ -168,6 +175,15 @@ function MobileDrawerUserSection({ onNavigate }: { onNavigate: () => void }) {
           >
             Profile & account
           </Link>
+          {showSettingsLink ? (
+            <Link
+              href="/settings/integrations"
+              className="block rounded-lg px-2 py-2 text-sm font-medium text-white/90 transition-colors hover:bg-white/10"
+              onClick={onNavigate}
+            >
+              Settings
+            </Link>
+          ) : null}
           <button
             type="button"
             onClick={() => void signOut()}
@@ -193,10 +209,11 @@ function MobileMenuPortal({
   pathname: string;
 }) {
   const [mounted, setMounted] = useState(false);
-  const { role, loading: roleLoading } = useUserRole();
+  const { role, loading: roleLoading, profile } = useUserRole();
   const showUserManagement = !roleLoading && role === "super_admin";
   const showIntegrations = !roleLoading && canManageIntegrations(role);
   const showTeamClock = !roleLoading && canViewTeamClock(role);
+  const showFieldPunch = !roleLoading && canUseFieldPunch(profile ?? null);
   useEffect(() => setMounted(true), []);
 
   const dashActive = pathname.startsWith("/dashboard");
@@ -361,16 +378,18 @@ function MobileMenuPortal({
               Calendar
             </span>
           </Link>
-          <Link
-            href="/field"
-            className={linkClass(pathname.startsWith("/field"))}
-            onClick={onClose}
-          >
-            <span className="inline-flex items-center gap-1.5">
-              <span aria-hidden>📍</span>
-              Field punch
-            </span>
-          </Link>
+          {showFieldPunch ? (
+            <Link
+              href="/field"
+              className={linkClass(pathname.startsWith("/field"))}
+              onClick={onClose}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <span aria-hidden>📍</span>
+                Field punch
+              </span>
+            </Link>
+          ) : null}
           <Link
             href="/jobs/daily-logs"
             className={linkClass(pathname.startsWith("/jobs/daily-logs"))}

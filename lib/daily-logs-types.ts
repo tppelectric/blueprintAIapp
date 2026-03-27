@@ -33,6 +33,8 @@ export type DailyLogRow = {
   next_day_plan: string | null;
   safety_incident: boolean | null;
   safety_incident_notes: string | null;
+  /** Object path in `daily-log-pdfs` bucket when a PDF was generated. */
+  pdf_storage_path?: string | null;
   created_at: string;
 };
 

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { DailyLogPdfActions } from "@/components/daily-log-pdf-actions";
 import { createBrowserClient } from "@/lib/supabase/client";
 import type { DailyLogRow } from "@/lib/daily-logs-types";
 import {
@@ -218,6 +219,15 @@ export function JobDailyLogsTab({
                         : ""}
                     </div>
                   ) : null}
+                  <div className="mt-3 border-t border-white/10 pt-3">
+                    <DailyLogPdfActions
+                      logId={l.id}
+                      logDate={l.log_date}
+                      pdfStoragePath={l.pdf_storage_path ?? null}
+                      compact
+                      onPdfSaved={() => void load()}
+                    />
+                  </div>
                 </div>
               </li>
             );

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DarkListSkeleton, EmptyState } from "@/components/app-polish";
+import { DailyLogPdfActions } from "@/components/daily-log-pdf-actions";
 import { WideAppHeader } from "@/components/wide-app-header";
 import { useAppToast } from "@/components/toast-provider";
 import {
@@ -537,13 +538,14 @@ export function DailyLogsClient() {
                       <th className="p-3">Hours</th>
                       <th className="p-3">Status</th>
                       <th className="p-3">Materials</th>
+                      <th className="p-3 w-[200px]">PDF</th>
                     </tr>
                   </thead>
                   <tbody>
                     {logs.length > 0 && filteredLogs.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={6}
+                          colSpan={7}
                           className="p-8 text-center text-sm text-white/45"
                         >
                           No logs match the current filters.
@@ -583,6 +585,15 @@ export function DailyLogsClient() {
                           <td className="max-w-xs truncate p-3 text-xs text-white/50">
                             {mu.slice(0, 3).join(" · ")}
                             {mu.length > 3 ? "…" : ""}
+                          </td>
+                          <td className="p-2 align-top">
+                            <DailyLogPdfActions
+                              logId={l.id}
+                              logDate={l.log_date}
+                              pdfStoragePath={l.pdf_storage_path ?? null}
+                              compact
+                              onPdfSaved={() => void load()}
+                            />
                           </td>
                         </tr>
                       );
@@ -628,6 +639,14 @@ export function DailyLogsClient() {
                       <p className="mt-1 text-xs text-white/50">
                         {l.crew_user ?? "—"} · {l.job_status ?? ""}
                       </p>
+                      <div className="mt-3 border-t border-white/10 pt-3">
+                        <DailyLogPdfActions
+                          logId={l.id}
+                          logDate={l.log_date}
+                          pdfStoragePath={l.pdf_storage_path ?? null}
+                          onPdfSaved={() => void load()}
+                        />
+                      </div>
                     </li>
                   );
                 })}

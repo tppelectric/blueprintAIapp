@@ -77,6 +77,24 @@ export function ReceiptCapture({
   const [confidence, setConfidence] = useState(0);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  type ReceiptProgress =
+    | {
+        pct: number;
+        label: string;
+        variant: "normal" | "success" | "error";
+        errorDetail?: string;
+      }
+    | null;
+  const [receiptProgress, setReceiptProgress] = useState<ReceiptProgress>(null);
+  const scanCreepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearScanCreepTimer = useCallback(() => {
+    if (scanCreepTimerRef.current) {
+      clearInterval(scanCreepTimerRef.current);
+      scanCreepTimerRef.current = null;
+    }
+  }, []);
+
   const [jobExpenseCtx, setJobExpenseCtx] = useState<{
     label: string;
     address: string;
@@ -114,6 +132,13 @@ export function ReceiptCapture({
   useEffect(() => {
     void loadJobs();
   }, [loadJobs]);
+
+  useEffect(
+    () => () => {
+      clearScanCreepTimer();
+    },
+    [clearScanCreepTimer],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -268,14 +293,25 @@ export function ReceiptCapture({
       showToast({ message: "Please choose an image file.", variant: "error" });
       return;
     }
+    clearScanCreepTimer();
     setFile(f);
     setPreviewUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
       return URL.createObjectURL(f);
     });
     setPhase("reading");
+    setReceiptProgress({
+      pct: 6,
+      label: "Reading image...",
+      variant: "normal",
+    });
     try {
       const dataUrl = await fileToDataUrl(f);
+      setReceiptProgress({
+        pct: 18,
+        label: "Reading image...",
+        variant: "normal",
+      });
       const comma = dataUrl.indexOf(",");
       const mimeMatch = dataUrl.match(/^data:([^;,]+)/);
       const mediaType = (
@@ -284,6 +320,20 @@ export function ReceiptCapture({
         "image/jpeg"
       ).split(";")[0]!.trim();
       const imageBase64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
+
+      setReceiptProgress({
+        pct: 24,
+        label: "Analyzing receipt with AI...",
+        variant: "normal",
+      });
+      scanCreepTimerRef.current = setInterval(() => {
+        setReceiptProgress((prev) => {
+          if (!prev || prev.variant !== "normal") return prev;
+          const next = Math.min(48, prev.pct + 2);
+          if (next === prev.pct) return prev;
+          return { ...prev, pct: next };
+        });
+      }, 450);
 
       const jobIdForScan =
         assignedJobId?.trim() || propJobId?.trim() || null;
@@ -298,6 +348,7 @@ export function ReceiptCapture({
           dailyLogId: dailyLogId?.trim() || null,
         }),
       });
+      clearScanCreepTimer();
       const j = (await r.json()) as {
         ok?: boolean;
         data?: ScanReceiptResult;
@@ -305,22 +356,45 @@ export function ReceiptCapture({
       };
       if (!r.ok || !j.ok || !j.data) {
         const base = (j.error ?? "").trim() || "Could not read receipt.";
+        const msg = r.status ? `${base} (HTTP ${r.status})` : base;
         showToast({
-          message: r.status ? `${base} (HTTP ${r.status})` : base,
+          message: msg,
           variant: "error",
         });
+        setReceiptProgress({
+          pct: 100,
+          label: "",
+          variant: "error",
+          errorDetail: msg,
+        });
         setPhase("idle");
+        window.setTimeout(() => setReceiptProgress(null), 6000);
         return;
       }
+      setReceiptProgress({
+        pct: 62,
+        label: "Extracting receipt data...",
+        variant: "normal",
+      });
+      await new Promise((res) => window.setTimeout(res, 280));
       applyScan(j.data);
       setPhase("review");
+      setReceiptProgress(null);
       showToast({
         message: "Review extracted details below.",
         variant: "success",
       });
     } catch {
+      clearScanCreepTimer();
       showToast({ message: "Scan request failed.", variant: "error" });
+      setReceiptProgress({
+        pct: 100,
+        label: "",
+        variant: "error",
+        errorDetail: "Scan request failed.",
+      });
       setPhase("idle");
+      window.setTimeout(() => setReceiptProgress(null), 6000);
     }
   };
 
@@ -330,7 +404,9 @@ export function ReceiptCapture({
     if (f) void processFile(f);
   };
 
-  const resetCapture = () => {
+  const resetCapture = (opts?: { keepProgressBar?: boolean }) => {
+    clearScanCreepTimer();
+    if (!opts?.keepProgressBar) setReceiptProgress(null);
     setPhase("idle");
     setFile(null);
     setPreviewUrl((prev) => {
@@ -351,6 +427,11 @@ export function ReceiptCapture({
     }
 
     setSaving(true);
+      setReceiptProgress({
+        pct: 70,
+        label: "Uploading image...",
+        variant: "normal",
+      });
     try {
       const sb = createBrowserClient();
       const {
@@ -358,6 +439,13 @@ export function ReceiptCapture({
       } = await sb.auth.getUser();
       if (!user?.id) {
         showToast({ message: "Sign in required.", variant: "error" });
+        setReceiptProgress({
+          pct: 100,
+          label: "",
+          variant: "error",
+          errorDetail: "Sign in required.",
+        });
+        window.setTimeout(() => setReceiptProgress(null), 5000);
         return;
       }
 
@@ -377,6 +465,12 @@ export function ReceiptCapture({
           contentType: file.type || "image/jpeg",
         });
       if (upErr) throw upErr;
+
+      setReceiptProgress({
+        pct: 85,
+        label: "Saving receipt...",
+        variant: "normal",
+      });
 
       const sub = subtotal.trim() ? parseFloat(subtotal) : null;
       const tax = taxAmount.trim() ? parseFloat(taxAmount) : null;
@@ -403,6 +497,12 @@ export function ReceiptCapture({
             : null,
         notes: notes.trim() || null,
       };
+
+      setReceiptProgress({
+        pct: 94,
+        label: "Saving receipt...",
+        variant: "normal",
+      });
 
       const { data: inserted, error: insErr } = await sb
         .from("receipts")
@@ -441,8 +541,16 @@ export function ReceiptCapture({
           : "Saved to unassigned receipts.",
         variant: "success",
       });
+      setReceiptProgress({
+        pct: 100,
+        label: "",
+        variant: "success",
+      });
       onSaved?.(rec);
-      resetCapture();
+      resetCapture({ keepProgressBar: true });
+      window.setTimeout(() => {
+        setReceiptProgress(null);
+      }, 2200);
       setVendorName("");
       setReceiptDate("");
       setSubtotal("");
@@ -456,10 +564,18 @@ export function ReceiptCapture({
       setNotes("");
       setConfidence(0);
     } catch (e) {
+      const msg = e instanceof Error ? e.message : "Save failed.";
       showToast({
-        message: e instanceof Error ? e.message : "Save failed.",
+        message: msg,
         variant: "error",
       });
+      setReceiptProgress({
+        pct: 100,
+        label: "",
+        variant: "error",
+        errorDetail: msg,
+      });
+      window.setTimeout(() => setReceiptProgress(null), 6500);
     } finally {
       setSaving(false);
     }
@@ -567,6 +683,50 @@ export function ReceiptCapture({
               </button>
             </div>
           )}
+        </div>
+      ) : null}
+
+      {receiptProgress ? (
+        <div className="w-full space-y-2">
+          <div
+            className={`h-2 w-full overflow-hidden rounded-full bg-white/10 transition-colors duration-300 ${
+              receiptProgress.variant === "error"
+                ? "ring-1 ring-red-500/50"
+                : ""
+            }`}
+          >
+            <div
+              className={`h-2 max-w-full rounded-full transition-all duration-300 ${
+                receiptProgress.variant === "error"
+                  ? "bg-red-500"
+                  : receiptProgress.variant === "success"
+                    ? "bg-emerald-500"
+                    : "bg-[#E8C84A]"
+              }`}
+              style={{
+                width: `${
+                  receiptProgress.variant === "success"
+                    ? 100
+                    : Math.min(100, Math.round(receiptProgress.pct))
+                }%`,
+              }}
+            />
+          </div>
+          <p
+            className={`text-center text-xs ${
+              receiptProgress.variant === "error"
+                ? "text-red-300"
+                : receiptProgress.variant === "success"
+                  ? "text-emerald-200"
+                  : "text-white/70"
+            }`}
+          >
+            {receiptProgress.variant === "success"
+              ? "✅ Receipt saved!"
+              : receiptProgress.variant === "error"
+                ? receiptProgress.errorDetail ?? "Something went wrong."
+                : `${Math.round(receiptProgress.pct)}% - ${receiptProgress.label}`}
+          </p>
         </div>
       ) : null}
 
@@ -841,7 +1001,7 @@ export function ReceiptCapture({
             </button>
             <button
               type="button"
-              onClick={resetCapture}
+              onClick={() => resetCapture()}
               className="btn-secondary btn-h-11"
             >
               Cancel

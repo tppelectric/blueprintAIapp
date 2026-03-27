@@ -721,6 +721,16 @@ export function DailyLogsNewClient() {
         const prevCheckIn = form.check_in;
         const prevCheckOut = form.check_out;
         const prevWork = form.work_completed?.trim() || "";
+        const prevMaterialRows = materialUsedRows.filter((r) =>
+          r.item.trim(),
+        ).length;
+        const transcript = describeText.trim();
+        const safetyMention =
+          /safety|incident|injury|near\s*miss|hazard|osha/i.test(transcript);
+        const breakerMention =
+          /breaker|panel|main disconnect|disconnect|power\s*off|lug/i.test(
+            transcript,
+          );
 
         applyAiResult(normalized);
 
@@ -743,13 +753,24 @@ export function DailyLogsNewClient() {
         const hasWork =
           !!normalized.work_completed?.trim() || !!prevWork;
 
-        if (!hasJob || !hasCrew || !hasTimes || !hasWork) {
-          setAiFollowUp({
-            job: !hasJob,
-            crew: !hasCrew,
-            times: !hasTimes,
-            work: !hasWork,
-          });
+        const hasMaterials =
+          normalized.materials_used.length > 0 || prevMaterialRows > 0;
+        const needSafetyConfirm = transcript.length >= 8 && !safetyMention;
+        const needBreakerConfirm = transcript.length >= 8 && !breakerMention;
+        const needNextPlan = !normalized.next_day_plan?.trim();
+
+        const follow: AiFollowUpFlags = {
+          job: !hasJob,
+          crew: !hasCrew,
+          times: !hasTimes,
+          work: !hasWork,
+          materials: !hasMaterials,
+          safety: needSafetyConfirm,
+          breakers: needBreakerConfirm,
+          nextPlan: needNextPlan,
+        };
+        if (Object.values(follow).some(Boolean)) {
+          setAiFollowUp(follow);
           setFollowUpNonce((n) => n + 1);
         } else {
           setAiFollowUp(null);
@@ -989,6 +1010,39 @@ export function DailyLogsNewClient() {
       setForm((f) => ({
         ...f,
         work_completed: followUpDraft.work.trim(),
+      }));
+    }
+    if (aiFollowUp.materials && followUpDraft.materialsText.trim()) {
+      const lines = followUpDraft.materialsText
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+      if (lines.length) {
+        setMaterialUsedRows(
+          lines.map((item) => ({
+            item,
+            qty: "—",
+            unit: "—",
+          })),
+        );
+      }
+    }
+    if (aiFollowUp.safety) {
+      setForm((f) => ({
+        ...f,
+        safety_incident: followUpDraft.safetyIncident,
+      }));
+    }
+    if (aiFollowUp.breakers) {
+      setForm((f) => ({
+        ...f,
+        all_breakers_on: followUpDraft.allBreakersOn,
+      }));
+    }
+    if (aiFollowUp.nextPlan && followUpDraft.nextPlanText.trim()) {
+      setForm((f) => ({
+        ...f,
+        next_day_plan: followUpDraft.nextPlanText.trim(),
       }));
     }
     setAiFollowUp(null);
@@ -1496,6 +1550,119 @@ export function DailyLogsNewClient() {
                       }))
                     }
                     placeholder="Describe the work…"
+                  />
+                </div>
+              ) : null}
+              {aiFollowUp.materials ? (
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-sm font-semibold text-white">
+                    What materials were used today?
+                  </p>
+                  <p className="mt-1 text-xs text-white/45">
+                    One item per line (e.g. 12/2 NM · 50 ft).
+                  </p>
+                  <textarea
+                    className={`${ta} mt-2`}
+                    value={followUpDraft.materialsText}
+                    onChange={(e) =>
+                      setFollowUpDraft((d) => ({
+                        ...d,
+                        materialsText: e.target.value,
+                      }))
+                    }
+                    placeholder={"Wire\nOutlets\nConduit"}
+                  />
+                </div>
+              ) : null}
+              {aiFollowUp.safety ? (
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-sm font-semibold text-white">
+                    Were there any safety incidents?
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-4">
+                    <label className="flex cursor-pointer items-center gap-2 text-sm text-white/85">
+                      <input
+                        type="radio"
+                        name="fu-safety"
+                        checked={!followUpDraft.safetyIncident}
+                        onChange={() =>
+                          setFollowUpDraft((d) => ({
+                            ...d,
+                            safetyIncident: false,
+                          }))
+                        }
+                      />
+                      No
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2 text-sm text-white/85">
+                      <input
+                        type="radio"
+                        name="fu-safety"
+                        checked={followUpDraft.safetyIncident}
+                        onChange={() =>
+                          setFollowUpDraft((d) => ({
+                            ...d,
+                            safetyIncident: true,
+                          }))
+                        }
+                      />
+                      Yes
+                    </label>
+                  </div>
+                </div>
+              ) : null}
+              {aiFollowUp.breakers ? (
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-sm font-semibold text-white">
+                    Were all breakers left on?
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-4">
+                    <label className="flex cursor-pointer items-center gap-2 text-sm text-white/85">
+                      <input
+                        type="radio"
+                        name="fu-breakers"
+                        checked={followUpDraft.allBreakersOn}
+                        onChange={() =>
+                          setFollowUpDraft((d) => ({
+                            ...d,
+                            allBreakersOn: true,
+                          }))
+                        }
+                      />
+                      Yes
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2 text-sm text-white/85">
+                      <input
+                        type="radio"
+                        name="fu-breakers"
+                        checked={!followUpDraft.allBreakersOn}
+                        onChange={() =>
+                          setFollowUpDraft((d) => ({
+                            ...d,
+                            allBreakersOn: false,
+                          }))
+                        }
+                      />
+                      No
+                    </label>
+                  </div>
+                </div>
+              ) : null}
+              {aiFollowUp.nextPlan ? (
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-sm font-semibold text-white">
+                    What is the plan for tomorrow?
+                  </p>
+                  <textarea
+                    className={`${ta} mt-2`}
+                    value={followUpDraft.nextPlanText}
+                    onChange={(e) =>
+                      setFollowUpDraft((d) => ({
+                        ...d,
+                        nextPlanText: e.target.value,
+                      }))
+                    }
+                    placeholder="Next steps, materials to bring, crew…"
                   />
                 </div>
               ) : null}

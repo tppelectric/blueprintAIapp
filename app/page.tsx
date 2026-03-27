@@ -191,12 +191,14 @@ export default function Home() {
           Est. 1982 · Powered by Blueprint AI
         </p>
 
-        <Link
-          href="/upload"
-          className="btn-primary btn-h-11 mt-10 inline-flex w-full max-w-md justify-center sm:mt-12 sm:w-auto"
-        >
-          Start new project
-        </Link>
+        <div className="mt-10 flex w-full flex-col items-center sm:mt-12">
+          <Link
+            href="/upload"
+            className="btn-primary btn-h-11 mx-auto inline-flex w-full max-w-lg justify-center sm:w-auto sm:min-w-[320px]"
+          >
+            Start new project
+          </Link>
+        </div>
 
         <HomeMarketingCommandCenter />
 

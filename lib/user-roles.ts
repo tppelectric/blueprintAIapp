@@ -86,6 +86,11 @@ export function canManageReceiptsAdmin(role: UserRole | null): boolean {
   return role === "super_admin" || role === "admin";
 }
 
+/** Create/edit/delete assets, materials, and storage locations. */
+export function canManageInventoryAdmin(role: UserRole | null): boolean {
+  return role === "super_admin" || role === "admin";
+}
+
 export function canManageTeamTime(role: UserRole | null): boolean {
   return (
     role === "super_admin" || role === "admin" || role === "office_manager"

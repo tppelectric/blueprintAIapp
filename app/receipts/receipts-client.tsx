@@ -20,10 +20,18 @@ import { createBrowserClient } from "@/lib/supabase/client";
 
 type TabKey = "all" | "unassigned" | "by_job" | "mine";
 
+const INACTIVE_JOB_STATUSES = new Set([
+  "Completed",
+  "Cancelled",
+  "Closed",
+  "Lost",
+]);
+
 type JobOpt = {
   id: string;
   label: string;
   addressLine: string;
+  status: string;
 };
 
 function formatJobAddress(j: Record<string, unknown>): string {
@@ -66,6 +74,8 @@ export function ReceiptsClient() {
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [assignId, setAssignId] = useState<string | null>(null);
   const [assignJob, setAssignJob] = useState("");
+  const [assignJobSearch, setAssignJobSearch] = useState("");
+  const [receiptActionId, setReceiptActionId] = useState<string | null>(null);
   const [editing, setEditing] = useState<ReceiptRow | null>(null);
 
   const load = useCallback(async () => {
@@ -85,7 +95,9 @@ export function ReceiptsClient() {
 
       const { data: jd } = await sb
         .from("jobs")
-        .select("id,job_name,job_number,address,city,state,zip")
+        .select(
+          "id,job_name,job_number,address,city,state,zip,status",
+        )
         .order("updated_at", { ascending: false })
         .limit(400);
       setJobs(
@@ -95,6 +107,7 @@ export function ReceiptsClient() {
             id: j.id as string,
             label: formatJobLabel(rec),
             addressLine: formatJobAddress(rec),
+            status: String(rec.status ?? "").trim() || "Lead",
           };
         }),
       );
@@ -163,6 +176,29 @@ export function ReceiptsClient() {
     return m;
   }, [receipts]);
 
+  const activeJobs = useMemo(
+    () => jobs.filter((j) => !INACTIVE_JOB_STATUSES.has(j.status)),
+    [jobs],
+  );
+
+  const jobsForEditSelect = useMemo(() => {
+    return (currentJobId: string | null) => {
+      const set = new Map(activeJobs.map((j) => [j.id, j]));
+      if (currentJobId) {
+        const cur = jobs.find((x) => x.id === currentJobId);
+        if (cur && !set.has(cur.id)) set.set(cur.id, cur);
+      }
+      return [...set.values()];
+    };
+  }, [activeJobs, jobs]);
+
+  const assignModalJobs = useMemo(() => {
+    const q = assignJobSearch.trim().toLowerCase();
+    const list = activeJobs;
+    if (!q) return list;
+    return list.filter((j) => j.label.toLowerCase().includes(q));
+  }, [activeJobs, assignJobSearch]);
+
   const jobReceiptGroups = useMemo(() => {
     const map = new Map<string, ReceiptRow[]>();
     for (const r of receipts) {
@@ -190,6 +226,9 @@ export function ReceiptsClient() {
 
   const assignToJob = async () => {
     if (!assignId || !assignJob) return;
+    const chosen = jobs.find((j) => j.id === assignJob);
+    const name = chosen?.label?.trim() || "Job";
+    setReceiptActionId(assignId);
     try {
       const sb = createBrowserClient();
       const { error } = await sb
@@ -204,20 +243,53 @@ export function ReceiptsClient() {
         ].filter(Boolean);
         throw new Error(bits.join(" — "));
       }
-      showToast({ message: "Job assigned.", variant: "success" });
+      showToast({
+        message: `Receipt linked to ${name}`,
+        variant: "success",
+      });
       setAssignId(null);
       setAssignJob("");
+      setAssignJobSearch("");
+      setTab("by_job");
       void load();
     } catch (e) {
       showToast({
         message: e instanceof Error ? e.message : "Could not assign.",
         variant: "error",
       });
+    } finally {
+      setReceiptActionId(null);
+    }
+  };
+
+  const unassignReceipt = async (r: ReceiptRow) => {
+    if (
+      !window.confirm(
+        "Remove job link from this receipt? It will appear under Unassigned.",
+      )
+    ) {
+      return;
+    }
+    setReceiptActionId(r.id);
+    try {
+      const sb = createBrowserClient();
+      const { error } = await sb
+        .from("receipts")
+        .update({ job_id: null })
+        .eq("id", r.id);
+      if (error) throw error;
+      showToast({ message: "Receipt unassigned.", variant: "success" });
+      void load();
+    } catch {
+      showToast({ message: "Could not unassign.", variant: "error" });
+    } finally {
+      setReceiptActionId(null);
     }
   };
 
   const saveEdit = async () => {
     if (!editing) return;
+    setReceiptActionId(editing.id);
     try {
       const sb = createBrowserClient();
       const { error } = await sb
@@ -229,6 +301,8 @@ export function ReceiptsClient() {
           receipt_category: editing.receipt_category,
           job_id: editing.job_id,
           notes: editing.notes,
+          description:
+            editing.description?.trim() ? editing.description.trim() : null,
           tax_amount: editing.tax_amount,
           subtotal: editing.subtotal,
         })
@@ -239,6 +313,8 @@ export function ReceiptsClient() {
       void load();
     } catch {
       showToast({ message: "Update failed.", variant: "error" });
+    } finally {
+      setReceiptActionId(null);
     }
   };
 
@@ -255,18 +331,31 @@ export function ReceiptsClient() {
     }
   };
 
-  const allJobsForSelect = jobs;
-
   function renderReceiptCard(r: ReceiptRow) {
     const emp = profiles[r.uploaded_by];
     const jobMeta = r.job_id ? jobs.find((j) => j.id === r.job_id) : null;
     const jobLabel = jobMeta?.label ?? "Job";
     const jst = r.job_id ? jobStatsById.get(r.job_id) : undefined;
+    const canEdit = isAdmin || (myId != null && r.uploaded_by === myId);
+    const notesPreview =
+      r.notes?.trim() && r.notes.trim().length > 100
+        ? `${r.notes.trim().slice(0, 100)}…`
+        : r.notes?.trim() ?? "";
     return (
       <div
         key={r.id}
-        className="flex flex-wrap gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4"
+        className="relative flex flex-wrap gap-3 overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] p-4"
       >
+        {receiptActionId === r.id ? (
+          <div
+            className="absolute inset-x-0 bottom-0 z-10 h-1 overflow-hidden bg-white/10"
+            role="progressbar"
+            aria-busy
+            aria-label="Saving"
+          >
+            <div className="h-full w-full origin-left animate-pulse bg-[#E8C84A]" />
+          </div>
+        ) : null}
         <button
           type="button"
           className="shrink-0"
@@ -279,7 +368,7 @@ export function ReceiptsClient() {
             <img
               src={thumbs[r.id]}
               alt=""
-              className="h-24 w-24 rounded-lg object-cover"
+              className="h-24 w-24 rounded-lg object-cover ring-1 ring-white/10"
             />
           ) : (
             <div className="flex h-24 w-24 items-center justify-center rounded-lg bg-white/5 text-xs text-white/40">
@@ -288,28 +377,42 @@ export function ReceiptsClient() {
           )}
         </button>
         <div className="min-w-0 flex-1">
-          <p className="font-medium text-white">{r.vendor_name ?? "—"}</p>
-          <p className="text-xs text-white/50">
-            {r.receipt_date ?? "—"} · {displayProfileName(emp ?? {})}
-          </p>
-          <p className="mt-1 text-xl font-bold text-[#E8C84A]">
+          <p className="font-bold text-white">{r.vendor_name ?? "—"}</p>
+          <p className="text-xs text-white/50">{r.receipt_date ?? "—"}</p>
+          <p className="mt-1 text-2xl font-bold tracking-tight text-[#E8C84A]">
             {formatReceiptCurrency(r.total_amount)}
           </p>
-          <span className="mt-1 inline-block rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-white/80">
+          <span className="mt-2 inline-block rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-medium text-white/85">
             {r.receipt_category}
           </span>
-          <p className="mt-2 text-sm">
+          <p className="mt-2 flex flex-wrap items-center gap-2 text-sm">
             {r.job_id ? (
-              <Link
-                href={`/jobs/${r.job_id}`}
-                className="text-[#E8C84A] hover:underline"
-              >
-                {jobLabel}
-              </Link>
+              <>
+                <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-200/95">
+                  {jobLabel}
+                </span>
+                <Link
+                  href={`/jobs/${r.job_id}`}
+                  className="text-[#E8C84A] hover:underline"
+                >
+                  Open job
+                </Link>
+              </>
             ) : (
-              <span className="font-medium text-red-400">Unassigned</span>
+              <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-[11px] font-bold text-red-300">
+                Unassigned
+              </span>
             )}
           </p>
+          <p className="mt-2 text-xs text-white/55">
+            <span className="text-white/40">Employee:</span>{" "}
+            {displayProfileName(emp ?? {})}
+          </p>
+          {notesPreview ? (
+            <p className="mt-2 line-clamp-2 text-xs text-white/50">
+              {notesPreview}
+            </p>
+          ) : null}
           {r.job_id && jobMeta?.addressLine ? (
             <p className="mt-1 text-xs text-white/45">{jobMeta.addressLine}</p>
           ) : null}
@@ -319,38 +422,47 @@ export function ReceiptsClient() {
               {formatReceiptCurrency(jst.total)} job total
             </p>
           ) : null}
+        </div>
+        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:min-w-[9.5rem]">
           {!r.job_id ? (
             <button
               type="button"
-              className="mt-2 text-sm font-medium text-[#E8C84A] hover:underline"
+              className="rounded-lg bg-[#E8C84A] px-3 py-2.5 text-center text-sm font-bold text-[#0a1628] shadow-md hover:bg-[#f0d56e]"
               onClick={() => {
                 setAssignId(r.id);
                 setAssignJob("");
+                setAssignJobSearch("");
               }}
             >
-              Assign to job
+              Assign to Job
+            </button>
+          ) : isAdmin ? (
+            <button
+              type="button"
+              className="rounded-lg border border-white/20 px-3 py-2 text-center text-xs font-semibold text-white/80 hover:bg-white/10"
+              onClick={() => void unassignReceipt(r)}
+            >
+              Unassign
             </button>
           ) : null}
-          <div className="mt-2 flex flex-wrap gap-2">
-            {isAdmin ? (
-              <>
-                <button
-                  type="button"
-                  className="text-xs text-white/70 hover:underline"
-                  onClick={() => setEditing({ ...r })}
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className="text-xs text-red-300 hover:underline"
-                  onClick={() => void deleteReceipt(r)}
-                >
-                  Delete
-                </button>
-              </>
-            ) : null}
-          </div>
+          {canEdit ? (
+            <button
+              type="button"
+              className="rounded-lg border border-[#E8C84A]/50 px-3 py-2 text-center text-xs font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10"
+              onClick={() => setEditing({ ...r })}
+            >
+              Edit
+            </button>
+          ) : null}
+          {isAdmin ? (
+            <button
+              type="button"
+              className="rounded-lg px-3 py-2 text-center text-xs font-semibold text-red-300 hover:bg-red-500/10"
+              onClick={() => void deleteReceipt(r)}
+            >
+              Delete
+            </button>
+          ) : null}
         </div>
       </div>
     );
@@ -523,25 +635,53 @@ export function ReceiptsClient() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-md rounded-xl border border-white/15 bg-[#0a1628] p-5">
             <h3 className="text-lg font-semibold text-white">Assign to job</h3>
-            <select
-              className="app-input mt-3 w-full text-sm"
-              value={assignJob}
-              onChange={(e) => setAssignJob(e.target.value)}
-            >
-              <option value="">— Choose job —</option>
-              {allJobsForSelect.map((j) => (
-                <option key={j.id} value={j.id}>
-                  {j.label}
-                </option>
-              ))}
-            </select>
-            <div className="mt-4 flex gap-2">
+            <p className="mt-1 text-xs text-white/45">
+              Search active jobs, select one, then confirm.
+            </p>
+            <label className="mt-4 block text-xs text-white/50">
+              Search by job name
+              <input
+                className="app-input mt-1 w-full text-sm"
+                value={assignJobSearch}
+                onChange={(e) => setAssignJobSearch(e.target.value)}
+                placeholder="Type to filter…"
+                autoComplete="off"
+              />
+            </label>
+            <label className="mt-3 block text-xs text-white/50">
+              Job
+              <select
+                className="app-input mt-1 max-h-48 w-full text-sm"
+                size={6}
+                value={assignJob}
+                onChange={(e) => setAssignJob(e.target.value)}
+              >
+                <option value="">— Choose job —</option>
+                {assignModalJobs.map((j) => (
+                  <option key={j.id} value={j.id}>
+                    {j.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {assignModalJobs.length === 0 && activeJobs.length > 0 ? (
+              <p className="mt-2 text-xs text-amber-200/80">
+                No jobs match that search.
+              </p>
+            ) : null}
+            {activeJobs.length === 0 ? (
+              <p className="mt-2 text-xs text-white/45">
+                No active jobs loaded. Completed / cancelled jobs are hidden.
+              </p>
+            ) : null}
+            <div className="mt-4 flex flex-wrap gap-2">
               <button
                 type="button"
                 className="btn-primary btn-h-11"
+                disabled={!assignJob}
                 onClick={() => void assignToJob()}
               >
-                Save
+                Confirm
               </button>
               <button
                 type="button"
@@ -549,6 +689,7 @@ export function ReceiptsClient() {
                 onClick={() => {
                   setAssignId(null);
                   setAssignJob("");
+                  setAssignJobSearch("");
                 }}
               >
                 Cancel
@@ -619,7 +760,7 @@ export function ReceiptsClient() {
                 </select>
               </label>
               <label className="block text-xs text-white/50">
-                Job
+                Job assignment
                 <select
                   className="app-input mt-1 w-full text-sm"
                   value={editing.job_id ?? ""}
@@ -631,12 +772,25 @@ export function ReceiptsClient() {
                   }
                 >
                   <option value="">— Unassigned —</option>
-                  {allJobsForSelect.map((j) => (
+                  {jobsForEditSelect(editing.job_id).map((j) => (
                     <option key={j.id} value={j.id}>
                       {j.label}
                     </option>
                   ))}
                 </select>
+              </label>
+              <label className="block text-xs text-white/50">
+                Description
+                <textarea
+                  className="app-input mt-1 min-h-[3rem] w-full text-sm"
+                  value={editing.description ?? ""}
+                  onChange={(e) =>
+                    setEditing({
+                      ...editing,
+                      description: e.target.value || null,
+                    })
+                  }
+                />
               </label>
               <label className="block text-xs text-white/50">
                 Notes
@@ -648,6 +802,16 @@ export function ReceiptsClient() {
                   }
                 />
               </label>
+              <div className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-white/40">
+                  Employee who uploaded
+                </p>
+                <p className="mt-1 text-sm text-white/85">
+                  {displayProfileName(
+                    profiles[editing.uploaded_by] ?? {},
+                  )}
+                </p>
+              </div>
             </div>
             <div className="mt-4 flex gap-2">
               <button
@@ -655,7 +819,7 @@ export function ReceiptsClient() {
                 className="btn-primary btn-h-11"
                 onClick={() => void saveEdit()}
               >
-                Save
+                Save Changes
               </button>
               <button
                 type="button"

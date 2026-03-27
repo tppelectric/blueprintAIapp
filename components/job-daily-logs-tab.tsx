@@ -177,16 +177,29 @@ export function JobDailyLogsTab({
                   aria-hidden
                 />
                 <div className="rounded-xl border border-white/10 bg-[#0a1628]/80 p-4">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <p className="text-sm font-semibold text-white">
-                      {l.log_date}
-                      {l.crew_user ? (
-                        <span className="font-normal text-white/55">
-                          {" "}
-                          · {l.crew_user}
-                        </span>
-                      ) : null}
-                    </p>
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-white">
+                        <Link
+                          href={`/jobs/daily-logs/${l.id}`}
+                          className="text-[#E8C84A] hover:underline"
+                        >
+                          {l.log_date}
+                        </Link>
+                        {l.crew_user ? (
+                          <span className="font-normal text-white/55">
+                            {" "}
+                            · {l.crew_user}
+                          </span>
+                        ) : null}
+                      </p>
+                      <Link
+                        href={`/jobs/daily-logs/${l.id}`}
+                        className="mt-1 inline-block text-xs font-medium text-white/50 hover:text-[#E8C84A]"
+                      >
+                        View log →
+                      </Link>
+                    </div>
                     {h != null ? (
                       <span className="text-xs font-medium text-[#E8C84A]">
                         {h}h
@@ -224,7 +237,7 @@ export function JobDailyLogsTab({
                       logId={l.id}
                       logDate={l.log_date}
                       pdfStoragePath={l.pdf_storage_path ?? null}
-                      compact
+                      prominentExport
                       onPdfSaved={() => void load()}
                     />
                   </div>

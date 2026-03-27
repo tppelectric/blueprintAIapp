@@ -568,7 +568,7 @@ export function DailyLogsClient() {
                 <table className="min-w-full text-left text-sm text-white/85">
                   <thead>
                     <tr className="border-b border-white/10 bg-white/[0.04]">
-                      <th className="p-3">Date</th>
+                      <th className="p-3">Date / log</th>
                       <th className="p-3">Job</th>
                       <th className="p-3">Crew</th>
                       <th className="p-3">Hours</th>
@@ -598,7 +598,12 @@ export function DailyLogsClient() {
                           className="border-b border-white/5 hover:bg-white/[0.03]"
                         >
                           <td className="p-3 font-mono text-white/70">
-                            {l.log_date}
+                            <Link
+                              href={`/jobs/daily-logs/${l.id}`}
+                              className="text-[#E8C84A] hover:underline"
+                            >
+                              {l.log_date}
+                            </Link>
                           </td>
                           <td className="p-3">
                             {l.job_id ? (
@@ -683,6 +688,7 @@ export function DailyLogsClient() {
                               logDate={l.log_date}
                               pdfStoragePath={l.pdf_storage_path ?? null}
                               compact
+                              prominentExport
                               onPdfSaved={() => void load()}
                             />
                           </td>
@@ -708,9 +714,12 @@ export function DailyLogsClient() {
                       className="rounded-xl border border-white/10 bg-white/[0.03] p-4"
                     >
                       <div className="flex justify-between gap-2">
-                        <span className="font-mono text-sm text-white/70">
+                        <Link
+                          href={`/jobs/daily-logs/${l.id}`}
+                          className="font-mono text-sm text-[#E8C84A] hover:underline"
+                        >
                           {l.log_date}
-                        </span>
+                        </Link>
                         {h != null ? (
                           <span className="text-sm text-[#E8C84A]">{h}h</span>
                         ) : null}

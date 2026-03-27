@@ -13,7 +13,11 @@ import { TimeClockSummaryCard } from "@/components/time-clock-summary-card";
 import { useAppToast } from "@/components/toast-provider";
 import { useUserRole } from "@/hooks/use-user-role";
 import { ReceiptsDashboardCard } from "@/components/receipts-dashboard-card";
-import { canManageReceiptsAdmin, canViewTeamClock } from "@/lib/user-roles";
+import {
+  canManageIntegrations,
+  canManageReceiptsAdmin,
+  canViewTeamClock,
+} from "@/lib/user-roles";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProjectScansSummary } from "@/lib/project-scans-types";
 import { formatPlanScanRelativeDate } from "@/lib/scan-import-from-plans";
@@ -227,6 +231,8 @@ function CheckSaveIcon({ className }: { className?: string }) {
 export function DashboardClient() {
   const { showToast } = useAppToast();
   const { canSeeApiCosts, loading: roleLoading, role } = useUserRole();
+  const showIntegrationsSettings =
+    !roleLoading && canManageIntegrations(role);
   const showTeamClock = !roleLoading && canViewTeamClock(role);
   const showReceiptsAdminCard =
     !roleLoading && canManageReceiptsAdmin(role);
@@ -585,6 +591,14 @@ export function DashboardClient() {
             <Link href="/tools" className="btn-secondary btn-h-11 w-full">
               Tools hub
             </Link>
+            {showIntegrationsSettings ? (
+              <Link
+                href="/settings/integrations"
+                className="btn-secondary btn-h-11 w-full border-violet-400/35 text-violet-200"
+              >
+                ⚙️ Settings
+              </Link>
+            ) : null}
             <Link
               href="/jobs/daily-logs/new"
               className="btn-secondary btn-h-11 w-full border-orange-500/35 text-orange-200"

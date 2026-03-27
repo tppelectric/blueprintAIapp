@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { HomeHeroStatus } from "@/components/home-hero-status";
+import { HomeIntegrationsSettingsLink } from "@/components/home-integrations-settings-link";
 import { HomeMarketingHeader } from "@/components/home-marketing-header";
 import { HomepageApiUsageWidget } from "@/components/homepage-api-usage-widget";
 import { PwaInstallBanners } from "@/components/pwa-install-banners";
@@ -409,6 +410,7 @@ export default function Home() {
               >
                 Jobs
               </Link>
+              <HomeIntegrationsSettingsLink />
             </nav>
           </div>
         </footer>

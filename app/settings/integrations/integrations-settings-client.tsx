@@ -106,8 +106,8 @@ export function IntegrationsSettingsClient() {
     fading: boolean;
   } | null>(null);
   const connectionTestTimersRef = useRef<{
-    fade: ReturnType<typeof setTimeout>;
-    clear: ReturnType<typeof setTimeout>;
+    fade: number;
+    clear: number;
   } | null>(null);
 
   const clearConnectionTestTimers = useCallback(() => {
@@ -306,29 +306,17 @@ export function IntegrationsSettingsClient() {
         return;
       }
       showConnectionTestResult(true);
-      const s = settings;
-      if (s) {
-        applyJobtreadPublicToDrafts(
-          {
-            ...s,
-            connectionStatus: "ok",
-            connectionMessage:
-              j.message ??
-              "Test recorded — JobTread API client not wired yet; credentials accepted.",
-          },
-          {
-            setSettings,
-            setCompanyIdDraft,
-            setAutoSync,
-            setSyncInterval,
-            setImportCustomers,
-            setImportJobs,
-            setExportDailyLogs,
-            setExportPhotos,
-            setExportTimeEntries,
-          },
-        );
-      }
+      setSettings((prev) =>
+        prev
+          ? {
+              ...prev,
+              connectionStatus: "ok",
+              connectionMessage:
+                j.message ??
+                "Test recorded — JobTread API client not wired yet; credentials accepted.",
+            }
+          : prev,
+      );
     } catch {
       showConnectionTestResult(false);
     }
@@ -426,18 +414,33 @@ export function IntegrationsSettingsClient() {
             <div className="mt-6 space-y-4">
               <label className="block text-xs font-medium text-white/50">
                 API key
-                <input
-                  type="password"
-                  autoComplete="new-password"
-                  className="app-input mt-1 block w-full"
-                  placeholder={
-                    settings?.hasApiKey
-                      ? "Leave blank to keep existing key"
-                      : "Paste JobTread API key"
-                  }
-                  value={apiKeyDraft}
-                  onChange={(e) => setApiKeyDraft(e.target.value)}
-                />
+                <div className="relative mt-1">
+                  <input
+                    type={showApiKey ? "text" : "password"}
+                    autoComplete="new-password"
+                    className="app-input block w-full pr-11"
+                    placeholder={
+                      settings?.hasApiKey
+                        ? "Leave blank to keep existing key"
+                        : "Paste JobTread API key"
+                    }
+                    value={apiKeyDraft}
+                    onChange={(e) => setApiKeyDraft(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-2 text-white/45 transition-colors hover:bg-white/10 hover:text-white/85"
+                    aria-label={showApiKey ? "Hide API key" : "Show API key"}
+                    onClick={() => setShowApiKey((v) => !v)}
+                  >
+                    <EyeToggleIcon visible={showApiKey} />
+                  </button>
+                </div>
+                {settings?.hasApiKey && !apiKeyDraft.trim() ? (
+                  <span className="mt-2 inline-flex items-center rounded-full border border-emerald-500/35 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-200/95">
+                    Key saved securely
+                  </span>
+                ) : null}
               </label>
               <label className="block text-xs font-medium text-white/50">
                 Company ID
@@ -478,6 +481,21 @@ export function IntegrationsSettingsClient() {
                 </button>
               ) : null}
             </div>
+
+            {connectionTest ? (
+              <div
+                role="status"
+                className={`mt-3 rounded-lg border px-4 py-3 text-sm transition-opacity duration-500 ${
+                  connectionTest.ok
+                    ? "border-emerald-500/45 bg-emerald-950/35 text-emerald-100"
+                    : "border-red-500/45 bg-red-950/35 text-red-100"
+                } ${connectionTest.fading ? "opacity-0" : "opacity-100"}`}
+              >
+                {connectionTest.ok
+                  ? "✅ Connection successful!"
+                  : "❌ Connection failed - check your API key and Company ID"}
+              </div>
+            ) : null}
 
             <div className="mt-6 border-t border-white/10 pt-6">
               <p className="text-xs font-bold uppercase tracking-wide text-[#E8C84A]/90">

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ReceiptCapture } from "@/components/receipt-capture";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { UserRole } from "@/lib/user-roles";
@@ -172,6 +173,7 @@ export function FieldClient() {
   });
   const [auditTo, setAuditTo] = useState(todayYmd);
   const notesBaseline = useRef("");
+  const [receiptOpen, setReceiptOpen] = useState(false);
 
   const ingestClockResponse = useCallback(
     (j: {
@@ -356,6 +358,10 @@ export function FieldClient() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!activeSession) setReceiptOpen(false);
+  }, [activeSession]);
 
   useEffect(() => {
     if (fieldTab !== "clock" || !showPunch) return;
@@ -615,12 +621,18 @@ export function FieldClient() {
   return (
     <div className="min-h-[100dvh] touch-manipulation bg-gradient-to-b from-[#0a1628] to-[#060d1a] px-4 pb-12 pt-4 text-white">
       <div className="mx-auto flex max-w-2xl flex-col gap-5">
-        <header className="flex items-center justify-between gap-2">
+        <header className="flex flex-wrap items-center justify-between gap-2">
           <Link
             href="/dashboard"
             className="text-sm font-medium text-[#E8C84A] active:opacity-80"
           >
             ← Dashboard
+          </Link>
+          <Link
+            href="/receipts"
+            className="text-sm font-medium text-white/80 underline decoration-white/30 underline-offset-2 hover:text-[#E8C84A]"
+          >
+            Receipts
           </Link>
           <span className="sr-only tabular-nums" aria-live="polite">
             {clockTick}
@@ -854,6 +866,13 @@ export function FieldClient() {
                       Lunch taken: {lastLunchMinutes} min
                     </p>
                   ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setReceiptOpen(true)}
+                    className="mt-4 w-full rounded-xl border-2 border-[#E8C84A]/50 bg-[#E8C84A]/10 py-3 text-sm font-bold text-[#E8C84A] active:bg-[#E8C84A]/20"
+                  >
+                    📷 Receipt
+                  </button>
                 </div>
 
                 <label className="block text-sm font-medium text-white/90">
@@ -955,6 +974,38 @@ export function FieldClient() {
                   })}
                 </ul>
               </section>
+            ) : null}
+
+            {receiptOpen && activeSession ? (
+              <div
+                className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-3 sm:items-center"
+                role="dialog"
+                aria-label="Capture receipt"
+              >
+                <div className="max-h-[min(90dvh,720px)] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/15 bg-[#0a1628] p-4 shadow-2xl">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <h2 className="text-sm font-semibold text-white">
+                      Capture receipt
+                    </h2>
+                    <button
+                      type="button"
+                      className="rounded-lg px-2 py-1 text-lg text-white/70 hover:bg-white/10"
+                      aria-label="Close"
+                      onClick={() => setReceiptOpen(false)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <ReceiptCapture
+                    jobId={activeSession.job_id}
+                    title="Scan receipt"
+                    onSaved={() => {
+                      setReceiptOpen(false);
+                      setMsg("Receipt saved.");
+                    }}
+                  />
+                </div>
+              </div>
             ) : null}
           </>
         ) : (

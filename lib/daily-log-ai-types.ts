@@ -21,6 +21,12 @@ export type ProcessDailyLogResult = {
   equipment_left: string | null;
   next_day_plan: string | null;
   notes: string | null;
+  /** Optional extras the model may return (or alternate phrasing mapped here). */
+  trades_onsite: string | null;
+  visitors_onsite: string | null;
+  job_status: string | null;
+  additional_notes: string | null;
+  crew_user: string | null;
 };
 
 export function emptyProcessDailyLogResult(): ProcessDailyLogResult {
@@ -39,6 +45,11 @@ export function emptyProcessDailyLogResult(): ProcessDailyLogResult {
     equipment_left: null,
     next_day_plan: null,
     notes: null,
+    trades_onsite: null,
+    visitors_onsite: null,
+    job_status: null,
+    additional_notes: null,
+    crew_user: null,
   };
 }
 
@@ -72,7 +83,18 @@ function asMaterialLines(v: unknown): DailyLogMaterialLine[] {
 
 function asStringArray(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
-  return v.map((x) => asStr(x).trim()).filter(Boolean);
+  return v.flatMap((x) => {
+    if (typeof x === "string") {
+      const s = x.trim();
+      return s ? [s] : [];
+    }
+    if (x && typeof x === "object") {
+      const o = x as Record<string, unknown>;
+      const name = asStr(o.name ?? o.full_name ?? o.employee).trim();
+      return name ? [name] : [];
+    }
+    return [];
+  });
 }
 
 /** Coerce parsed JSON to ProcessDailyLogResult. */
@@ -80,21 +102,38 @@ export function normalizeProcessDailyLogJson(raw: unknown): ProcessDailyLogResul
   const e = emptyProcessDailyLogResult();
   if (!raw || typeof raw !== "object") return e;
   const o = raw as Record<string, unknown>;
+  const jobNameRaw =
+    o.job_name ?? o.job ?? o.project_name ?? o.site ?? o.project;
+  const employeesRaw =
+    o.employees_onsite ?? o.crew ?? o.people_on_site ?? o.workers ?? o.team;
+  const checkInRaw =
+    o.check_in ?? o.shift_start ?? o.start_time ?? o.clock_in ?? o.time_in;
+  const checkOutRaw =
+    o.check_out ?? o.shift_end ?? o.end_time ?? o.clock_out ?? o.time_out;
+  const workRaw =
+    o.work_completed ?? o.work_done ?? o.work_performed ?? o.description ?? "";
+  const materialsUsedRaw = o.materials_used ?? o.materials;
+  const materialsNeededRaw = o.materials_needed ?? o.materials_to_order;
   return {
-    job_name: asStr(o.job_name).trim() || null,
-    work_completed: asStr(o.work_completed).trim(),
-    materials_used: asMaterialLines(o.materials_used),
-    materials_needed: asMaterialLines(o.materials_needed),
-    employees_onsite: asStringArray(o.employees_onsite),
-    check_in: asStr(o.check_in).trim() || null,
-    check_out: asStr(o.check_out).trim() || null,
-    issues_delays: asStr(o.issues_delays).trim() || null,
+    job_name: asStr(jobNameRaw).trim() || null,
+    work_completed: asStr(workRaw).trim(),
+    materials_used: asMaterialLines(materialsUsedRaw),
+    materials_needed: asMaterialLines(materialsNeededRaw),
+    employees_onsite: asStringArray(employeesRaw),
+    check_in: asStr(checkInRaw).trim() || null,
+    check_out: asStr(checkOutRaw).trim() || null,
+    issues_delays: asStr(o.issues_delays ?? o.delays ?? o.problems).trim() || null,
     safety_incident: asBool(o.safety_incident, false),
     all_breakers_on: asBool(o.all_breakers_on, true),
     equipment_used: asStr(o.equipment_used).trim() || null,
-    equipment_left: asStr(o.equipment_left).trim() || null,
-    next_day_plan: asStr(o.next_day_plan).trim() || null,
-    notes: asStr(o.notes).trim() || null,
+    equipment_left: asStr(o.equipment_left ?? o.equipment_left_onsite).trim() || null,
+    next_day_plan: asStr(o.next_day_plan ?? o.tomorrow ?? o.plan).trim() || null,
+    notes: asStr(o.notes ?? o.general_notes).trim() || null,
+    trades_onsite: asStr(o.trades_onsite).trim() || null,
+    visitors_onsite: asStr(o.visitors_onsite).trim() || null,
+    job_status: asStr(o.job_status).trim() || null,
+    additional_notes: asStr(o.additional_notes).trim() || null,
+    crew_user: asStr(o.crew_user ?? o.foreman).trim() || null,
   };
 }
 

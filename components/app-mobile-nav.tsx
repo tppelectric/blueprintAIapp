@@ -283,6 +283,13 @@ function MobileMenuPortal({
             Jobs
           </Link>
           <Link
+            href="/receipts"
+            className={linkClass(pathname.startsWith("/receipts"))}
+            onClick={onClose}
+          >
+            Receipts
+          </Link>
+          <Link
             href="/customers"
             className={linkClass(custActive)}
             onClick={onClose}

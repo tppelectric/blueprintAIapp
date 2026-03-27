@@ -33,7 +33,12 @@ Return ONLY valid JSON with exactly these keys (snake_case as shown):
   "equipment_used": string or null,
   "equipment_left": string or null,
   "next_day_plan": string or null,
-  "notes": string or null
+  "notes": string or null,
+  "trades_onsite": string or null,
+  "visitors_onsite": string or null,
+  "job_status": string or null,
+  "additional_notes": string or null,
+  "crew_user": string or null
 }
 
 Rules:

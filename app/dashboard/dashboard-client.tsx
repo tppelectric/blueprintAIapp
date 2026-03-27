@@ -12,7 +12,8 @@ import { TeamCommandCenterCard } from "@/components/team-command-center-card";
 import { TimeClockSummaryCard } from "@/components/time-clock-summary-card";
 import { useAppToast } from "@/components/toast-provider";
 import { useUserRole } from "@/hooks/use-user-role";
-import { canViewTeamClock } from "@/lib/user-roles";
+import { ReceiptsDashboardCard } from "@/components/receipts-dashboard-card";
+import { canManageReceiptsAdmin, canViewTeamClock } from "@/lib/user-roles";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProjectScansSummary } from "@/lib/project-scans-types";
 import { formatPlanScanRelativeDate } from "@/lib/scan-import-from-plans";
@@ -227,6 +228,8 @@ export function DashboardClient() {
   const { showToast } = useAppToast();
   const { canSeeApiCosts, loading: roleLoading, role } = useUserRole();
   const showTeamClock = !roleLoading && canViewTeamClock(role);
+  const showReceiptsAdminCard =
+    !roleLoading && canManageReceiptsAdmin(role);
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -513,7 +516,9 @@ export function DashboardClient() {
         </div>
 
         {!loading && !error ? (
-          <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <section
+            className={`grid grid-cols-1 gap-3 ${showReceiptsAdminCard ? "sm:grid-cols-2 xl:grid-cols-4" : "sm:grid-cols-3"}`}
+          >
             <div className="app-card rounded-xl border p-3">
               <p className="text-xs text-[var(--foreground-muted)]">Projects</p>
               <p className="mt-0.5 text-xl font-semibold tabular-nums text-[var(--foreground)]">
@@ -547,6 +552,7 @@ export function DashboardClient() {
                   : "No usage yet"}
               </p>
             </div>
+            {showReceiptsAdminCard ? <ReceiptsDashboardCard /> : null}
           </section>
         ) : null}
 
@@ -590,6 +596,12 @@ export function DashboardClient() {
               className="btn-secondary btn-h-11 w-full border-[#E8C84A]/35 text-[#E8C84A]"
             >
               📋 View All Logs
+            </Link>
+            <Link
+              href="/receipts"
+              className="btn-secondary btn-h-11 w-full border-[#E8C84A]/35 text-[#E8C84A]"
+            >
+              📷 Receipts
             </Link>
             <Link href="/timesheets" className="btn-secondary btn-h-11 w-full">
               Timesheets

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { JobDailyLogsTab } from "@/components/job-daily-logs-tab";
+import { JobReceiptsTab } from "@/components/job-receipts-tab";
 import { WideAppHeader } from "@/components/wide-app-header";
 import { useUserRole } from "@/hooks/use-user-role";
 import { createBrowserClient } from "@/lib/supabase/client";
@@ -51,7 +52,9 @@ export function JobDetailClient({ jobId }: { jobId: string }) {
   const [customer, setCustomer] = useState<CustomerRow | null>(null);
   const [attachments, setAttachments] = useState<JobAttachmentRow[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<"overview" | "daily">("overview");
+  const [tab, setTab] = useState<"overview" | "daily" | "receipts">(
+    "overview",
+  );
 
   const projectBreakdownHref = useMemo(() => {
     const a = attachments.find(
@@ -173,6 +176,19 @@ export function JobDetailClient({ jobId }: { jobId: string }) {
           >
             Daily logs
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "receipts"}
+            className={`rounded-t-lg px-4 py-2.5 text-sm font-semibold transition-colors ${
+              tab === "receipts"
+                ? "bg-white/[0.08] text-[#E8C84A]"
+                : "text-white/55 hover:bg-white/[0.04] hover:text-white/80"
+            }`}
+            onClick={() => setTab("receipts")}
+          >
+            Receipts
+          </button>
         </div>
 
         {tab === "daily" ? (
@@ -180,6 +196,13 @@ export function JobDetailClient({ jobId }: { jobId: string }) {
             jobId={jobId}
             jobName={`${job.job_number} · ${job.job_name}`}
             projectBreakdownHref={projectBreakdownHref}
+          />
+        ) : null}
+
+        {tab === "receipts" ? (
+          <JobReceiptsTab
+            jobId={jobId}
+            jobLabel={`${job.job_number} · ${job.job_name}`}
           />
         ) : null}
 

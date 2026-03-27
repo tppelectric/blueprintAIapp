@@ -76,6 +76,11 @@ export function canAssignJobs(role: UserRole | null): boolean {
 }
 
 /** Approve timesheets, time off, edit payroll rows. */
+/** Edit/delete any receipt; full receipts admin UI. */
+export function canManageReceiptsAdmin(role: UserRole | null): boolean {
+  return role === "super_admin" || role === "admin";
+}
+
 export function canManageTeamTime(role: UserRole | null): boolean {
   return (
     role === "super_admin" || role === "admin" || role === "office_manager"

@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { ReceiptCapture } from "@/components/receipt-capture";
 import { WideAppHeader } from "@/components/wide-app-header";
 import { useAppToast } from "@/components/toast-provider";
 import type { DailyLogMaterialLine } from "@/lib/daily-log-ai-types";
@@ -27,8 +28,13 @@ import {
 import type { DailyLogInsert, DailyLogRow } from "@/lib/daily-logs-types";
 import { dailyLogsToJobtreadCsv } from "@/lib/jobtread-csv";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { formatReceiptCurrency } from "@/lib/receipts-types";
+import { useUserRole } from "@/hooks/use-user-role";
 
 type JobOption = { id: string; job_name: string; job_number: string };
+
+/** Jobs eligible for daily logs (exclude finished / cancelled). */
+const DAILY_LOG_JOB_STATUSES = ["Lead", "Quoted", "Active", "On Hold"] as const;
 
 type AssigneeOption = {
   id: string;
@@ -112,6 +118,13 @@ function randomId(): string {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function formatJobLabel(j: JobOption): string {
+  const a = j.job_number.trim();
+  const b = j.job_name.trim();
+  if (a && b) return `${a} · ${b}`;
+  return a || b || "";
+}
+
 function getSpeechRecognitionCtor(): (new () => BrowserSpeechRecognition) | null {
   if (typeof window === "undefined") return null;
   const w = window as typeof window & {
@@ -164,6 +177,7 @@ export function DailyLogsNewClient() {
   const preCheckIn = searchParams.get("checkIn")?.trim() || "";
   const preCheckOut = searchParams.get("checkOut")?.trim() || "";
   const { showToast } = useAppToast();
+  const { profile, loading: profileLoading } = useUserRole();
 
   const [jobs, setJobs] = useState<JobOption[]>([]);
   const [assignees, setAssignees] = useState<AssigneeOption[]>([]);
@@ -223,14 +237,66 @@ export function DailyLogsNewClient() {
   const [showInternalNotes, setShowInternalNotes] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  type SessionRec = {
+    id: string;
+    thumbUrl: string | null;
+    vendor: string | null;
+    total: number;
+  };
+  const [sessionReceipts, setSessionReceipts] = useState<SessionRec[]>([]);
+  const sessionReceiptIdsRef = useRef<string[]>([]);
+
+  const [aiSuggestedJobId, setAiSuggestedJobId] = useState<string | null>(null);
+  const [jobMenuOpen, setJobMenuOpen] = useState(false);
+  const [jobInputValue, setJobInputValue] = useState("");
+  const jobComboRef = useRef<HTMLDivElement>(null);
+
+  type AiFollowUpFlags = {
+    job: boolean;
+    crew: boolean;
+    times: boolean;
+    work: boolean;
+  };
+  const [aiFollowUp, setAiFollowUp] = useState<AiFollowUpFlags | null>(null);
+  const [followUpNonce, setFollowUpNonce] = useState(0);
+  const [followUpDraft, setFollowUpDraft] = useState({
+    jobId: "",
+    jobCustom: "",
+    employeeIds: [] as string[],
+    checkIn: "",
+    checkOut: "",
+    work: "",
+  });
+
+  const formRef = useRef(form);
+  formRef.current = form;
+
   const loadJobs = useCallback(async () => {
     try {
       const sb = createBrowserClient();
-      const { data, error } = await sb
+      let data: {
+        id: unknown;
+        job_name: unknown;
+        job_number: unknown;
+      }[] | null = null;
+
+      const filtered = await sb
         .from("jobs")
-        .select("id,job_name,job_number")
+        .select("id,job_name,job_number,status")
+        .in("status", [...DAILY_LOG_JOB_STATUSES])
         .order("updated_at", { ascending: false });
-      if (error) throw error;
+
+      if (filtered.error) {
+        const all = await sb
+          .from("jobs")
+          .select("id,job_name,job_number")
+          .order("updated_at", { ascending: false });
+        if (all.error) throw all.error;
+        data = all.data ?? [];
+      } else {
+        data = filtered.data ?? [];
+      }
+
       setJobs(
         (data ?? []).map((j) => ({
           id: j.id as string,
@@ -246,6 +312,67 @@ export function DailyLogsNewClient() {
   useEffect(() => {
     void loadJobs();
   }, [loadJobs]);
+
+  const seededSelfRef = useRef(false);
+  useEffect(() => {
+    if (profileLoading || !profile || seededSelfRef.current) return;
+    const fn = profile.first_name?.trim();
+    const ln = profile.last_name?.trim();
+    const fromParts = [fn, ln].filter(Boolean).join(" ").trim();
+    const displayName =
+      fromParts ||
+      profile.full_name?.trim() ||
+      profile.email?.trim() ||
+      "";
+    if (!displayName) return;
+    seededSelfRef.current = true;
+    setEmployeeLines((lines) => {
+      const names = lines.map((s) => s.trim()).filter(Boolean);
+      if (
+        names.some(
+          (n) => n.toLowerCase() === displayName.toLowerCase(),
+        )
+      ) {
+        return lines;
+      }
+      return names.length ? [...names, displayName, ""] : [displayName, ""];
+    });
+  }, [profile, profileLoading]);
+
+  useEffect(() => {
+    if (jobMenuOpen) return;
+    if (form.job_id) {
+      const j = jobs.find((x) => x.id === form.job_id);
+      setJobInputValue(j ? formatJobLabel(j) : (form.job_name ?? ""));
+    } else {
+      setJobInputValue(form.job_name ?? "");
+    }
+  }, [form.job_id, form.job_name, jobs, jobMenuOpen]);
+
+  useEffect(() => {
+    if (!aiFollowUp) return;
+    const f = formRef.current;
+    setFollowUpDraft({
+      jobId: f.job_id ?? "",
+      jobCustom: "",
+      employeeIds: [],
+      checkIn: f.check_in ? String(f.check_in).slice(0, 5) : "",
+      checkOut: f.check_out ? String(f.check_out).slice(0, 5) : "",
+      work: f.work_completed ?? "",
+    });
+  }, [aiFollowUp, followUpNonce]);
+
+  useEffect(() => {
+    if (!jobMenuOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      const el = jobComboRef.current;
+      if (el && !el.contains(e.target as Node)) {
+        setJobMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [jobMenuOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -428,29 +555,63 @@ export function DailyLogsNewClient() {
   const applyAiResult = useCallback(
     (data: ProcessDailyLogResult) => {
       const matchedId = matchJobIdFromAiName(data.job_name, jobs);
-      setForm((f) => ({
-        ...f,
-        job_id: matchedId ?? f.job_id,
-        work_completed: data.work_completed?.trim() || null,
-        check_in: parseAiTimeToDb(data.check_in) ?? f.check_in,
-        check_out: parseAiTimeToDb(data.check_out) ?? f.check_out,
-        anticipated_delays: data.issues_delays?.trim() || null,
-        safety_incident: data.safety_incident,
-        all_breakers_on: data.all_breakers_on,
-        equipment_used: data.equipment_used?.trim() || null,
-        equipment_left_onsite: data.equipment_left?.trim() || null,
-        next_day_plan: data.next_day_plan?.trim() || null,
-        notes: data.notes?.trim() || null,
-        breakers_off_reason: !data.all_breakers_on
-          ? (data.issues_delays?.trim() || f.breakers_off_reason)
-          : f.breakers_off_reason,
-      }));
+      setAiSuggestedJobId(matchedId);
 
-      setEmployeeLines(
-        data.employees_onsite.length
-          ? [...data.employees_onsite]
-          : [""],
-      );
+      setForm((f) => {
+        const resolvedJobName = matchedId
+          ? (() => {
+              const j = jobs.find((x) => x.id === matchedId);
+              return j ? formatJobLabel(j) : f.job_name;
+            })()
+          : data.job_name?.trim() || f.job_name;
+
+        const nextWork = data.work_completed?.trim() ?? "";
+        return {
+          ...f,
+          job_id: matchedId !== null ? matchedId : f.job_id,
+          job_name: resolvedJobName ?? null,
+          work_completed: nextWork ? nextWork : f.work_completed,
+          check_in: parseAiTimeToDb(data.check_in) ?? f.check_in,
+          check_out: parseAiTimeToDb(data.check_out) ?? f.check_out,
+          anticipated_delays:
+            data.issues_delays?.trim() || f.anticipated_delays,
+          safety_incident: data.safety_incident,
+          all_breakers_on: data.all_breakers_on,
+          equipment_used: data.equipment_used?.trim() || f.equipment_used,
+          equipment_left_onsite:
+            data.equipment_left?.trim() || f.equipment_left_onsite,
+          next_day_plan: data.next_day_plan?.trim() || f.next_day_plan,
+          notes: data.notes?.trim() || f.notes,
+          trades_onsite: data.trades_onsite?.trim() || f.trades_onsite,
+          visitors_onsite: data.visitors_onsite?.trim() || f.visitors_onsite,
+          job_status: data.job_status?.trim() || f.job_status,
+          additional_notes:
+            data.additional_notes?.trim() || f.additional_notes,
+          crew_user: data.crew_user?.trim() || f.crew_user,
+          breakers_off_reason: !data.all_breakers_on
+            ? (data.issues_delays?.trim() || f.breakers_off_reason)
+            : f.breakers_off_reason,
+        };
+      });
+
+      setEmployeeLines((prev) => {
+        const prevNames = prev.map((s) => s.trim()).filter(Boolean);
+        if (data.employees_onsite.length) {
+          const fromAi = data.employees_onsite
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const merged = [...prevNames];
+          for (const n of fromAi) {
+            if (
+              !merged.some((x) => x.toLowerCase() === n.toLowerCase())
+            ) {
+              merged.push(n);
+            }
+          }
+          return merged.length ? [...merged, ""] : [""];
+        }
+        return prevNames.length ? [...prevNames, ""] : [""];
+      });
 
       setMaterialUsedRows(
         data.materials_used.length
@@ -471,16 +632,6 @@ export function DailyLogsNewClient() {
             }))
           : [{ item: "", qty: "", unit: "", order: false }],
       );
-
-      if (matchedId) {
-        const j = jobs.find((x) => x.id === matchedId);
-        if (j) {
-          setForm((f) => ({
-            ...f,
-            job_name: `${j.job_number} · ${j.job_name}`,
-          }));
-        }
-      }
     },
     [jobs],
   );
@@ -546,7 +697,32 @@ export function DailyLogsNewClient() {
 
       try {
         const normalized = normalizeProcessDailyLogJson(j.data);
+        console.log("AI result:", normalized);
         applyAiResult(normalized);
+
+        const matchedAfter = matchJobIdFromAiName(normalized.job_name, jobs);
+        const hasJob = !!(
+          matchedAfter ||
+          (normalized.job_name && normalized.job_name.trim())
+        );
+        const hasCrewAi = normalized.employees_onsite.length > 0;
+        const cin = parseAiTimeToDb(normalized.check_in);
+        const cout = parseAiTimeToDb(normalized.check_out);
+        const hasTimes = !!(cin && cout);
+        const hasWork = !!normalized.work_completed?.trim();
+
+        if (!hasJob || !hasCrewAi || !hasTimes || !hasWork) {
+          setAiFollowUp({
+            job: !hasJob,
+            crew: !hasCrewAi,
+            times: !hasTimes,
+            work: !hasWork,
+          });
+          setFollowUpNonce((n) => n + 1);
+        } else {
+          setAiFollowUp(null);
+        }
+
         setAiProcessError(null);
         showToast({
           message: "Form filled from your description.",
@@ -681,6 +857,111 @@ export function DailyLogsNewClient() {
     showToast({ message: "Times applied from punch record.", variant: "success" });
   };
 
+  const commitJobField = useCallback(() => {
+    const q = jobInputValue.trim();
+    if (!q) {
+      setForm((f) => ({ ...f, job_id: null, job_name: null }));
+      setAiSuggestedJobId(null);
+      return;
+    }
+    const lower = q.toLowerCase();
+    const j = jobs.find((x) => {
+      const label = formatJobLabel(x).toLowerCase();
+      return (
+        label === lower ||
+        x.job_number.trim().toLowerCase() === lower ||
+        x.job_name.trim().toLowerCase() === lower
+      );
+    });
+    if (j) {
+      setForm((f) => ({
+        ...f,
+        job_id: j.id,
+        job_name: formatJobLabel(j),
+      }));
+      setJobInputValue(formatJobLabel(j));
+    } else {
+      setForm((f) => ({
+        ...f,
+        job_id: null,
+        job_name: q,
+      }));
+    }
+  }, [jobInputValue, jobs]);
+
+  const selectJobFromList = (j: JobOption) => {
+    setForm((f) => ({
+      ...f,
+      job_id: j.id,
+      job_name: formatJobLabel(j),
+    }));
+    setJobInputValue(formatJobLabel(j));
+    setJobMenuOpen(false);
+    if (aiSuggestedJobId && j.id !== aiSuggestedJobId) {
+      setAiSuggestedJobId(null);
+    }
+  };
+
+  const applyFollowUpDone = () => {
+    if (!aiFollowUp) return;
+    if (aiFollowUp.job) {
+      if (followUpDraft.jobId.trim()) {
+        const j = jobs.find((x) => x.id === followUpDraft.jobId.trim());
+        if (j) {
+          setForm((f) => ({
+            ...f,
+            job_id: j.id,
+            job_name: formatJobLabel(j),
+          }));
+          setJobInputValue(formatJobLabel(j));
+        }
+      } else if (followUpDraft.jobCustom.trim()) {
+        setForm((f) => ({
+          ...f,
+          job_id: null,
+          job_name: followUpDraft.jobCustom.trim(),
+        }));
+        setJobInputValue(followUpDraft.jobCustom.trim());
+      }
+    }
+    if (aiFollowUp.crew && followUpDraft.employeeIds.length) {
+      setEmployeeLines((lines) => {
+        const names = lines.map((s) => s.trim()).filter(Boolean);
+        const add: string[] = [];
+        for (const id of followUpDraft.employeeIds) {
+          const u = assignees.find((x) => x.id === id);
+          const n = u?.full_name?.trim() || u?.email?.trim();
+          if (
+            n &&
+            !names.some((x) => x.toLowerCase() === n.toLowerCase())
+          ) {
+            add.push(n);
+          }
+        }
+        const merged = [...names, ...add];
+        return merged.length ? [...merged, ""] : [""];
+      });
+    }
+    if (aiFollowUp.times) {
+      setForm((f) => ({
+        ...f,
+        check_in: followUpDraft.checkIn
+          ? `${followUpDraft.checkIn}:00`
+          : f.check_in,
+        check_out: followUpDraft.checkOut
+          ? `${followUpDraft.checkOut}:00`
+          : f.check_out,
+      }));
+    }
+    if (aiFollowUp.work && followUpDraft.work.trim()) {
+      setForm((f) => ({
+        ...f,
+        work_completed: followUpDraft.work.trim(),
+      }));
+    }
+    setAiFollowUp(null);
+  };
+
   const save = async () => {
     if (!form.log_date?.trim()) {
       showToast({ message: "Choose a log date.", variant: "error" });
@@ -702,7 +983,7 @@ export function DailyLogsNewClient() {
         data: { user },
       } = await sb.auth.getUser();
 
-      const payload: DailyLogInsert = {
+      const formData: DailyLogInsert = {
         ...form,
         log_date: form.log_date.trim(),
         check_in: toTimeDb(String(form.check_in ?? "")),
@@ -720,15 +1001,60 @@ export function DailyLogsNewClient() {
             : null,
       };
 
-      const { data: inserted, error } = await sb
-        .from("daily_logs")
-        .insert(payload)
-        .select("id")
-        .single();
+      console.log("Save data:", formData);
 
-      if (error) throw error;
-      const logId = inserted?.id as string | undefined;
-      if (!logId) throw new Error("No log id returned.");
+      const res = await fetch("/api/daily-logs", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+
+      const bodyJson = (await res.json()) as {
+        id?: string;
+        error?: string;
+        details?: string | null;
+        hint?: string | null;
+        code?: string | null;
+      };
+
+      if (!res.ok) {
+        const errParts = [
+          bodyJson.error,
+          bodyJson.details,
+          bodyJson.hint,
+          bodyJson.code ? `(${bodyJson.code})` : "",
+        ].filter(Boolean);
+        const msg =
+          errParts.join(" — ") || `Save failed (${res.status}).`;
+        console.log("Save error:", bodyJson);
+        showToast({ message: msg, variant: "error" });
+        return;
+      }
+
+      const logId = bodyJson.id;
+      if (!logId) {
+        console.log("Save error:", bodyJson);
+        showToast({
+          message: "Save failed: no log id returned.",
+          variant: "error",
+        });
+        return;
+      }
+
+      if (sessionReceiptIdsRef.current.length) {
+        for (const rid of sessionReceiptIdsRef.current) {
+          const { error: linkErr } = await sb
+            .from("receipts")
+            .update({ daily_log_id: logId })
+            .eq("id", rid);
+          if (linkErr) {
+            console.log("Receipt link error:", linkErr);
+          }
+        }
+        sessionReceiptIdsRef.current = [];
+        setSessionReceipts([]);
+      }
 
       const uploadOne = async (
         file: File,
@@ -778,10 +1104,13 @@ export function DailyLogsNewClient() {
         router.push("/jobs/daily-logs");
       }
     } catch (e) {
-      showToast({
-        message: e instanceof Error ? e.message : "Save failed.",
-        variant: "error",
-      });
+      console.log("Save error:", e);
+      let msg = "Save failed.";
+      if (e instanceof Error) msg = e.message;
+      else if (e && typeof e === "object" && "message" in e) {
+        msg = String((e as { message: unknown }).message);
+      }
+      showToast({ message: msg, variant: "error" });
     } finally {
       setSaving(false);
     }
@@ -933,6 +1262,163 @@ export function DailyLogsNewClient() {
           </div>
         ) : null}
 
+        {aiFollowUp ? (
+          <div
+            className="mt-6 rounded-2xl border-2 border-[#E8C84A]/50 bg-[#0f1824] p-5 shadow-xl shadow-black/40"
+            role="region"
+            aria-label="AI follow-up"
+          >
+            <p className="text-lg font-bold text-[#E8C84A]">
+              AI needs a little more info
+            </p>
+            <p className="mt-1 text-sm text-white/60">
+              Fill in the missing details below, then tap Done.
+            </p>
+            <div className="mt-4 space-y-4">
+              {aiFollowUp.job ? (
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-sm font-semibold text-white">
+                    Which job was this for?
+                  </p>
+                  <select
+                    className={`${inputSm} mt-2`}
+                    value={followUpDraft.jobId}
+                    onChange={(e) =>
+                      setFollowUpDraft((d) => ({
+                        ...d,
+                        jobId: e.target.value,
+                        jobCustom: "",
+                      }))
+                    }
+                  >
+                    <option value="">— Choose a job —</option>
+                    {jobs.map((j) => (
+                      <option key={j.id} value={j.id}>
+                        {formatJobLabel(j)}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs text-white/45">Or enter a new job name</p>
+                  <input
+                    type="text"
+                    className={inputSm}
+                    value={followUpDraft.jobCustom}
+                    onChange={(e) =>
+                      setFollowUpDraft((d) => ({
+                        ...d,
+                        jobCustom: e.target.value,
+                        jobId: "",
+                      }))
+                    }
+                    placeholder="Job not in list yet…"
+                  />
+                </div>
+              ) : null}
+              {aiFollowUp.crew ? (
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-sm font-semibold text-white">
+                    Who else was on site today?
+                  </p>
+                  <p className="mt-1 text-xs text-white/45">
+                    Hold Ctrl/Cmd to select multiple.
+                  </p>
+                  <select
+                    multiple
+                    className={`${inputSm} mt-2 min-h-[7rem]`}
+                    value={followUpDraft.employeeIds}
+                    onChange={(e) => {
+                      const selected = [...e.target.selectedOptions].map(
+                        (o) => o.value,
+                      );
+                      setFollowUpDraft((d) => ({
+                        ...d,
+                        employeeIds: selected,
+                      }));
+                    }}
+                  >
+                    {assignees.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.full_name || u.email}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+              {aiFollowUp.times ? (
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-sm font-semibold text-white">
+                    What time did you start and finish?
+                  </p>
+                  <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="text-xs text-white/50">Start</label>
+                      <input
+                        type="time"
+                        className={inputSm}
+                        value={followUpDraft.checkIn}
+                        onChange={(e) =>
+                          setFollowUpDraft((d) => ({
+                            ...d,
+                            checkIn: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-white/50">End</label>
+                      <input
+                        type="time"
+                        className={inputSm}
+                        value={followUpDraft.checkOut}
+                        onChange={(e) =>
+                          setFollowUpDraft((d) => ({
+                            ...d,
+                            checkOut: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              {aiFollowUp.work ? (
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-sm font-semibold text-white">
+                    What work was completed today?
+                  </p>
+                  <textarea
+                    className={`${ta} mt-2`}
+                    value={followUpDraft.work}
+                    onChange={(e) =>
+                      setFollowUpDraft((d) => ({
+                        ...d,
+                        work: e.target.value,
+                      }))
+                    }
+                    placeholder="Describe the work…"
+                  />
+                </div>
+              ) : null}
+            </div>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={applyFollowUpDone}
+                className="rounded-xl bg-[#E8C84A] px-6 py-2.5 text-sm font-bold text-[#0a1628] hover:bg-[#f0d56e]"
+              >
+                Done
+              </button>
+              <button
+                type="button"
+                onClick={() => setAiFollowUp(null)}
+                className="rounded-xl border border-white/25 px-4 py-2.5 text-sm text-white/80 hover:bg-white/10"
+              >
+                Skip for now
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         {/* SECTION 1 — AI */}
         <section className="mt-8 rounded-2xl border-2 border-[#E8C84A] bg-gradient-to-b from-[#1a2838] to-[#0f1824] p-5 shadow-xl shadow-[#E8C84A]/10">
           <h2 className="text-xl font-bold text-white">🎤 Describe Your Day</h2>
@@ -968,28 +1454,41 @@ export function DailyLogsNewClient() {
               connection to use the microphone.
             </p>
           ) : null}
-          <div className="mt-4 flex flex-wrap items-center gap-3">
+          <div className="mt-4 flex flex-wrap items-start gap-4">
             {voiceEnv === "localhost" || voiceEnv === "needs_https" ? null : (
-              <>
+              <div className="flex flex-col items-center gap-2">
                 <button
                   type="button"
                   onClick={toggleListen}
+                  disabled={processingAi}
                   title={listening ? "Stop listening" : "Start voice input"}
-                  className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 text-xl font-semibold transition-colors ${
+                  className={`inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-white shadow-lg transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E8C84A] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f1824] disabled:opacity-50 ${
                     listening
-                      ? "border-red-400/70 bg-red-500/25 text-red-100"
-                      : "border-[#E8C84A]/60 bg-[#E8C84A]/15 text-[#E8C84A] hover:bg-[#E8C84A]/25"
+                      ? "animate-pulse bg-[#E8C84A] ring-4 ring-[#E8C84A]/90"
+                      : "bg-[#0a1628] ring-2 ring-white/15 hover:bg-[#132a45]"
                   }`}
                 >
                   <span className="sr-only">
-                    {listening ? "Stop listening" : "Speak"}
+                    {listening ? "Stop listening" : "Tap to speak"}
                   </span>
-                  <span aria-hidden>{listening ? "⏹" : "🎤"}</span>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    className="h-7 w-7"
+                    aria-hidden
+                  >
+                    <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 1 1-10 0H5a7 7 0 0 0 6 6.92V20H9v2h6v-2h-2v-2.08A7 7 0 0 0 19 11h-2Z" />
+                  </svg>
                 </button>
-                <span className="text-sm font-bold text-white/90">
-                  {listening ? "⏹ Stop" : "🎤 Speak"}
+                <span className="text-center text-xs font-medium text-white/75">
+                  {processingAi
+                    ? "Processing…"
+                    : listening
+                      ? "Listening…"
+                      : "Tap to speak"}
                 </span>
-              </>
+              </div>
             )}
           </div>
           <button
@@ -1035,24 +1534,70 @@ export function DailyLogsNewClient() {
                   }
                 />
               </div>
-              <div className="sm:col-span-2">
+              <div className="sm:col-span-2" ref={jobComboRef}>
                 <label className="text-xs font-semibold text-white/50">
                   Job
                 </label>
-                <select
+                <p className="mt-0.5 text-[11px] text-white/40">
+                  Search active jobs, pick from the list, or type a new job name.
+                </p>
+                <input
+                  type="text"
                   className={inputSm}
-                  value={form.job_id ?? ""}
-                  onChange={(e) =>
-                    set("job_id")(e.target.value.trim() || null)
-                  }
-                >
-                  <option value="">— None —</option>
-                  {jobs.map((j) => (
-                    <option key={j.id} value={j.id}>
-                      {j.job_number} · {j.job_name}
-                    </option>
-                  ))}
-                </select>
+                  value={jobInputValue}
+                  onChange={(e) => {
+                    setJobInputValue(e.target.value);
+                    setJobMenuOpen(true);
+                  }}
+                  onFocus={() => setJobMenuOpen(true)}
+                  onBlur={() => {
+                    window.setTimeout(() => {
+                      commitJobField();
+                      setJobMenuOpen(false);
+                    }, 150);
+                  }}
+                  placeholder="Type to filter jobs…"
+                  autoComplete="off"
+                />
+                {jobMenuOpen && jobs.length > 0 ? (
+                  <ul
+                    className="mt-1 max-h-56 overflow-auto rounded-lg border border-white/15 bg-[#0a1628] py-1 shadow-xl"
+                    role="listbox"
+                  >
+                    {jobs
+                      .filter((j) => {
+                        const q = jobInputValue.trim().toLowerCase();
+                        if (!q) return true;
+                        const label = formatJobLabel(j).toLowerCase();
+                        return (
+                          label.includes(q) ||
+                          j.job_number.toLowerCase().includes(q) ||
+                          j.job_name.toLowerCase().includes(q)
+                        );
+                      })
+                      .map((j) => (
+                        <li key={j.id}>
+                          <button
+                            type="button"
+                            className={`flex w-full px-3 py-2 text-left text-sm transition-colors ${
+                              aiSuggestedJobId === j.id
+                                ? "bg-[#E8C84A]/25 font-semibold text-[#E8C84A]"
+                                : "text-white/90 hover:bg-white/10"
+                            }`}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => selectJobFromList(j)}
+                          >
+                            {formatJobLabel(j)}
+                            {aiSuggestedJobId === j.id ? (
+                              <span className="ml-2 text-xs font-normal text-[#E8C84A]/90">
+                                (AI match)
+                              </span>
+                            ) : null}
+                          </button>
+                        </li>
+                      ))}
+                  </ul>
+                ) : null}
               </div>
               <div className="sm:col-span-2">
                 <label className="text-xs font-semibold text-white/50">
@@ -1597,6 +2142,69 @@ export function DailyLogsNewClient() {
             <h3 className="text-sm font-semibold uppercase tracking-wide text-[#E8C84A]/90">
               Receipts
             </h3>
+            <ReceiptCapture
+              collapsible
+              title="📷 Capture receipt"
+              jobId={form.job_id}
+              onSaved={(rec) => {
+                sessionReceiptIdsRef.current = [
+                  ...sessionReceiptIdsRef.current,
+                  rec.id,
+                ];
+                void (async () => {
+                  const sbc = createBrowserClient();
+                  const { data: signed } = await sbc.storage
+                    .from("job-receipts")
+                    .createSignedUrl(rec.storage_path, 3600);
+                  setSessionReceipts((prev) => [
+                    ...prev,
+                    {
+                      id: rec.id,
+                      thumbUrl: signed?.signedUrl ?? null,
+                      vendor: rec.vendor_name,
+                      total: Number(rec.total_amount) || 0,
+                    },
+                  ]);
+                })();
+              }}
+            />
+            {sessionReceipts.length > 0 ? (
+              <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                <p className="text-xs font-semibold text-white/60">
+                  Captured this session (links when you save the log)
+                </p>
+                <ul className="mt-2 flex flex-wrap gap-3">
+                  {sessionReceipts.map((s) => (
+                    <li key={s.id} className="w-[5.5rem]">
+                      {s.thumbUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={s.thumbUrl}
+                          alt=""
+                          className="h-16 w-full rounded-md object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-16 w-full items-center justify-center rounded-md bg-white/5 text-[10px] text-white/40">
+                          —
+                        </div>
+                      )}
+                      <p className="mt-1 truncate text-[10px] text-white/55">
+                        {s.vendor ?? "—"}
+                      </p>
+                      <p className="text-xs font-bold text-[#E8C84A]">
+                        {formatReceiptCurrency(s.total)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-3 text-sm font-semibold text-[#E8C84A]">
+                  Session running total:{" "}
+                  {formatReceiptCurrency(
+                    sessionReceipts.reduce((a, b) => a + b.total, 0),
+                  )}
+                </p>
+              </div>
+            ) : null}
             <div>
               <label className="text-xs font-semibold text-white/50">
                 Supply house receipts

@@ -36,6 +36,8 @@ export type ReceiptRow = {
   line_items: ReceiptLineItem[];
   confidence: number | null;
   notes: string | null;
+  /** Optional user memo (DB column `description` when present). */
+  description: string | null;
   scan_raw?: unknown;
 };
 

@@ -64,5 +64,9 @@ export function parseReceiptRow(r: Record<string, unknown>): ReceiptRow {
     line_items,
     confidence: Number.isFinite(confidence) ? confidence : null,
     notes: r.notes != null ? String(r.notes) : null,
+    description:
+      r.description != null && String(r.description).trim() !== ""
+        ? String(r.description)
+        : null,
   };
 }

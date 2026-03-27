@@ -85,7 +85,7 @@ export function TeamCommandCenterCard({
     "text-[11px] font-bold uppercase tracking-[0.1em] text-[#E8C84A]";
   const cardClass = isMarketing
     ? marketingHomeSplit
-      ? "w-full rounded-xl border-2 border-[#E8C84A]/45 bg-white/[0.05] p-4 text-left shadow-lg shadow-black/25 ring-1 ring-[#E8C84A]/20"
+      ? "mx-auto w-full max-w-6xl rounded-xl border border-[#E8C84A]/30 bg-white/[0.05] p-4 text-left shadow-lg shadow-black/25"
       : "rounded-xl border border-white/12 bg-white/[0.06] p-5 text-left shadow-lg shadow-black/25 ring-1 ring-white/[0.08]"
     : compact
       ? "app-card app-card-pad-lg"
@@ -279,9 +279,9 @@ export function TeamCommandCenterCard({
       {loading ? (
         <p className={`mt-2 text-sm ${muted}`}>Loading…</p>
       ) : (
-        <div className="mt-3 grid grid-cols-1 gap-4 md:gap-5 lg:grid-cols-2 lg:items-start">
+        <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start lg:gap-6">
           <div className="min-w-0 space-y-2">
-            <h3 className={sectionHeaderClass}>Who&apos;s on the clock</h3>
+            <h3 className={sectionHeaderClass}>Who&apos;s clocked in today</h3>
             {onClockBlock}
             {workingNames.length > 0 ? (
               <p className={`text-[11px] leading-snug ${muted}`}>
@@ -296,7 +296,7 @@ export function TeamCommandCenterCard({
             {quickLinkButtons}
           </div>
           <div className="min-w-0 space-y-2 border-t border-[#E8C84A]/15 pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
-            <h3 className={sectionHeaderClass}>Active jobs today</h3>
+            <h3 className={sectionHeaderClass}>Active jobs + alerts</h3>
             {activeJobsHeading}
             {jobsList(6, true)}
             {otAlertNames.length > 0 ? (

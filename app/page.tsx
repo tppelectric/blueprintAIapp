@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { HomeMarketingCommandCenter } from "@/components/home-marketing-command-center";
 import { HomeMarketingHeroToolsSection } from "@/components/home-marketing-hero-tools";
 import { HomeIntegrationsSettingsLink } from "@/components/home-integrations-settings-link";
 import { HomeMarketingHeader } from "@/components/home-marketing-header";
@@ -196,6 +197,8 @@ export default function Home() {
         >
           Start new project
         </Link>
+
+        <HomeMarketingCommandCenter />
 
         <HomeMarketingHeroToolsSection>
           <Link

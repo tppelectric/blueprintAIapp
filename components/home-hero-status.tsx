@@ -8,7 +8,7 @@ import { canViewTeamClock } from "@/lib/user-roles";
 /**
  * Homepage hero for users without the marketing Command Center: time card +
  * team widget (when allowed). Admin / super_admin Command Center lives in
- * HomeMarketingHeroToolsSection on `app/page.tsx`.
+ * `HomeMarketingCommandCenter` and `HomeMarketingHeroToolsSection` on `app/page.tsx`.
  */
 export function HomeHeroStatus() {
   const { role, loading } = useUserRole();

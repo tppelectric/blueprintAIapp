@@ -1,23 +1,49 @@
 import type { ReceiptLineItem, ReceiptRow } from "@/lib/receipts-types";
 
-export function parseReceiptRow(r: Record<string, unknown>): ReceiptRow {
-  let line_items: ReceiptLineItem[] = [];
-  const li = r.line_items;
-  if (Array.isArray(li)) line_items = li as ReceiptLineItem[];
-  else if (typeof li === "string") {
+function parseLineItemsJson(raw: unknown): ReceiptLineItem[] {
+  const li =
+    raw !== undefined && raw !== null
+      ? raw
+      : undefined;
+  if (li === undefined) return [];
+  if (Array.isArray(li)) return li as ReceiptLineItem[];
+  if (typeof li === "string") {
     try {
-      line_items = JSON.parse(li) as ReceiptLineItem[];
+      return JSON.parse(li) as ReceiptLineItem[];
     } catch {
-      line_items = [];
+      return [];
     }
   }
+  return [];
+}
+
+/**
+ * Normalize a `receipts` row from PostgREST into the app `ReceiptRow` shape.
+ * Supports current DB columns (`file_path`, `line_items_json`, `employee_id`,
+ * `ai_confidence`) and legacy names (`storage_path`, `line_items`, `uploaded_by`,
+ * `confidence`).
+ */
+export function parseReceiptRow(r: Record<string, unknown>): ReceiptRow {
+  const lineSource =
+    r.line_items_json !== undefined && r.line_items_json !== null
+      ? r.line_items_json
+      : r.line_items;
+  const line_items = parseLineItemsJson(lineSource);
+
+  const uploadedBy = r.employee_id ?? r.uploaded_by;
+  const storagePath = r.file_path ?? r.storage_path;
+
+  const confRaw = r.ai_confidence ?? r.confidence;
+  const confidence =
+    confRaw != null && confRaw !== "" ? Number(confRaw) : null;
+
   return {
     id: String(r.id),
-    created_at: String(r.created_at),
-    uploaded_by: String(r.uploaded_by),
+    created_at: String(r.created_at ?? ""),
+    uploaded_by: uploadedBy != null ? String(uploadedBy) : "",
     job_id: r.job_id ? String(r.job_id) : null,
     daily_log_id: r.daily_log_id ? String(r.daily_log_id) : null,
-    storage_path: String(r.storage_path),
+    storage_path: storagePath != null ? String(storagePath) : "",
     vendor_name: r.vendor_name != null ? String(r.vendor_name) : null,
     receipt_date: r.receipt_date != null ? String(r.receipt_date) : null,
     subtotal:
@@ -36,10 +62,7 @@ export function parseReceiptRow(r: Record<string, unknown>): ReceiptRow {
     card_type: r.card_type != null ? String(r.card_type) : null,
     receipt_category: String(r.receipt_category ?? "Other"),
     line_items,
-    confidence:
-      r.confidence != null && r.confidence !== ""
-        ? Number(r.confidence)
-        : null,
+    confidence: Number.isFinite(confidence) ? confidence : null,
     notes: r.notes != null ? String(r.notes) : null,
   };
 }

@@ -9,6 +9,7 @@ import {
   type ReceiptRow,
 } from "@/lib/receipts-types";
 import type { ScanReceiptResult } from "@/lib/receipt-scan-types";
+import { parseReceiptRow } from "@/lib/receipts-parse";
 import { createBrowserClient } from "@/lib/supabase/client";
 
 const JOB_STATUSES = ["Lead", "Quoted", "Active", "On Hold"] as const;
@@ -22,7 +23,7 @@ function formatJobLabel(j: JobOpt): string {
   return a || b || "";
 }
 
-/** Persist as 0–1 (2 decimal places); treat ≤0 as unknown (null). */
+/** `receipts.ai_confidence`: 0–1, two decimals; null if unknown. */
 function receiptConfidenceToDb(raw: number): number | null {
   if (!Number.isFinite(raw) || raw <= 0) return null;
   let v = raw;
@@ -500,12 +501,13 @@ export function ReceiptCapture({
       const sub = subtotal.trim() ? parseFloat(subtotal) : null;
       const tax = taxAmount.trim() ? parseFloat(taxAmount) : null;
       const jobIdValue = assignedJobId?.trim() || null;
+      /** Keys must match `public.receipts` columns (no legacy aliases). */
       const row = {
         id,
-        uploaded_by: user.id,
         job_id: jobIdValue,
         daily_log_id: dailyLogId?.trim() || null,
-        storage_path: path,
+        file_path: path,
+        file_name: file.name,
         vendor_name: vendorName.trim() || null,
         receipt_date: receiptDate.trim() || null,
         subtotal: sub != null && !Number.isNaN(sub) ? sub : null,
@@ -515,14 +517,19 @@ export function ReceiptCapture({
         card_last_four: cardLastFour.trim() || null,
         card_type: cardType.trim() || null,
         receipt_category: category,
-        line_items: lineItems,
-        confidence: receiptConfidenceToDb(confidence),
+        line_items_json: lineItems,
         notes: notes.trim() || null,
+        ai_confidence: receiptConfidenceToDb(confidence),
+        ai_extracted: true,
+        assignment_status: jobIdValue ? "assigned" : "unassigned",
+        employee_id: user.id,
+        employee_name: null,
+        thumbnail_path: null,
       };
 
       setReceiptProgress({
-        pct: 94,
-        label: "Saving receipt...",
+        pct: 90,
+        label: "Linking to job...",
         variant: "normal",
       });
 
@@ -542,16 +549,7 @@ export function ReceiptCapture({
         throw new Error(bits.join(" — ") || "Insert failed");
       }
 
-      const rec = inserted as ReceiptRow;
-      if (Array.isArray(rec.line_items)) {
-        /* ok */
-      } else if (typeof rec.line_items === "string") {
-        try {
-          rec.line_items = JSON.parse(rec.line_items) as ReceiptLineItem[];
-        } catch {
-          rec.line_items = [];
-        }
-      }
+      const rec = parseReceiptRow(inserted as Record<string, unknown>);
 
       const linkedJob = jobIdValue
         ? jobs.find((j) => j.id === jobIdValue)

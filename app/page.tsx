@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { HomeHeroStatus } from "@/components/home-hero-status";
+import { HomeMarketingHeroToolsSection } from "@/components/home-marketing-hero-tools";
 import { HomeIntegrationsSettingsLink } from "@/components/home-integrations-settings-link";
 import { HomeMarketingHeader } from "@/components/home-marketing-header";
 import { HomepageApiUsageWidget } from "@/components/homepage-api-usage-widget";
@@ -181,7 +181,7 @@ export default function Home() {
 
       <main
         id="product"
-        className="mx-auto flex w-full max-w-6xl flex-1 flex-col items-center px-4 py-16 text-center md:px-8 md:py-24"
+        className="mx-auto flex w-full max-w-6xl flex-1 flex-col items-stretch px-4 py-16 text-center md:px-8 md:py-24"
       >
         <h1 className="max-w-3xl text-2xl font-semibold leading-tight tracking-tight text-white sm:text-3xl md:text-4xl">
           Blueprint AI — Electrical Takeoff System
@@ -197,9 +197,7 @@ export default function Home() {
           Start new project
         </Link>
 
-        <HomeHeroStatus />
-
-        <div className="mx-auto mt-14 grid w-full grid-cols-1 gap-6 sm:mt-16 sm:grid-cols-2 lg:grid-cols-3">
+        <HomeMarketingHeroToolsSection>
           <Link
             href="/jobs/daily-logs"
             className="group card-pad-mobile flex flex-col rounded-xl border border-orange-500/25 bg-white/[0.04] p-6 text-left shadow-lg shadow-black/25 ring-1 ring-orange-500/15 transition-colors hover:border-orange-400/55 hover:bg-orange-950/20 hover:ring-orange-400/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-400/50"
@@ -362,7 +360,7 @@ export default function Home() {
               Open tool →
             </span>
           </Link>
-        </div>
+        </HomeMarketingHeroToolsSection>
 
         <div className="mt-14 w-full sm:mt-16">
           <h2 className="sr-only">API usage and scan costs</h2>

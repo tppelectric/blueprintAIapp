@@ -57,6 +57,7 @@ export function WideAppHeader({
   const dashActive =
     active === "dashboard" || pathname.startsWith("/dashboard");
   const jobsActive = active === "jobs" || pathname.startsWith("/jobs");
+  const receiptsActive = pathname.startsWith("/receipts");
   const inventoryActive =
     active === "inventory" || pathname.startsWith("/inventory");
   const custActive =
@@ -96,6 +97,13 @@ export function WideAppHeader({
       ) : (
         <Link href="/jobs" className={NAV_IDLE}>
           Jobs
+        </Link>
+      )}
+      {receiptsActive ? (
+        <span className={NAV_ACTIVE}>Receipts</span>
+      ) : (
+        <Link href="/receipts" className={NAV_IDLE}>
+          Receipts
         </Link>
       )}
       {inventoryActive ? (

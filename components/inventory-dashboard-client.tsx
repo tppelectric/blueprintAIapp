@@ -884,6 +884,7 @@ export function InventoryDashboardClient() {
               />
             ) : null}
             {assets.length > 0 ? (
+              <>
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {filteredAssets.map((a) => (
                 <div
@@ -987,6 +988,7 @@ export function InventoryDashboardClient() {
             {filteredAssets.length === 0 ? (
               <p className="text-sm text-white/45">No assets match filters.</p>
             ) : null}
+              </>
             ) : null}
           </section>
         ) : null}
@@ -1274,6 +1276,14 @@ export function InventoryDashboardClient() {
               Select assets, locations, or materials, then download a PDF sheet
               of QR codes. Codes open the scan page for quick check-in/out.
             </p>
+            {assets.length === 0 &&
+            locations.length === 0 &&
+            materials.length === 0 ? (
+              <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                Add at least one asset, location, or material in the other tabs
+                before you can print QR codes.
+              </p>
+            ) : null}
             <div className="flex flex-wrap items-center gap-3">
               <span className="text-xs text-white/50">Grid per page</span>
               <div className="flex gap-1">

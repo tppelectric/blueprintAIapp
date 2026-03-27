@@ -236,6 +236,7 @@ export function DashboardClient() {
   const showTeamClock = !roleLoading && canViewTeamClock(role);
   const showReceiptsAdminCard =
     !roleLoading && canManageReceiptsAdmin(role);
+  const showAdminUsersQuick = !roleLoading && role === "super_admin";
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -597,6 +598,14 @@ export function DashboardClient() {
                 className="btn-secondary btn-h-11 w-full border-violet-400/35 text-violet-200"
               >
                 ⚙️ Settings
+              </Link>
+            ) : null}
+            {showAdminUsersQuick ? (
+              <Link
+                href="/admin/users"
+                className="btn-secondary btn-h-11 w-full border-[#E8C84A]/35 text-[#E8C84A]"
+              >
+                User management
               </Link>
             ) : null}
             <Link

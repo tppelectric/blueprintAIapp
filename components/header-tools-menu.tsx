@@ -36,7 +36,9 @@ export function HeaderToolsMenu({
     pathname.startsWith("/tools") ||
     pathname.startsWith("/customers") ||
     pathname.startsWith("/admin") ||
-    pathname.startsWith("/inventory");
+    pathname.startsWith("/inventory") ||
+    pathname.startsWith("/receipts") ||
+    pathname.startsWith("/jobs/daily-logs");
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -82,6 +84,30 @@ export function HeaderToolsMenu({
           onClick={() => setOpen(false)}
         >
           Customers
+        </Link>
+        <Link
+          href="/receipts"
+          role="menuitem"
+          className={`block px-4 py-2.5 text-sm font-medium transition-colors duration-200 hover:bg-white/10 ${
+            pathname.startsWith("/receipts")
+              ? "bg-emerald-500/15 text-emerald-200"
+              : "text-white/90"
+          }`}
+          onClick={() => setOpen(false)}
+        >
+          Receipts
+        </Link>
+        <Link
+          href="/jobs/daily-logs"
+          role="menuitem"
+          className={`block px-4 py-2.5 text-sm font-medium transition-colors duration-200 hover:bg-white/10 ${
+            pathname.startsWith("/jobs/daily-logs")
+              ? "bg-orange-500/15 text-orange-200"
+              : "text-white/90"
+          }`}
+          onClick={() => setOpen(false)}
+        >
+          Daily logs
         </Link>
         <Link
           href="/inventory"

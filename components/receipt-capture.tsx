@@ -225,6 +225,8 @@ export function ReceiptCapture({
       ).split(";")[0]!.trim();
       const imageBase64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
 
+      const jobIdForScan =
+        assignedJobId?.trim() || propJobId?.trim() || null;
       const r = await fetch("/api/tools/scan-receipt", {
         method: "POST",
         credentials: "include",
@@ -232,8 +234,8 @@ export function ReceiptCapture({
         body: JSON.stringify({
           imageBase64,
           mediaType,
-          jobId: propJobId ?? null,
-          dailyLogId: dailyLogId ?? null,
+          jobId: jobIdForScan,
+          dailyLogId: dailyLogId?.trim() || null,
         }),
       });
       const j = (await r.json()) as {
@@ -242,8 +244,9 @@ export function ReceiptCapture({
         error?: string;
       };
       if (!r.ok || !j.ok || !j.data) {
+        const base = (j.error ?? "").trim() || "Could not read receipt.";
         showToast({
-          message: j.error ?? "Could not read receipt.",
+          message: r.status ? `${base} (HTTP ${r.status})` : base,
           variant: "error",
         });
         setPhase("idle");

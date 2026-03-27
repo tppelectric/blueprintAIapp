@@ -44,6 +44,9 @@ const ALLOWED_MEDIA = new Set([
   "image/webp",
 ]);
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export async function POST(request: Request) {
   const rl = checkAiRouteRateLimit(request, "scan-receipt");
   if (!rl.allowed) {
@@ -114,6 +117,32 @@ export async function POST(request: Request) {
     );
   }
 
+  const jobIdRaw =
+    body.jobId == null ? "" : String(body.jobId).trim();
+  const dailyLogIdRaw =
+    body.dailyLogId == null ? "" : String(body.dailyLogId).trim();
+
+  let userContext = "";
+  if (jobIdRaw && UUID_RE.test(jobIdRaw)) {
+    const { data: job } = await supabase
+      .from("jobs")
+      .select("job_number,job_name")
+      .eq("id", jobIdRaw)
+      .maybeSingle();
+    if (job) {
+      const num = String(job.job_number ?? "").trim();
+      const name = String(job.job_name ?? "").trim();
+      const label = [num, name].filter(Boolean).join(" · ");
+      if (label) {
+        userContext += ` User context: this receipt is being captured for job: ${label}.`;
+      }
+    }
+  }
+  if (dailyLogIdRaw && UUID_RE.test(dailyLogIdRaw)) {
+    userContext +=
+      " User context: this scan is part of a field daily log (materials / expenses may be job-related).";
+  }
+
   const anthropic = new Anthropic({ apiKey });
 
   let rawText: string;
@@ -142,7 +171,9 @@ export async function POST(request: Request) {
               },
               {
                 type: "text",
-                text: "Extract receipt data as JSON only per the schema.",
+                text:
+                  "Extract receipt data as JSON only per the schema." +
+                  userContext,
               },
             ],
           },

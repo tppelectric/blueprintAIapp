@@ -188,7 +188,7 @@ export default function Home() {
           <span className="block">Blueprint AI - TPP Electrical</span>
           <span className="block">Contractors, Inc</span>
         </h1>
-        <p className="mt-5 max-w-xl text-sm text-white/50 sm:text-base">
+        <p className="mx-auto mt-5 max-w-xl text-center text-sm text-white/50 sm:text-base">
           Est. 1982 · Powered by Blueprint AI
         </p>
 

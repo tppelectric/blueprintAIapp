@@ -510,6 +510,8 @@ No project-specific symbol legend is on file for this project — use standard N
   const baseUserText =
     "Analyze this blueprint page. Return ONLY the JSON object with electrical_items and rooms arrays as specified.";
 
+  const usageTotals = { inputTokens: 0, outputTokens: 0 };
+
   async function runClaudeTurn(
     userText: string,
     imageB64: string,
@@ -642,6 +644,9 @@ No project-specific symbol legend is on file for this project — use standard N
         pageNumber,
         scanType: body.scanType,
         claudeTurns: claudeTurnsUsed,
+        inputTokens: usageTotals.inputTokens,
+        outputTokens: usageTotals.outputTokens,
+        model: MODEL,
       });
       return NextResponse.json({
         items: [],
@@ -768,6 +773,9 @@ No project-specific symbol legend is on file for this project — use standard N
       pageNumber,
       scanType: body.scanType,
       claudeTurns: claudeTurnsUsed,
+      inputTokens: usageTotals.inputTokens,
+      outputTokens: usageTotals.outputTokens,
+      model: MODEL,
     });
     return NextResponse.json({
       items: [],
@@ -908,6 +916,9 @@ No project-specific symbol legend is on file for this project — use standard N
     pageNumber,
     scanType: body.scanType,
     claudeTurns: claudeTurnsUsed,
+    inputTokens: usageTotals.inputTokens,
+    outputTokens: usageTotals.outputTokens,
+    model: MODEL,
   });
 
   return NextResponse.json({

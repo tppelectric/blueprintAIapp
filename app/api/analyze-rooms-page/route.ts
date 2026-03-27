@@ -11,6 +11,10 @@ import {
   withClaudeOverloadRetries,
 } from "@/lib/ai-api-retries";
 import { checkAiRouteRateLimit } from "@/lib/rate-limit";
+import {
+  anthropicUsageFromMessage,
+  recordApiUsage,
+} from "@/lib/record-api-usage";
 
 export const maxDuration = 180;
 
@@ -150,6 +154,8 @@ export async function POST(request: Request) {
 
   const anthropic = new Anthropic({ apiKey });
 
+  const usageTotals = { inputTokens: 0, outputTokens: 0 };
+
   async function runClaude(
     userText: string,
     b64: string,
@@ -179,6 +185,9 @@ export async function POST(request: Request) {
         ],
       }),
     );
+    const u = anthropicUsageFromMessage(msg);
+    usageTotals.inputTokens += u.inputTokens;
+    usageTotals.outputTokens += u.outputTokens;
     if (!("content" in msg) || !Array.isArray(msg.content)) {
       throw new Error("Invalid Claude response shape.");
     }
@@ -322,6 +331,15 @@ export async function POST(request: Request) {
   const rooms = insertedRooms ?? [];
   const total_sqft = sumSqFt(rooms);
   const floor_count = payload.floor_count;
+
+  await recordApiUsage({
+    route: "analyze-rooms-page",
+    model: MODEL,
+    inputTokens: usageTotals.inputTokens,
+    outputTokens: usageTotals.outputTokens,
+    projectId,
+    pageNumber,
+  });
 
   return NextResponse.json({
     rooms,

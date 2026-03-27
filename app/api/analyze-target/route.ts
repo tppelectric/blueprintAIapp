@@ -12,6 +12,14 @@ import { buildAnalysisLegendAppendix } from "@/lib/analysis-legend-context";
 import { MAX_IMAGE_BYTES } from "@/lib/pdf-page-image";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { checkAiRouteRateLimit } from "@/lib/rate-limit";
+import {
+  CLAUDE_OVERLOADED_USER_MESSAGE,
+  withClaudeOverloadRetries,
+} from "@/lib/ai-api-retries";
+import {
+  anthropicUsageFromMessage,
+  recordApiUsage,
+} from "@/lib/record-api-usage";
 
 export const maxDuration = 120;
 
@@ -163,36 +171,50 @@ export async function POST(request: Request) {
 
   let assistantText: string;
   try {
-    const msg = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 16384,
-      system: systemUsed,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image",
+    const claudeMsg = await withClaudeOverloadRetries(() =>
+      anthropic.messages.create({
+        model: MODEL,
+        max_tokens: 16384,
+        system: systemUsed,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image",
                 source: {
                   type: "base64",
                   media_type: claudeMediaType,
                   data: imageBase64,
                 },
-            },
-            { type: "text", text: userLine },
-          ],
-        },
-      ],
+              },
+              { type: "text", text: userLine },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const usage = anthropicUsageFromMessage(claudeMsg);
+    await recordApiUsage({
+      route: "analyze-target",
+      model: MODEL,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      projectId,
+      pageNumber,
     });
 
-    assistantText = msg.content
+    assistantText = claudeMsg.content
       .map((b) => (b.type === "text" ? b.text : ""))
       .join("\n")
       .trim();
   } catch (e) {
     const message =
       e instanceof Error ? e.message : "Claude API request failed.";
-    return NextResponse.json({ error: message }, { status: 502 });
+    const status =
+      message === CLAUDE_OVERLOADED_USER_MESSAGE ? 503 : 502;
+    return NextResponse.json({ error: message }, { status });
   }
 
   let payload: { electrical_items: unknown[]; rooms: unknown[] };

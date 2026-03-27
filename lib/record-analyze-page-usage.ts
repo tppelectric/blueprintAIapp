@@ -3,13 +3,19 @@ import {
   type ScanModeId,
   scanModeById,
 } from "@/lib/scan-modes";
+import { recordApiUsage } from "@/lib/record-api-usage";
 
 const SCAN_TYPES = new Set<ScanModeId>(["quick", "standard", "deep", "manual"]);
 
+function scanTypeFromBody(raw: string | undefined): ScanModeId {
+  const t = raw?.trim().toLowerCase();
+  return t && SCAN_TYPES.has(t as ScanModeId) ? (t as ScanModeId) : "standard";
+}
+
 /**
  * Inserts one api_usage row after a successful Claude analyze-page run.
- * Called from the analyze-page API so usage is recorded even if the client
- * disconnects before refreshing totals.
+ * Prefers token-derived Claude cost when tokens are present; otherwise uses
+ * legacy per-mode estimates (and OpenAI line item for standard/deep).
  */
 export async function recordAnalyzePageApiUsage(params: {
   projectId: string;
@@ -17,12 +23,31 @@ export async function recordAnalyzePageApiUsage(params: {
   scanType: string | undefined;
   /** Number of Claude message turns (2 when a JSON-repair pass ran). */
   claudeTurns: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  model?: string;
+  userId?: string | null;
 }): Promise<void> {
-  const raw = params.scanType?.trim().toLowerCase();
-  const st: ScanModeId = raw && SCAN_TYPES.has(raw as ScanModeId)
-    ? (raw as ScanModeId)
-    : "standard";
+  const st = scanTypeFromBody(params.scanType);
   const meta = scanModeById(st);
+  const tokenIn = Math.max(0, Math.floor(params.inputTokens ?? 0));
+  const tokenOut = Math.max(0, Math.floor(params.outputTokens ?? 0));
+
+  if (tokenIn + tokenOut > 0) {
+    await recordApiUsage({
+      route: "analyze-page",
+      model: params.model ?? "claude-sonnet-4-6",
+      inputTokens: tokenIn,
+      outputTokens: tokenOut,
+      openaiCostUsd: meta.openaiCostPerPage,
+      userId: params.userId,
+      projectId: params.projectId,
+      pageNumber: params.pageNumber,
+      blueprintScanType: st,
+    });
+    return;
+  }
+
   const turns = Math.max(1, Math.min(4, Math.floor(params.claudeTurns)));
   const claudeCost = meta.claudeCostPerPage * turns;
   const openaiCost = meta.openaiCostPerPage;

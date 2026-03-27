@@ -10,6 +10,10 @@ import {
   extractReceiptJsonString,
   normalizeScanReceiptJson,
 } from "@/lib/receipt-scan-types";
+import {
+  anthropicUsageFromMessage,
+  recordApiUsage,
+} from "@/lib/record-api-usage";
 
 export const maxDuration = 120;
 
@@ -147,7 +151,7 @@ export async function POST(request: Request) {
 
   let rawText: string;
   try {
-    const msg = await withClaudeOverloadRetries(() =>
+    const claudeMsg = await withClaudeOverloadRetries(() =>
       anthropic.messages.create({
         model: MODEL,
         max_tokens: 4096,
@@ -180,7 +184,16 @@ export async function POST(request: Request) {
         ],
       }),
     );
-    rawText = msg.content
+    const usage = anthropicUsageFromMessage(claudeMsg);
+    await recordApiUsage({
+      route: "scan-receipt",
+      model: MODEL,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      userId: user.id,
+      projectId: null,
+    });
+    rawText = claudeMsg.content
       .map((b) => (b.type === "text" ? b.text : ""))
       .join("\n")
       .trim();

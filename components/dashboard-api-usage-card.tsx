@@ -2,12 +2,20 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useUserRole } from "@/hooks/use-user-role";
+import {
+  emptyUsageCostBreakdown,
+  USAGE_BREAKDOWN_ROWS,
+  type UsageCostBreakdown,
+} from "@/lib/api-usage-categories";
 
 type ScopeAgg = {
   pagesAnalyzed: number;
   claudeCost: number;
   openaiCost: number;
   totalCost: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  breakdown: UsageCostBreakdown;
 };
 
 function money(n: number): string {
@@ -15,25 +23,52 @@ function money(n: number): string {
   return `$${v.toFixed(2)}`;
 }
 
+function fmtTok(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return "0";
+  return Math.round(n).toLocaleString("en-US");
+}
+
+function parseAgg(j: Record<string, unknown>): ScopeAgg {
+  const b = j.breakdown as UsageCostBreakdown | undefined;
+  const base = emptyUsageCostBreakdown();
+  const breakdown: UsageCostBreakdown = b
+    ? {
+        blueprintScanning: Number(b.blueprintScanning ?? 0),
+        receiptScanning: Number(b.receiptScanning ?? 0),
+        dailyLogAi: Number(b.dailyLogAi ?? 0),
+        projectAnalysis: Number(b.projectAnalysis ?? 0),
+        necChecker: Number(b.necChecker ?? 0),
+        otherAi: Number(b.otherAi ?? 0),
+      }
+    : base;
+  return {
+    pagesAnalyzed: Number(j.pagesAnalyzed ?? 0),
+    claudeCost: Number(j.claudeCost ?? 0),
+    openaiCost: Number(j.openaiCost ?? 0),
+    totalCost: Number(j.totalCost ?? 0),
+    totalInputTokens: Number(j.totalInputTokens ?? 0),
+    totalOutputTokens: Number(j.totalOutputTokens ?? 0),
+    breakdown,
+  };
+}
+
 async function fetchScope(
   scope: "today" | "month" | "all",
 ): Promise<ScopeAgg> {
   const r = await fetch(`/api/api-usage?scope=${scope}`);
-  const j = (await r.json()) as ScopeAgg & { error?: string };
+  const j = (await r.json()) as Record<string, unknown> & { error?: string };
   if (!r.ok || j.error) {
     return {
       pagesAnalyzed: 0,
       claudeCost: 0,
       openaiCost: 0,
       totalCost: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      breakdown: emptyUsageCostBreakdown(),
     };
   }
-  return {
-    pagesAnalyzed: Number(j.pagesAnalyzed ?? 0),
-    claudeCost: Number(j.claudeCost ?? 0),
-    openaiCost: Number(j.openaiCost ?? 0),
-    totalCost: Number(j.totalCost ?? 0),
-  };
+  return parseAgg(j);
 }
 
 export function DashboardApiUsageCard() {
@@ -118,6 +153,9 @@ function UsageBlock({
     claudeCost: 0,
     openaiCost: 0,
     totalCost: 0,
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    breakdown: emptyUsageCostBreakdown(),
   };
 
   const pagesLabel =
@@ -133,22 +171,27 @@ function UsageBlock({
       <ul className="mt-2 space-y-2 text-white/80">
         <li className="tabular-nums leading-snug">
           <span className="text-white/60">{pagesLabel}:</span>{" "}
-          {d.pagesAnalyzed} page{d.pagesAnalyzed === 1 ? "" : "s"} analyzed
+          {d.pagesAnalyzed} tracked call
+          {d.pagesAnalyzed === 1 ? "" : "s"}
           {" — "}
           <span className="font-semibold text-[#E8C84A]">
             {money(d.totalCost)}
           </span>
         </li>
+        <li className="text-xs text-white/55 tabular-nums">
+          Tokens: {fmtTok(d.totalInputTokens)} in ·{" "}
+          {fmtTok(d.totalOutputTokens)} out
+        </li>
         {!allTime ? (
           <>
             <li className="text-xs text-white/55">
-              Claude (est.):{" "}
+              Claude (incl. in total):{" "}
               <span className="tabular-nums text-white/75">
                 {money(d.claudeCost)}
               </span>
             </li>
             <li className="text-xs text-white/55">
-              OpenAI (est.):{" "}
+              OpenAI (recorded add-ons):{" "}
               <span className="tabular-nums text-white/75">
                 {money(d.openaiCost)}
               </span>
@@ -156,6 +199,23 @@ function UsageBlock({
           </>
         ) : null}
       </ul>
+      <div className="mt-3 border-t border-white/10 pt-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-white/45">
+          Cost by feature
+        </p>
+        <ul className="mt-1.5 space-y-1 text-xs text-white/75">
+          {USAGE_BREAKDOWN_ROWS.map(({ key, label }) => (
+            <li key={key} className="flex justify-between gap-2 tabular-nums">
+              <span className="text-white/55">{label}</span>
+              <span>{money(d.breakdown[key])}</span>
+            </li>
+          ))}
+          <li className="flex justify-between gap-2 border-t border-white/10 pt-1.5 font-semibold tabular-nums text-[#E8C84A]">
+            <span>TOTAL</span>
+            <span>{money(d.totalCost)}</span>
+          </li>
+        </ul>
+      </div>
     </div>
   );
 }

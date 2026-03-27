@@ -3,10 +3,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { useUserRole } from "@/hooks/use-user-role";
+import {
+  emptyUsageCostBreakdown,
+  USAGE_BREAKDOWN_ROWS,
+  type UsageCostBreakdown,
+} from "@/lib/api-usage-categories";
 
 type ScopeAgg = {
   pagesAnalyzed: number;
   totalCost: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  breakdown: UsageCostBreakdown;
 };
 
 function money(n: number): string {
@@ -14,18 +22,65 @@ function money(n: number): string {
   return `$${v.toFixed(2)}`;
 }
 
+function fmtTok(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return "0";
+  return Math.round(n).toLocaleString("en-US");
+}
+
+function parseAgg(j: Record<string, unknown>): ScopeAgg {
+  const b = j.breakdown as UsageCostBreakdown | undefined;
+  const base = emptyUsageCostBreakdown();
+  const breakdown: UsageCostBreakdown = b
+    ? {
+        blueprintScanning: Number(b.blueprintScanning ?? 0),
+        receiptScanning: Number(b.receiptScanning ?? 0),
+        dailyLogAi: Number(b.dailyLogAi ?? 0),
+        projectAnalysis: Number(b.projectAnalysis ?? 0),
+        necChecker: Number(b.necChecker ?? 0),
+        otherAi: Number(b.otherAi ?? 0),
+      }
+    : base;
+  return {
+    pagesAnalyzed: Number(j.pagesAnalyzed ?? 0),
+    totalCost: Number(j.totalCost ?? 0),
+    totalInputTokens: Number(j.totalInputTokens ?? 0),
+    totalOutputTokens: Number(j.totalOutputTokens ?? 0),
+    breakdown,
+  };
+}
+
 async function fetchScope(
   scope: "today" | "month" | "all",
 ): Promise<ScopeAgg> {
   const r = await fetch(`/api/api-usage?scope=${scope}`);
-  const j = (await r.json()) as ScopeAgg & { error?: string };
+  const j = (await r.json()) as Record<string, unknown> & { error?: string };
   if (!r.ok || j.error) {
-    return { pagesAnalyzed: 0, totalCost: 0 };
+    return {
+      pagesAnalyzed: 0,
+      totalCost: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      breakdown: emptyUsageCostBreakdown(),
+    };
   }
-  return {
-    pagesAnalyzed: Number(j.pagesAnalyzed ?? 0),
-    totalCost: Number(j.totalCost ?? 0),
-  };
+  return parseAgg(j);
+}
+
+function BreakdownList({ b, total }: { b: UsageCostBreakdown; total: number }) {
+  return (
+    <ul className="mt-2 space-y-1.5 text-xs text-white/80 sm:text-sm">
+      {USAGE_BREAKDOWN_ROWS.map(({ key, label }) => (
+        <li key={key} className="flex justify-between gap-3 tabular-nums">
+          <span className="text-white/60">{label}:</span>
+          <span>{money(b[key])}</span>
+        </li>
+      ))}
+      <li className="flex justify-between gap-3 border-t border-white/10 pt-2 font-semibold tabular-nums text-[#E8C84A]">
+        <span>TOTAL:</span>
+        <span>{money(total)}</span>
+      </li>
+    </ul>
+  );
 }
 
 export function HomepageApiUsageWidget() {
@@ -82,9 +137,32 @@ export function HomepageApiUsageWidget() {
   if (!sessionReady || !loggedIn) return null;
   if (roleLoading || !canSeeApiCosts) return null;
 
-  const t = today ?? { pagesAnalyzed: 0, totalCost: 0 };
-  const mo = month ?? { pagesAnalyzed: 0, totalCost: 0 };
-  const al = all ?? { pagesAnalyzed: 0, totalCost: 0 };
+  const t = today ?? {
+    pagesAnalyzed: 0,
+    totalCost: 0,
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    breakdown: emptyUsageCostBreakdown(),
+  };
+  const mo = month ?? {
+    pagesAnalyzed: 0,
+    totalCost: 0,
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    breakdown: emptyUsageCostBreakdown(),
+  };
+  const al = all ?? {
+    pagesAnalyzed: 0,
+    totalCost: 0,
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    breakdown: emptyUsageCostBreakdown(),
+  };
+
+  const tokToday =
+    t.totalInputTokens + t.totalOutputTokens > 0
+      ? `${fmtTok(t.totalInputTokens)} in + ${fmtTok(t.totalOutputTokens)} out`
+      : "0 tokens";
 
   return (
     <section
@@ -102,8 +180,9 @@ export function HomepageApiUsageWidget() {
             API usage
           </span>
           <p className="mt-1 text-xs text-white/55 sm:text-sm">
-            Today: {t.pagesAnalyzed} page{t.pagesAnalyzed === 1 ? "" : "s"}{" "}
-            analyzed — {money(t.totalCost)}
+            Today: {tokToday} — {money(t.totalCost)} ·{" "}
+            {t.pagesAnalyzed} tracked call
+            {t.pagesAnalyzed === 1 ? "" : "s"}
           </p>
         </button>
         <div className="flex shrink-0 items-center gap-2">
@@ -123,7 +202,9 @@ export function HomepageApiUsageWidget() {
             onClick={() => setOpen((v) => !v)}
             className="rounded-lg px-2 py-2 text-[#E8C84A]"
             aria-expanded={open}
-            aria-label={open ? "Collapse API usage details" : "Expand API usage details"}
+            aria-label={
+              open ? "Collapse API usage details" : "Expand API usage details"
+            }
           >
             {open ? "▾" : "▸"}
           </button>
@@ -132,35 +213,41 @@ export function HomepageApiUsageWidget() {
       {open ? (
         <div className="px-4 pb-4 pt-3 sm:px-5 sm:pb-5">
           <p className="text-xs text-white/50 sm:text-sm">
-            Totals from blueprint scans (Claude analyze-page). Use Refresh after
-            scanning.
+            Costs by feature (Claude + recorded OpenAI add-ons). Expand totals
+            include all AI routes.
           </p>
-          <ul className="mt-3 space-y-2.5 text-sm text-white/90">
-            <li className="tabular-nums">
-              <span className="text-white/65">Today:</span>{" "}
-              {t.pagesAnalyzed} page{t.pagesAnalyzed === 1 ? "" : "s"} analyzed
-              {" — "}
-              <span className="font-semibold text-[#E8C84A]">
-                {money(t.totalCost)}
-              </span>
-            </li>
-            <li className="tabular-nums">
-              <span className="text-white/65">This month:</span>{" "}
-              {mo.pagesAnalyzed} page{mo.pagesAnalyzed === 1 ? "" : "s"}
-              {" — "}
-              <span className="font-semibold text-[#E8C84A]">
-                {money(mo.totalCost)}
-              </span>
-            </li>
-            <li className="tabular-nums">
-              <span className="text-white/65">All time:</span>{" "}
-              {al.pagesAnalyzed} page{al.pagesAnalyzed === 1 ? "" : "s"}
-              {" — "}
-              <span className="font-semibold text-[#E8C84A]">
-                {money(al.totalCost)}
-              </span>
-            </li>
-          </ul>
+          <div className="mt-4 grid gap-6 sm:grid-cols-3">
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-white/50">
+                Today
+              </h3>
+              <p className="mt-1 text-sm tabular-nums text-white/90">
+                {fmtTok(t.totalInputTokens)} in ·{" "}
+                {fmtTok(t.totalOutputTokens)} out tokens
+              </p>
+              <BreakdownList b={t.breakdown} total={t.totalCost} />
+            </div>
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-white/50">
+                This month
+              </h3>
+              <p className="mt-1 text-sm tabular-nums text-white/90">
+                {fmtTok(mo.totalInputTokens)} in ·{" "}
+                {fmtTok(mo.totalOutputTokens)} out tokens
+              </p>
+              <BreakdownList b={mo.breakdown} total={mo.totalCost} />
+            </div>
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-white/50">
+                All time
+              </h3>
+              <p className="mt-1 text-sm tabular-nums text-white/90">
+                {fmtTok(al.totalInputTokens)} in ·{" "}
+                {fmtTok(al.totalOutputTokens)} out tokens
+              </p>
+              <BreakdownList b={al.breakdown} total={al.totalCost} />
+            </div>
+          </div>
         </div>
       ) : null}
     </section>

@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import type { ScanModeId } from "@/lib/scan-modes";
 import { userMayReadApiUsageAggregates } from "@/lib/require-api-cost-access";
+import {
+  categoryForUsageRow,
+  emptyUsageCostBreakdown,
+  type UsageBreakdownKey,
+} from "@/lib/api-usage-categories";
 
 const uuidRe =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -115,6 +120,10 @@ type UsageRow = {
   pages_analyzed: number | string | null;
   claude_cost: number | string | null;
   openai_cost: number | string | null;
+  api_route?: string | null;
+  scan_type?: string | null;
+  input_tokens?: number | string | null;
+  output_tokens?: number | string | null;
 };
 
 function aggregateUsage(rows: UsageRow[]) {
@@ -122,19 +131,41 @@ function aggregateUsage(rows: UsageRow[]) {
   let claudeCost = 0;
   let openaiCost = 0;
   let totalCost = 0;
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  const breakdown = emptyUsageCostBreakdown();
   for (const r of rows) {
     pagesAnalyzed += Number(r.pages_analyzed ?? 1);
-    claudeCost += Number(r.claude_cost ?? 0);
-    openaiCost += Number(r.openai_cost ?? 0);
-    totalCost += Number(r.total_cost ?? 0);
+    const cc = Number(r.claude_cost ?? 0);
+    const oc = Number(r.openai_cost ?? 0);
+    const tc = Number(r.total_cost ?? 0);
+    claudeCost += cc;
+    openaiCost += oc;
+    totalCost += tc;
+    totalInputTokens += Number(r.input_tokens ?? 0);
+    totalOutputTokens += Number(r.output_tokens ?? 0);
+    const cat = categoryForUsageRow({
+      api_route: r.api_route ?? null,
+      scan_type: r.scan_type ?? null,
+    });
+    breakdown[cat] += tc;
+  }
+  for (const k of Object.keys(breakdown) as UsageBreakdownKey[]) {
+    breakdown[k] = Math.round(breakdown[k] * 100) / 100;
   }
   return {
     pagesAnalyzed,
     claudeCost: Math.round(claudeCost * 100) / 100,
     openaiCost: Math.round(openaiCost * 100) / 100,
     totalCost: Math.round(totalCost * 100) / 100,
+    totalInputTokens,
+    totalOutputTokens,
+    breakdown,
   };
 }
+
+const USAGE_SELECT =
+  "total_cost, pages_analyzed, claude_cost, openai_cost, api_route, scan_type, input_tokens, output_tokens, created_at";
 
 export async function GET(request: Request) {
   const allowed = await userMayReadApiUsageAggregates();
@@ -169,9 +200,7 @@ export async function GET(request: Request) {
       );
       const { data, error } = await supabase
         .from("api_usage")
-        .select(
-          "total_cost, pages_analyzed, claude_cost, openai_cost, created_at",
-        )
+        .select(USAGE_SELECT)
         .gte("created_at", start.toISOString());
 
       if (error) {
@@ -198,9 +227,7 @@ export async function GET(request: Request) {
       );
       const { data, error } = await supabase
         .from("api_usage")
-        .select(
-          "total_cost, pages_analyzed, claude_cost, openai_cost, created_at",
-        )
+        .select(USAGE_SELECT)
         .gte("created_at", start.toISOString());
 
       if (error) {
@@ -212,7 +239,7 @@ export async function GET(request: Request) {
     if (scope === "all") {
       const { data, error } = await supabase
         .from("api_usage")
-        .select("total_cost, pages_analyzed, claude_cost, openai_cost");
+        .select(USAGE_SELECT);
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
@@ -232,7 +259,7 @@ export async function GET(request: Request) {
 
     const { data, error } = await supabase
       .from("api_usage")
-      .select("total_cost, pages_analyzed, claude_cost, openai_cost")
+      .select(USAGE_SELECT)
       .eq("project_id", projectId);
 
     if (error) {
@@ -244,6 +271,9 @@ export async function GET(request: Request) {
       pagesAnalyzed: agg.pagesAnalyzed,
       claudeCost: agg.claudeCost,
       openaiCost: agg.openaiCost,
+      totalInputTokens: agg.totalInputTokens,
+      totalOutputTokens: agg.totalOutputTokens,
+      breakdown: agg.breakdown,
     });
   } catch (e) {
     return NextResponse.json(

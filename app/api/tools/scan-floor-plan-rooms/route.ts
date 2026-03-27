@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   CLAUDE_OVERLOADED_USER_MESSAGE,
   withClaudeOverloadRetries,
@@ -9,6 +10,10 @@ import {
   normalizeFloorPlanScanResponse,
 } from "@/lib/tool-floor-plan-scan";
 import { checkAiRouteRateLimit } from "@/lib/rate-limit";
+import {
+  anthropicUsageFromMessage,
+  recordApiUsage,
+} from "@/lib/record-api-usage";
 
 export const maxDuration = 120;
 
@@ -132,6 +137,11 @@ export async function POST(request: Request) {
 
   const anthropic = new Anthropic({ apiKey });
 
+  const supabaseAuth = await createSupabaseServerClient();
+  const {
+    data: { user: authUser },
+  } = await supabaseAuth.auth.getUser();
+
   let assistantText: string;
   try {
     const msg = await withClaudeOverloadRetries(() =>
@@ -160,6 +170,15 @@ export async function POST(request: Request) {
         ],
       }),
     );
+    const usage = anthropicUsageFromMessage(msg);
+    await recordApiUsage({
+      route: "scan-floor-plan-rooms",
+      model: MODEL,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      userId: authUser?.id ?? null,
+      projectId: null,
+    });
     assistantText = extractAssistantText(msg);
   } catch (e) {
     const message =

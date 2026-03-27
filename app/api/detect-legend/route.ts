@@ -6,6 +6,10 @@ import {
   withClaudeOverloadRetries,
 } from "@/lib/ai-api-retries";
 import { checkAiRouteRateLimit } from "@/lib/rate-limit";
+import {
+  anthropicUsageFromMessage,
+  recordApiUsage,
+} from "@/lib/record-api-usage";
 
 export const maxDuration = 300;
 
@@ -394,6 +398,16 @@ export async function POST(request: Request) {
         .map((b) => (b.type === "text" ? b.text : ""))
         .join("\n")
         .trim();
+
+      const usage = anthropicUsageFromMessage(msg);
+      await recordApiUsage({
+        route: "detect-legend",
+        model: MODEL,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        projectId,
+        pageNumber,
+      });
     } catch (e) {
       const message =
         e instanceof Error ? e.message : "Claude API request failed.";

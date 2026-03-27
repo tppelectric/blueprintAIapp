@@ -5,7 +5,12 @@ import {
   withClaudeOverloadRetries,
 } from "@/lib/ai-api-retries";
 import { createServiceRoleClient } from "@/lib/supabase/service";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { checkAiRouteRateLimit } from "@/lib/rate-limit";
+import {
+  anthropicUsageFromMessage,
+  recordApiUsage,
+} from "@/lib/record-api-usage";
 
 export const maxDuration = 120;
 
@@ -86,9 +91,14 @@ ${question}`;
 
   const anthropic = new Anthropic({ apiKey });
 
+  const supabaseAuth = await createSupabaseServerClient();
+  const {
+    data: { user: authUser },
+  } = await supabaseAuth.auth.getUser();
+
   let answerText: string;
   try {
-    const msg = await withClaudeOverloadRetries(() =>
+    const claudeMsg = await withClaudeOverloadRetries(() =>
       anthropic.messages.create({
         model: MODEL,
         max_tokens: 4096,
@@ -97,7 +107,16 @@ ${question}`;
         messages: [{ role: "user", content: userMessage }],
       }),
     );
-    answerText = extractAssistantText(msg);
+    const usage = anthropicUsageFromMessage(claudeMsg);
+    await recordApiUsage({
+      route: "nec-question",
+      model: MODEL,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      userId: authUser?.id ?? null,
+      projectId: null,
+    });
+    answerText = extractAssistantText(claudeMsg);
   } catch (e) {
     const message =
       e instanceof Error ? e.message : "Claude API request failed.";

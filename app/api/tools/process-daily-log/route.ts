@@ -11,6 +11,10 @@ import {
   type ProcessDailyLogResult,
 } from "@/lib/daily-log-ai-types";
 import { extractDailyLogJsonString } from "@/lib/daily-log-claude-parse";
+import {
+  anthropicUsageFromMessage,
+  recordApiUsage,
+} from "@/lib/record-api-usage";
 
 export const maxDuration = 120;
 
@@ -143,7 +147,7 @@ Respond with ONLY the JSON object as specified.`;
 
   let rawText: string;
   try {
-    const msg = await withClaudeOverloadRetries(() =>
+    const claudeMsg = await withClaudeOverloadRetries(() =>
       anthropic.messages.create({
         model: MODEL,
         max_tokens: 4096,
@@ -152,7 +156,16 @@ Respond with ONLY the JSON object as specified.`;
         messages: [{ role: "user", content: userBlock }],
       }),
     );
-    rawText = msg.content
+    const usage = anthropicUsageFromMessage(claudeMsg);
+    await recordApiUsage({
+      route: "process-daily-log",
+      model: MODEL,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      userId: user.id,
+      projectId: null,
+    });
+    rawText = claudeMsg.content
       .map((b) => (b.type === "text" ? b.text : ""))
       .join("\n")
       .trim();

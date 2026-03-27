@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   CLAUDE_OVERLOADED_USER_MESSAGE,
   withClaudeOverloadRetries,
@@ -10,6 +11,10 @@ import {
   type ProjectDescriptionAnalysis,
 } from "@/lib/project-describer-types";
 import { TPP_COMPANY_FULL } from "@/lib/tpp-branding";
+import {
+  anthropicUsageFromMessage,
+  recordApiUsage,
+} from "@/lib/record-api-usage";
 
 export const maxDuration = 180;
 
@@ -85,9 +90,14 @@ export async function POST(request: Request) {
 
   const anthropic = new Anthropic({ apiKey });
 
+  const supabaseAuth = await createSupabaseServerClient();
+  const {
+    data: { user: authUser },
+  } = await supabaseAuth.auth.getUser();
+
   let text: string;
   try {
-    const msg = await withClaudeOverloadRetries(() =>
+    const claudeMsg = await withClaudeOverloadRetries(() =>
       anthropic.messages.create({
         model: MODEL,
         max_tokens: 16384,
@@ -96,7 +106,16 @@ export async function POST(request: Request) {
         messages: [{ role: "user", content: userBlock }],
       }),
     );
-    text = msg.content
+    const usage = anthropicUsageFromMessage(claudeMsg);
+    await recordApiUsage({
+      route: "generate-project-package",
+      model: MODEL,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      userId: authUser?.id ?? null,
+      projectId: null,
+    });
+    text = claudeMsg.content
       .map((b) => (b.type === "text" ? b.text : ""))
       .join("\n")
       .trim();

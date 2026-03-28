@@ -9,6 +9,8 @@ import {
   countInPursuit,
 } from "@/lib/license-alerts";
 import { mapLicenseRow } from "@/lib/license-mappers";
+import { mapAssetRow } from "@/lib/inventory-mappers";
+import { countVehiclesNeedingCommandCenterAttention } from "@/lib/vehicle-alerts";
 import { useUserRole } from "@/hooks/use-user-role";
 import { mapInternalRequestRow } from "@/lib/internal-request-mappers";
 import {
@@ -16,6 +18,8 @@ import {
   overdueOpenCount,
   urgentOpenCount,
 } from "@/lib/internal-request-utils";
+import { fetchPendingTimeOffRequestCount } from "@/lib/pending-time-off-count";
+import { fetchUnassignedReceiptsCount } from "@/lib/unassigned-receipts-count";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { canViewAdminRequestQueue } from "@/lib/user-roles";
 
@@ -57,6 +61,9 @@ export function TeamCommandCenterCard({
   const [irNew, setIrNew] = useState<number | null>(null);
   const [irUrgent, setIrUrgent] = useState<number | null>(null);
   const [irOverdue, setIrOverdue] = useState<number | null>(null);
+  const [fleetAttentionCount, setFleetAttentionCount] = useState<number | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!enabled || !showQuickLinks) {
@@ -68,28 +75,22 @@ export function TeamCommandCenterCard({
       setIrNew(null);
       setIrUrgent(null);
       setIrOverdue(null);
+      setFleetAttentionCount(null);
       return;
     }
     let cancelled = false;
     const load = async () => {
       try {
         const sb = createBrowserClient();
-        const [r1, r2, licRes] = await Promise.all([
-          sb
-            .from("receipts")
-            .select("id", { count: "exact", head: true })
-            .is("job_id", null),
-          sb
-            .from("time_off_requests")
-            .select("id", { count: "exact", head: true })
-            .eq("status", "pending"),
+        const [unassignedReceiptCount, licRes] = await Promise.all([
+          fetchUnassignedReceiptsCount(sb),
           sb.from("licenses").select("*"),
         ]);
         if (cancelled) return;
-        setUnassignedReceipts(
-          typeof r1.count === "number" ? r1.count : 0,
-        );
-        setPendingTimeOff(typeof r2.count === "number" ? r2.count : 0);
+        setUnassignedReceipts(unassignedReceiptCount);
+        const pendingTimeOffCount = await fetchPendingTimeOffRequestCount(sb);
+        if (cancelled) return;
+        setPendingTimeOff(pendingTimeOffCount);
         if (!licRes.error && licRes.data) {
           const rows = licRes.data.map((r) =>
             mapLicenseRow(r as Record<string, unknown>),
@@ -123,16 +124,33 @@ export function TeamCommandCenterCard({
           setIrUrgent(null);
           setIrOverdue(null);
         }
+
+        const vRes = await sb
+          .from("assets")
+          .select("*")
+          .eq("asset_type", "vehicle");
+        if (cancelled) return;
+        if (vRes.error || !vRes.data) {
+          setFleetAttentionCount(null);
+        } else {
+          const vehicles = vRes.data.map((r) =>
+            mapAssetRow(r as Record<string, unknown>),
+          );
+          setFleetAttentionCount(
+            countVehiclesNeedingCommandCenterAttention(vehicles),
+          );
+        }
       } catch {
         if (!cancelled) {
           setUnassignedReceipts(null);
-          setPendingTimeOff(null);
+          setPendingTimeOff(0);
           setLicExpiring30(null);
           setLicCe45(null);
           setLicPursuit(null);
           setIrNew(null);
           setIrUrgent(null);
           setIrOverdue(null);
+          setFleetAttentionCount(null);
         }
       }
     };
@@ -267,6 +285,24 @@ export function TeamCommandCenterCard({
     (licCe45 ?? 0) > 0 ||
     (licPursuit ?? 0) > 0;
 
+  const fleetAlertsBlock =
+    showQuickLinks &&
+    fleetAttentionCount != null &&
+    fleetAttentionCount > 0 ? (
+      <p className={`text-[11px] ${fg}`}>
+        <Link
+          href="/inventory/vehicles"
+          className={`inline-flex flex-wrap items-center gap-x-1 font-medium hover:underline ${gold}`}
+        >
+          <span aria-hidden>🚛</span>
+          <span className="tabular-nums">{fleetAttentionCount}</span>
+          <span>
+            vehicle{fleetAttentionCount === 1 ? "" : "s"} need attention
+          </span>
+        </Link>
+      </p>
+    ) : null;
+
   const licenseAlertsBlock =
     showQuickLinks && hasLicenseAlerts ? (
       <div
@@ -362,11 +398,17 @@ export function TeamCommandCenterCard({
     showQuickLinks &&
     (unassignedReceipts != null ||
       pendingTimeOff != null ||
+      fleetAlertsBlock ||
       licenseAlertsBlock ||
       internalRequestsBlock) ? (
       <div
         className={`flex flex-wrap gap-x-3 gap-y-1 text-[11px] ${marketingHomeSplit ? "pt-1" : "mt-3 border-t pt-3"} ${isMarketing ? "border-white/10" : "border-[var(--border)]"}`}
       >
+        {fleetAlertsBlock ? (
+          <div className="w-full min-w-0 space-y-1 border-b border-white/10 pb-2">
+            {fleetAlertsBlock}
+          </div>
+        ) : null}
         {licenseAlertsBlock ? (
           <div className="w-full min-w-0 space-y-1">{licenseAlertsBlock}</div>
         ) : null}

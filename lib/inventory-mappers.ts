@@ -98,6 +98,7 @@ function mapVehicleFleetFields(r: Record<string, unknown>) {
     last_oil_change_date: dateStrOrNull(r.last_oil_change_date),
     last_oil_change_mileage: intOrNull(r.last_oil_change_mileage),
     oil_change_interval_miles: interval ?? 5000,
+    next_oil_change_mileage: intOrNull(r.next_oil_change_mileage),
     next_oil_change_due_date: dateStrOrNull(r.next_oil_change_due_date),
     next_service_date: dateStrOrNull(r.next_service_date),
     next_service_notes: strOrNull(r.next_service_notes),

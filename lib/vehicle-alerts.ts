@@ -90,3 +90,72 @@ export function vehicleNeedsAttentionFilter(a: AssetRow): boolean {
 export function countFleetNeedingAttention(vehicles: AssetRow[]): number {
   return vehicles.filter((v) => vehicleNeedsAttentionFilter(v)).length;
 }
+
+/** Registration expired or due within `soonDays` (UTC date compare). */
+export function countVehicleRegistrationAttentionWithin(
+  vehicles: AssetRow[],
+  soonDays = 30,
+): number {
+  return vehicles.filter((v) => {
+    const s = severityForDate(v.registration_expires, soonDays);
+    return s === "due_soon" || s === "overdue";
+  }).length;
+}
+
+/** Inspection expired or due within `soonDays`. */
+export function countVehicleInspectionAttentionWithin(
+  vehicles: AssetRow[],
+  soonDays = 30,
+): number {
+  return vehicles.filter((v) => {
+    const s = severityForDate(v.inspection_expires, soonDays);
+    return s === "due_soon" || s === "overdue";
+  }).length;
+}
+
+export function countVehicleOilChangeOverdue(vehicles: AssetRow[]): number {
+  return vehicles.filter((v) => oilChangeSeverity(v) === "overdue").length;
+}
+
+/** Expired or due within 30 days (registration / inspection / insurance style). */
+function expiresWithin30OrPast(iso: string | null): boolean {
+  const s = severityForDate(iso, 30);
+  return s === "due_soon" || s === "overdue";
+}
+
+/** `next_oil_change_due_date` is strictly before today (UTC calendar day). */
+function oilDueDateBeforeToday(iso: string | null): boolean {
+  const days = daysFromTodayUtc(iso);
+  return days !== null && days < 0;
+}
+
+function oilOverdueByTargetMileage(a: AssetRow): boolean {
+  const cur = a.current_mileage;
+  if (cur == null) return false;
+  const target = a.next_oil_change_mileage;
+  if (target != null) return cur > target;
+  const last = a.last_oil_change_mileage;
+  const interval = a.oil_change_interval_miles ?? 5000;
+  if (last == null) return false;
+  return cur > last + interval;
+}
+
+/**
+ * Command-center rule set: reg/inspection/insurance within 30d or past,
+ * oil due date before today, or mileage past target (explicit or derived).
+ */
+export function vehicleNeedsCommandCenterAttention(a: AssetRow): boolean {
+  if (!isVehicleAsset(a)) return false;
+  if (expiresWithin30OrPast(a.registration_expires)) return true;
+  if (expiresWithin30OrPast(a.inspection_expires)) return true;
+  if (expiresWithin30OrPast(a.insurance_expires)) return true;
+  if (oilDueDateBeforeToday(a.next_oil_change_due_date)) return true;
+  if (oilOverdueByTargetMileage(a)) return true;
+  return false;
+}
+
+export function countVehiclesNeedingCommandCenterAttention(
+  vehicles: AssetRow[],
+): number {
+  return vehicles.filter((v) => vehicleNeedsCommandCenterAttention(v)).length;
+}

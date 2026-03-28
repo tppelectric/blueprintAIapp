@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { formatReceiptCurrency } from "@/lib/receipts-types";
+import { fetchUnassignedReceiptsCount } from "@/lib/unassigned-receipts-count";
 import { createBrowserClient } from "@/lib/supabase/client";
 
 function startOfWeekMondayLocal(d: Date): Date {
@@ -60,7 +61,6 @@ export function ReceiptsDashboardCard() {
       }
       setMonthTotal(m);
     } catch {
-      setUnassigned(null);
       setWeekTotal(null);
       setMonthTotal(null);
     } finally {

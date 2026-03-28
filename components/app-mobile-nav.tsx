@@ -315,14 +315,30 @@ function MobileMenuPortal({
           >
             Receipts
           </Link>
+          <p className="mt-2 border-t border-white/10 px-3 pb-1 pt-3 text-[10px] font-bold uppercase tracking-wide text-[#E8C84A]/80">
+            Inventory
+          </p>
           <Link
             href="/inventory"
-            className={linkClass(pathname.startsWith("/inventory"))}
+            className={linkClass(
+              pathname.startsWith("/inventory") &&
+                !pathname.startsWith("/inventory/vehicles"),
+            )}
             onClick={onClose}
           >
             <span className="inline-flex items-center gap-1.5">
               <span aria-hidden>📦</span>
-              Inventory
+              Main hub &amp; QR
+            </span>
+          </Link>
+          <Link
+            href="/inventory/vehicles"
+            className={linkClass(pathname.startsWith("/inventory/vehicles"))}
+            onClick={onClose}
+          >
+            <span className="inline-flex items-center gap-1.5 pl-1">
+              <span aria-hidden>🚛</span>
+              Fleet Vehicles
             </span>
           </Link>
           <Link

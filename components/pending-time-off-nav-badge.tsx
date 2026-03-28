@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useUserRole } from "@/hooks/use-user-role";
+import { fetchPendingTimeOffRequestCount } from "@/lib/pending-time-off-count";
 import { createBrowserClient } from "@/lib/supabase/client";
 
 /** Pending time-off count for managers (main nav). */
@@ -13,13 +14,11 @@ export function PendingTimeOffNavBadge() {
     if (!canManageTeamTime) return;
     let cancelled = false;
     const sb = createBrowserClient();
-    void sb
-      .from("time_off_requests")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "pending")
-      .then(({ count: c, error }) => {
-        if (!cancelled && !error) setCount(c ?? 0);
-      });
+    const run = async () => {
+      const c = await fetchPendingTimeOffRequestCount(sb);
+      if (!cancelled) setCount(c);
+    };
+    void run();
     return () => {
       cancelled = true;
     };

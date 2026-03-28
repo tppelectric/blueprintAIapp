@@ -44,6 +44,8 @@ export type VehicleFleetFields = {
   last_oil_change_date: string | null;
   last_oil_change_mileage: number | null;
   oil_change_interval_miles: number;
+  /** Optional explicit odometer target; when null, derived from last change + interval. */
+  next_oil_change_mileage: number | null;
   next_oil_change_due_date: string | null;
   next_service_date: string | null;
   next_service_notes: string | null;

@@ -43,6 +43,7 @@ import {
 } from "@/lib/inventory-export";
 import { canManageInventoryAdmin } from "@/lib/user-roles";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { InventoryHubCards } from "@/components/inventory-hub-cards";
 import { InventoryVehicleAlertsCard } from "@/components/inventory-vehicle-alerts-card";
 
 type TabKey = "assets" | "materials" | "locations" | "qr" | "admin";
@@ -758,6 +759,12 @@ export function InventoryDashboardClient() {
             </Link>
           </div>
         </div>
+
+        <InventoryHubCards
+          onToolsEquipment={() => setTab("assets")}
+          onMaterials={() => setTab("materials")}
+          onLocations={() => setTab("locations")}
+        />
 
         <InventoryVehicleAlertsCard assets={assets} loading={loading} />
 

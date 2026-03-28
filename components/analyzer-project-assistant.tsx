@@ -91,11 +91,13 @@ export function AnalyzerProjectAssistant({
       }
       const augmented = augmentAnalysisFromBedroomPhrase(trimmed, data.analysis);
       logProjectAnalysisApply(tool, augmented);
-      console.log("onApply called with analysis (rooms in payload):", {
-        roomCount: augmented.rooms.length,
-        rooms: augmented.rooms,
-        scope_size: augmented.scope_size,
-      });
+      if (process.env.NODE_ENV === "development") {
+        console.log("onApply called with analysis (rooms in payload):", {
+          roomCount: augmented.rooms.length,
+          rooms: augmented.rooms,
+          scope_size: augmented.scope_size,
+        });
+      }
       onApply(augmented);
       setBanner(SUCCESS_COPY);
       setOpen(false);

@@ -12,6 +12,7 @@ import { formatAutoScanName } from "@/lib/saved-scan-format";
 import { buildAnalysisLegendAppendix } from "@/lib/analysis-legend-context";
 import { MAX_IMAGE_BYTES } from "@/lib/pdf-page-image";
 import { createServiceRoleClient } from "@/lib/supabase/service";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   CLAUDE_OVERLOADED_USER_MESSAGE,
   withClaudeOverloadRetries,
@@ -388,6 +389,14 @@ export async function POST(request: Request) {
       { error: "Server is missing ANTHROPIC_API_KEY in .env.local." },
       { status: 500 },
     );
+  }
+
+  const supabaseAuth = await createSupabaseServerClient();
+  const {
+    data: { user: analyzeUser },
+  } = await supabaseAuth.auth.getUser();
+  if (!analyzeUser?.id) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
   let body: {

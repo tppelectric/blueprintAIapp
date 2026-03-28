@@ -13,9 +13,12 @@ import { TimeClockSummaryCard } from "@/components/time-clock-summary-card";
 import { useAppToast } from "@/components/toast-provider";
 import { useUserRole } from "@/hooks/use-user-role";
 import { ReceiptsDashboardCard } from "@/components/receipts-dashboard-card";
+import { HomeEmployeeRequestsWidget } from "@/components/home-employee-requests-widget";
+import { DashboardInternalRequestsAdminCard } from "@/components/dashboard-internal-requests-admin-card";
 import {
   canManageIntegrations,
   canManageReceiptsAdmin,
+  canViewAdminRequestQueue,
   canViewTeamClock,
 } from "@/lib/user-roles";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -237,6 +240,8 @@ export function DashboardClient() {
   const showReceiptsAdminCard =
     !roleLoading && canManageReceiptsAdmin(role);
   const showAdminUsersQuick = !roleLoading && role === "super_admin";
+  const showInternalRequestsAdmin =
+    !roleLoading && canViewAdminRequestQueue(role);
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -578,6 +583,15 @@ export function DashboardClient() {
           </div>
         </section>
 
+        <section
+          className={`mt-4 grid w-full gap-4 ${showInternalRequestsAdmin ? "lg:grid-cols-2 lg:items-start" : ""}`}
+        >
+          <HomeEmployeeRequestsWidget surface="app" />
+          {showInternalRequestsAdmin ? (
+            <DashboardInternalRequestsAdminCard />
+          ) : null}
+        </section>
+
         <section className="app-card app-card-pad-lg">
           <SectionTitle className="mb-4">Quick actions</SectionTitle>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -587,6 +601,26 @@ export function DashboardClient() {
                 className="btn-secondary btn-h-11 w-full border-orange-500/35 text-orange-200"
               >
                 Team time clock
+              </Link>
+            ) : null}
+            <Link
+              href="/requests/new"
+              className="btn-secondary btn-h-11 w-full border-sky-400/35 text-sky-100"
+            >
+              + New request
+            </Link>
+            <Link
+              href="/my-requests"
+              className="btn-secondary btn-h-11 w-full border-sky-500/30 text-sky-200"
+            >
+              My requests
+            </Link>
+            {showInternalRequestsAdmin ? (
+              <Link
+                href="/requests"
+                className="btn-secondary btn-h-11 w-full border-violet-400/35 text-violet-200"
+              >
+                Requests queue
               </Link>
             ) : null}
             <Link href="/tools" className="btn-secondary btn-h-11 w-full">

@@ -125,12 +125,11 @@ export function ProjectDescriberClient() {
       const j = (await res.json()) as {
         analysis?: ProjectDescriptionAnalysis;
         error?: string;
-        raw?: string;
-        rawText?: string;
+        debugModelPreview?: string;
         extractedSnippet?: string | null;
       };
       if (!res.ok) {
-        setAnalyzeDebugRaw(j.raw ?? j.rawText ?? null);
+        setAnalyzeDebugRaw(j.debugModelPreview ?? null);
         setAnalyzeExtractedSnippet(j.extractedSnippet ?? null);
         throw new Error(j.error ?? "Analysis failed");
       }

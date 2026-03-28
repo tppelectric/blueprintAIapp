@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { InternalRequestsNavBadge } from "@/components/internal-requests-nav-badge";
+import { LicensesNavBadge } from "@/components/licenses-nav-badge";
 import { useUserRole } from "@/hooks/use-user-role";
+import {
+  canManageLicenses,
+  canViewAdminRequestQueue,
+} from "@/lib/user-roles";
 
 const TOOL_LINKS: { href: string; label: string }[] = [
   { href: "/tools/project-describer", label: "AI Project Describer" },
@@ -31,6 +37,8 @@ export function HeaderToolsMenu({
   const ref = useRef<HTMLDivElement>(null);
 
   const showUserManagement = !roleLoading && role === "super_admin";
+  const showLicenses = !roleLoading && canManageLicenses(role);
+  const showRequestsQueue = !roleLoading && canViewAdminRequestQueue(role);
 
   const toolsPathActive =
     pathname.startsWith("/tools") ||
@@ -38,7 +46,10 @@ export function HeaderToolsMenu({
     pathname.startsWith("/admin") ||
     pathname.startsWith("/inventory") ||
     pathname.startsWith("/receipts") ||
-    pathname.startsWith("/jobs/daily-logs");
+    pathname.startsWith("/licenses") ||
+    pathname.startsWith("/jobs/daily-logs") ||
+    pathname.startsWith("/my-requests") ||
+    pathname.startsWith("/requests");
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -110,6 +121,33 @@ export function HeaderToolsMenu({
           Daily logs
         </Link>
         <Link
+          href="/my-requests"
+          role="menuitem"
+          className={`block px-4 py-2.5 text-sm font-medium transition-colors duration-200 hover:bg-white/10 ${
+            pathname.startsWith("/my-requests")
+              ? "bg-sky-500/15 text-sky-200"
+              : "text-white/90"
+          }`}
+          onClick={() => setOpen(false)}
+        >
+          My requests
+        </Link>
+        {showRequestsQueue ? (
+          <Link
+            href="/requests"
+            role="menuitem"
+            className={`flex items-center justify-between px-4 py-2.5 text-sm font-medium transition-colors duration-200 hover:bg-white/10 ${
+              pathname.startsWith("/requests")
+                ? "bg-cyan-500/15 text-cyan-100"
+                : "text-white/90"
+            }`}
+            onClick={() => setOpen(false)}
+          >
+            <span>Requests queue</span>
+            <InternalRequestsNavBadge />
+          </Link>
+        ) : null}
+        <Link
           href="/inventory"
           role="menuitem"
           className={`block px-4 py-2.5 text-sm font-medium transition-colors duration-200 hover:bg-white/10 ${
@@ -121,6 +159,21 @@ export function HeaderToolsMenu({
         >
           Inventory & QR
         </Link>
+        {showLicenses ? (
+          <Link
+            href="/licenses"
+            role="menuitem"
+            className={`flex items-center justify-between px-4 py-2.5 text-sm font-medium transition-colors duration-200 hover:bg-white/10 ${
+              pathname.startsWith("/licenses")
+                ? "bg-amber-500/15 text-amber-100"
+                : "text-white/90"
+            }`}
+            onClick={() => setOpen(false)}
+          >
+            <span>Licenses & certifications</span>
+            <LicensesNavBadge />
+          </Link>
+        ) : null}
         <div className="mx-2 border-t border-white/10" />
         <p className="px-4 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-[#E8C84A]/80">
           Tools

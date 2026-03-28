@@ -4,10 +4,11 @@ export type AssetLocationType =
   | "truck"
   | "job_site"
   | "boiler_room"
-  | "office";
+  | "office"
+  | "fleet";
 
 /** `public.assets.asset_type` */
-export type InventoryAssetType = "tool" | "material" | "equipment";
+export type InventoryAssetType = "tool" | "material" | "equipment" | "vehicle";
 
 /** `public.assets.status` */
 export type InventoryAssetStatus =
@@ -24,6 +25,31 @@ export type InventoryTransactionType =
   | "use"
   | "deliver"
   | "report_issue";
+
+/** Vehicle-only columns on `public.assets` (null for tools/materials/equipment). */
+export type VehicleFleetFields = {
+  vehicle_year: number | null;
+  vehicle_make: string | null;
+  vehicle_model: string | null;
+  vehicle_color: string | null;
+  license_plate: string | null;
+  vin: string | null;
+  ezpass_id: string | null;
+  insurance_provider: string | null;
+  insurance_policy_number: string | null;
+  registration_expires: string | null;
+  inspection_expires: string | null;
+  insurance_expires: string | null;
+  current_mileage: number | null;
+  last_oil_change_date: string | null;
+  last_oil_change_mileage: number | null;
+  oil_change_interval_miles: number;
+  next_oil_change_due_date: string | null;
+  next_service_date: string | null;
+  next_service_notes: string | null;
+  last_service_date: string | null;
+  mileage_updated_at: string | null;
+};
 
 export type AssetLocationRow = {
   id: string;
@@ -53,7 +79,7 @@ export type AssetRow = {
   qr_code_url: string | null;
   notes: string | null;
   created_at: string;
-};
+} & VehicleFleetFields;
 
 export type MaterialRow = {
   id: string;

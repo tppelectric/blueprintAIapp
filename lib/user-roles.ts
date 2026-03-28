@@ -91,6 +91,25 @@ export function canManageInventoryAdmin(role: UserRole | null): boolean {
   return role === "super_admin" || role === "admin";
 }
 
+/** Company / employee licenses & certifications (CRUD, uploads). */
+export function canManageLicenses(role: UserRole | null): boolean {
+  return role === "super_admin" || role === "admin";
+}
+
+/** Full internal request queue (/requests), assign, triage. */
+export function canViewAdminRequestQueue(role: UserRole | null): boolean {
+  return (
+    role === "super_admin" ||
+    role === "admin" ||
+    role === "office_manager"
+  );
+}
+
+/** Internal-only comments on requests (not visible to office_manager). */
+export function canPostInternalRequestNotes(role: UserRole | null): boolean {
+  return role === "super_admin" || role === "admin";
+}
+
 export function canManageTeamTime(role: UserRole | null): boolean {
   return (
     role === "super_admin" || role === "admin" || role === "office_manager"

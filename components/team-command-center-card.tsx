@@ -3,7 +3,21 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useTeamClockSummary } from "@/hooks/use-team-clock-summary";
+import {
+  countCeAttentionWithin,
+  countExpiringWithin30Days,
+  countInPursuit,
+} from "@/lib/license-alerts";
+import { mapLicenseRow } from "@/lib/license-mappers";
+import { useUserRole } from "@/hooks/use-user-role";
+import { mapInternalRequestRow } from "@/lib/internal-request-mappers";
+import {
+  isTerminalStatus,
+  overdueOpenCount,
+  urgentOpenCount,
+} from "@/lib/internal-request-utils";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { canViewAdminRequestQueue } from "@/lib/user-roles";
 
 type Props = {
   enabled: boolean;
@@ -20,6 +34,7 @@ export function TeamCommandCenterCard({
   compact = false,
   showQuickLinks = false,
 }: Props) {
+  const { role, loading: roleLoading } = useUserRole();
   const {
     loading,
     onClock,
@@ -36,18 +51,30 @@ export function TeamCommandCenterCard({
     null,
   );
   const [pendingTimeOff, setPendingTimeOff] = useState<number | null>(null);
+  const [licExpiring30, setLicExpiring30] = useState<number | null>(null);
+  const [licCe45, setLicCe45] = useState<number | null>(null);
+  const [licPursuit, setLicPursuit] = useState<number | null>(null);
+  const [irNew, setIrNew] = useState<number | null>(null);
+  const [irUrgent, setIrUrgent] = useState<number | null>(null);
+  const [irOverdue, setIrOverdue] = useState<number | null>(null);
 
   useEffect(() => {
     if (!enabled || !showQuickLinks) {
       setUnassignedReceipts(null);
       setPendingTimeOff(null);
+      setLicExpiring30(null);
+      setLicCe45(null);
+      setLicPursuit(null);
+      setIrNew(null);
+      setIrUrgent(null);
+      setIrOverdue(null);
       return;
     }
     let cancelled = false;
     const load = async () => {
       try {
         const sb = createBrowserClient();
-        const [r1, r2] = await Promise.all([
+        const [r1, r2, licRes] = await Promise.all([
           sb
             .from("receipts")
             .select("id", { count: "exact", head: true })
@@ -56,16 +83,56 @@ export function TeamCommandCenterCard({
             .from("time_off_requests")
             .select("id", { count: "exact", head: true })
             .eq("status", "pending"),
+          sb.from("licenses").select("*"),
         ]);
         if (cancelled) return;
         setUnassignedReceipts(
           typeof r1.count === "number" ? r1.count : 0,
         );
         setPendingTimeOff(typeof r2.count === "number" ? r2.count : 0);
+        if (!licRes.error && licRes.data) {
+          const rows = licRes.data.map((r) =>
+            mapLicenseRow(r as Record<string, unknown>),
+          );
+          setLicExpiring30(countExpiringWithin30Days(rows));
+          setLicCe45(countCeAttentionWithin(rows, 45));
+          setLicPursuit(countInPursuit(rows));
+        } else {
+          setLicExpiring30(null);
+          setLicCe45(null);
+          setLicPursuit(null);
+        }
+
+        if (!roleLoading && canViewAdminRequestQueue(role)) {
+          const irRes = await sb.from("internal_requests").select("*");
+          if (!irRes.error && irRes.data) {
+            const irRows = irRes.data.map((r) =>
+              mapInternalRequestRow(r as Record<string, unknown>),
+            );
+            const open = irRows.filter((r) => !isTerminalStatus(r.status));
+            setIrNew(open.filter((r) => r.status === "new").length);
+            setIrUrgent(urgentOpenCount(irRows));
+            setIrOverdue(overdueOpenCount(irRows));
+          } else {
+            setIrNew(null);
+            setIrUrgent(null);
+            setIrOverdue(null);
+          }
+        } else {
+          setIrNew(null);
+          setIrUrgent(null);
+          setIrOverdue(null);
+        }
       } catch {
         if (!cancelled) {
           setUnassignedReceipts(null);
           setPendingTimeOff(null);
+          setLicExpiring30(null);
+          setLicCe45(null);
+          setLicPursuit(null);
+          setIrNew(null);
+          setIrUrgent(null);
+          setIrOverdue(null);
         }
       }
     };
@@ -75,7 +142,7 @@ export function TeamCommandCenterCard({
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [enabled, showQuickLinks]);
+  }, [enabled, showQuickLinks, role, roleLoading]);
 
   if (!enabled) return null;
 
@@ -195,12 +262,119 @@ export function TeamCommandCenterCard({
       </ul>
     ) : null;
 
+  const hasLicenseAlerts =
+    (licExpiring30 ?? 0) > 0 ||
+    (licCe45 ?? 0) > 0 ||
+    (licPursuit ?? 0) > 0;
+
+  const licenseAlertsBlock =
+    showQuickLinks && hasLicenseAlerts ? (
+      <div
+        className={`flex flex-col gap-1 text-[11px] ${marketingHomeSplit ? "pt-1" : ""} ${isMarketing ? "" : ""}`}
+      >
+        {licExpiring30 != null && licExpiring30 > 0 ? (
+          <p className={fg}>
+            <span aria-hidden>⚠️</span>{" "}
+            <span className="font-semibold text-amber-200 tabular-nums">
+              {licExpiring30}
+            </span>{" "}
+            license{licExpiring30 === 1 ? "" : "s"} expiring within 30 days ·{" "}
+            <Link href="/licenses" className={`${gold} font-medium hover:underline`}>
+              Licenses
+            </Link>
+          </p>
+        ) : null}
+        {licCe45 != null && licCe45 > 0 ? (
+          <p className={fg}>
+            <span aria-hidden>📚</span>{" "}
+            <span className="font-semibold text-sky-200/90 tabular-nums">
+              {licCe45}
+            </span>{" "}
+            CE hour deadline{licCe45 === 1 ? "" : "s"} within 45 days ·{" "}
+            <Link href="/licenses" className={`${gold} font-medium hover:underline`}>
+              Licenses
+            </Link>
+          </p>
+        ) : null}
+        {licPursuit != null && licPursuit > 0 ? (
+          <p className={fg}>
+            <span aria-hidden>🎯</span>{" "}
+            <span className="font-semibold text-sky-200 tabular-nums">
+              {licPursuit}
+            </span>{" "}
+            license{licPursuit === 1 ? "" : "s"} in pursuit — check progress ·{" "}
+            <Link href="/licenses" className={`${gold} font-medium hover:underline`}>
+              Open
+            </Link>
+          </p>
+        ) : null}
+      </div>
+    ) : null;
+
+  const hasInternalReqAlerts =
+    !roleLoading &&
+    canViewAdminRequestQueue(role) &&
+    ((irNew ?? 0) > 0 || (irUrgent ?? 0) > 0 || (irOverdue ?? 0) > 0);
+
+  const internalRequestsBlock =
+    showQuickLinks && hasInternalReqAlerts ? (
+      <div className={`flex flex-col gap-1 text-[11px] ${marketingHomeSplit ? "pt-1" : ""}`}>
+        {irNew != null && irNew > 0 ? (
+          <p className={fg}>
+            <span aria-hidden>📋</span>{" "}
+            <span className="font-semibold tabular-nums text-violet-200">
+              {irNew}
+            </span>{" "}
+            new internal request{irNew === 1 ? "" : "s"} ·{" "}
+            <Link href="/requests" className={`${gold} font-medium hover:underline`}>
+              Open queue
+            </Link>
+          </p>
+        ) : null}
+        {irUrgent != null && irUrgent > 0 ? (
+          <p className={fg}>
+            <span aria-hidden>🔥</span>{" "}
+            <span className="font-semibold text-orange-200 tabular-nums">
+              {irUrgent}
+            </span>{" "}
+            urgent / emergency open ·{" "}
+            <Link href="/requests" className={`${gold} font-medium hover:underline`}>
+              Triage
+            </Link>
+          </p>
+        ) : null}
+        {irOverdue != null && irOverdue > 0 ? (
+          <p className={fg}>
+            <span aria-hidden>⏱️</span>{" "}
+            <span className="font-semibold text-amber-200 tabular-nums">
+              {irOverdue}
+            </span>{" "}
+            open over 3 days ·{" "}
+            <Link href="/requests" className={`${gold} font-medium hover:underline`}>
+              Review
+            </Link>
+          </p>
+        ) : null}
+      </div>
+    ) : null;
+
   const receiptsTimeOffBlock = (
     showQuickLinks &&
-    (unassignedReceipts != null || pendingTimeOff != null) ? (
+    (unassignedReceipts != null ||
+      pendingTimeOff != null ||
+      licenseAlertsBlock ||
+      internalRequestsBlock) ? (
       <div
         className={`flex flex-wrap gap-x-3 gap-y-1 text-[11px] ${marketingHomeSplit ? "pt-1" : "mt-3 border-t pt-3"} ${isMarketing ? "border-white/10" : "border-[var(--border)]"}`}
       >
+        {licenseAlertsBlock ? (
+          <div className="w-full min-w-0 space-y-1">{licenseAlertsBlock}</div>
+        ) : null}
+        {internalRequestsBlock ? (
+          <div className="w-full min-w-0 space-y-1 border-t border-white/10 pt-2">
+            {internalRequestsBlock}
+          </div>
+        ) : null}
         {unassignedReceipts != null ? (
           <p className={fg}>
             <span className={muted}>Unassigned: </span>

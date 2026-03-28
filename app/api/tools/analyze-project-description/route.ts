@@ -113,6 +113,9 @@ export async function POST(request: Request) {
   const {
     data: { user: authUser },
   } = await supabaseAuth.auth.getUser();
+  if (!authUser?.id) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
 
   let rawText: string;
   try {
@@ -146,7 +149,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status });
   }
 
-  console.log("Claude raw response:", rawText);
+  if (process.env.NODE_ENV === "development") {
+    console.log(
+      "[analyze-project-description] response length:",
+      rawText.length,
+    );
+  }
 
   const parsed = safeParseAnalysis(rawText);
   if (!parsed) {
@@ -163,16 +171,19 @@ export async function POST(request: Request) {
     } else {
       parseError = "No JSON object found in the model response.";
     }
+    const preview =
+      process.env.NODE_ENV === "development"
+        ? rawText.slice(0, 2500)
+        : undefined;
     return NextResponse.json(
       {
         error: parseError,
-        raw: rawText,
-        rawText,
-        extractedSnippet: extracted?.slice(0, 4000) ?? null,
+        extractedSnippet: extracted?.slice(0, 1200) ?? null,
+        ...(preview != null ? { debugModelPreview: preview } : {}),
       },
       { status: 422 },
     );
   }
 
-  return NextResponse.json({ analysis: parsed, rawText });
+  return NextResponse.json({ analysis: parsed });
 }

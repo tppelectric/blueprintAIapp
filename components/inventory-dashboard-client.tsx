@@ -43,6 +43,7 @@ import {
 } from "@/lib/inventory-export";
 import { canManageInventoryAdmin } from "@/lib/user-roles";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { InventoryVehicleAlertsCard } from "@/components/inventory-vehicle-alerts-card";
 
 type TabKey = "assets" | "materials" | "locations" | "qr" | "admin";
 
@@ -52,12 +53,14 @@ const LOC_LABEL: Record<AssetLocationType, string> = {
   job_site: "Job Site",
   boiler_room: "Boiler Room",
   office: "Office",
+  fleet: "Fleet / yard",
 };
 
 const ASSET_TYPE_LABEL: Record<InventoryAssetType, string> = {
   tool: "Tool",
   material: "Material",
   equipment: "Equipment",
+  vehicle: "Vehicle",
 };
 
 function statusBadgeClass(s: InventoryAssetStatus): string {
@@ -742,6 +745,12 @@ export function InventoryDashboardClient() {
               My checkouts
             </Link>
             <Link
+              href="/inventory/vehicles"
+              className="rounded-xl border border-emerald-400/35 bg-emerald-500/15 px-4 py-2.5 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/25"
+            >
+              Fleet vehicles
+            </Link>
+            <Link
               href="/inventory/scan"
               className="rounded-xl bg-violet-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-violet-900/40 hover:bg-violet-400"
             >
@@ -749,6 +758,8 @@ export function InventoryDashboardClient() {
             </Link>
           </div>
         </div>
+
+        <InventoryVehicleAlertsCard assets={assets} loading={loading} />
 
         {!loading && lowStockMaterials.length > 0 ? (
           <div
@@ -810,6 +821,7 @@ export function InventoryDashboardClient() {
                   <option value="tool">Tool</option>
                   <option value="equipment">Equipment</option>
                   <option value="material">Material</option>
+                  <option value="vehicle">Vehicle</option>
                 </select>
               </label>
               <label className="text-xs text-white/50">
@@ -2114,6 +2126,7 @@ export function InventoryDashboardClient() {
                       <option value="job_site">Job Site</option>
                       <option value="boiler_room">Boiler Room</option>
                       <option value="office">Office</option>
+                      <option value="fleet">Fleet / yard</option>
                     </select>
                   </label>
                   <label className="block text-xs text-white/50">

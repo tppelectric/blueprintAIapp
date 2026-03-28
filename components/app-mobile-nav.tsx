@@ -10,10 +10,14 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { TeamClockNavBadge } from "@/components/team-clock-nav-badge";
 import { useUserRole } from "@/hooks/use-user-role";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { InternalRequestsNavBadge } from "@/components/internal-requests-nav-badge";
+import { LicensesNavBadge } from "@/components/licenses-nav-badge";
 import {
   ROLE_LABELS,
   canManageIntegrations,
+  canManageLicenses,
   canUseFieldPunch,
+  canViewAdminRequestQueue,
   canViewTeamClock,
 } from "@/lib/user-roles";
 
@@ -213,6 +217,8 @@ function MobileMenuPortal({
   const { role, loading: roleLoading, profile } = useUserRole();
   const showUserManagement = !roleLoading && role === "super_admin";
   const showIntegrations = !roleLoading && canManageIntegrations(role);
+  const showLicenses = !roleLoading && canManageLicenses(role);
+  const showRequestsQueue = !roleLoading && canViewAdminRequestQueue(role);
   const showTeamClock = !roleLoading && canViewTeamClock(role);
   const showFieldPunch = !roleLoading && canUseFieldPunch(profile ?? null);
   useEffect(() => setMounted(true), []);
@@ -329,7 +335,7 @@ function MobileMenuPortal({
           <p className="mt-3 border-t border-white/10 px-3 pb-2 pt-3 text-[10px] font-bold uppercase tracking-wide text-[#E8C84A]/80">
             Team
           </p>
-          {showIntegrations || showUserManagement ? (
+          {showIntegrations || showUserManagement || showLicenses ? (
             <p className="mt-2 px-3 pb-1 text-[10px] font-bold uppercase tracking-wide text-white/45">
               Admin
             </p>
@@ -343,6 +349,19 @@ function MobileMenuPortal({
               <span className="inline-flex items-center gap-1.5">
                 <span aria-hidden>🔌</span>
                 Settings
+              </span>
+            </Link>
+          ) : null}
+          {showLicenses ? (
+            <Link
+              href="/licenses"
+              className={linkClass(pathname.startsWith("/licenses"))}
+              onClick={onClose}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <span aria-hidden>📜</span>
+                Licenses
+                <LicensesNavBadge />
               </span>
             </Link>
           ) : null}
@@ -389,6 +408,32 @@ function MobileMenuPortal({
               Calendar
             </span>
           </Link>
+          <Link
+            href="/my-requests"
+            className={linkClass(pathname.startsWith("/my-requests"))}
+            onClick={onClose}
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden>📋</span>
+              My requests
+            </span>
+          </Link>
+          {showRequestsQueue ? (
+            <Link
+              href="/requests"
+              className={linkClass(
+                pathname.startsWith("/requests") &&
+                  pathname !== "/requests/new",
+              )}
+              onClick={onClose}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <span aria-hidden>🗂️</span>
+                Requests
+                <InternalRequestsNavBadge />
+              </span>
+            </Link>
+          ) : null}
           {showFieldPunch ? (
             <Link
               href="/field"

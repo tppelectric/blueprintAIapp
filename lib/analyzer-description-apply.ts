@@ -414,6 +414,8 @@ export function logProjectAnalysisApply(
   tool: AnalyzerAssistantToolId,
   analysis: ProjectDescriptionAnalysis,
 ): void {
-  console.log("Analysis result:", analysis);
-  console.log("Applying to tool:", tool);
+  if (process.env.NODE_ENV === "development") {
+    console.log("Analysis result:", analysis);
+    console.log("Applying to tool:", tool);
+  }
 }

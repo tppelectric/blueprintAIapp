@@ -18,7 +18,7 @@ type ToastItem = {
   variant: ToastVariant;
 };
 
-type ShowToast = (opts: {
+export type ShowToast = (opts: {
   message: string;
   variant?: ToastVariant;
   durationMs?: number;

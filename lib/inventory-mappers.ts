@@ -14,9 +14,10 @@ const LOC_TYPES = new Set<string>([
   "job_site",
   "boiler_room",
   "office",
+  "fleet",
 ]);
 
-const ASSET_TYPES = new Set<string>(["tool", "material", "equipment"]);
+const ASSET_TYPES = new Set<string>(["tool", "material", "equipment", "vehicle"]);
 
 const STATUSES = new Set<string>([
   "available",
@@ -59,6 +60,50 @@ function numOrNull(v: unknown): number | null {
   if (v == null || v === "") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+function intOrNull(v: unknown): number | null {
+  if (v == null || v === "") return null;
+  const n = parseInt(String(v), 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+function dateStrOrNull(v: unknown): string | null {
+  if (v == null || v === "") return null;
+  return String(v).slice(0, 10);
+}
+
+function strOrNull(v: unknown): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s ? s : null;
+}
+
+function mapVehicleFleetFields(r: Record<string, unknown>) {
+  const interval = intOrNull(r.oil_change_interval_miles);
+  return {
+    vehicle_year: intOrNull(r.vehicle_year),
+    vehicle_make: strOrNull(r.vehicle_make),
+    vehicle_model: strOrNull(r.vehicle_model),
+    vehicle_color: strOrNull(r.vehicle_color),
+    license_plate: strOrNull(r.license_plate),
+    vin: strOrNull(r.vin),
+    ezpass_id: strOrNull(r.ezpass_id),
+    insurance_provider: strOrNull(r.insurance_provider),
+    insurance_policy_number: strOrNull(r.insurance_policy_number),
+    registration_expires: dateStrOrNull(r.registration_expires),
+    inspection_expires: dateStrOrNull(r.inspection_expires),
+    insurance_expires: dateStrOrNull(r.insurance_expires),
+    current_mileage: intOrNull(r.current_mileage),
+    last_oil_change_date: dateStrOrNull(r.last_oil_change_date),
+    last_oil_change_mileage: intOrNull(r.last_oil_change_mileage),
+    oil_change_interval_miles: interval ?? 5000,
+    next_oil_change_due_date: dateStrOrNull(r.next_oil_change_due_date),
+    next_service_date: dateStrOrNull(r.next_service_date),
+    next_service_notes: strOrNull(r.next_service_notes),
+    last_service_date: dateStrOrNull(r.last_service_date),
+    mileage_updated_at: dateStrOrNull(r.mileage_updated_at),
+  };
 }
 
 export function mapLocationRow(r: Record<string, unknown>): AssetLocationRow {
@@ -130,6 +175,7 @@ export function mapAssetRow(r: Record<string, unknown>): AssetRow {
         : null,
     notes: r.notes != null ? String(r.notes) : null,
     created_at: String(r.created_at ?? ""),
+    ...mapVehicleFleetFields(r),
   };
 }
 

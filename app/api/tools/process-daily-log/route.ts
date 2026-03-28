@@ -169,7 +169,12 @@ Respond with ONLY the JSON object as specified.`;
       .map((b) => (b.type === "text" ? b.text : ""))
       .join("\n")
       .trim();
-    console.log("[process-daily-log] Claude raw response:", rawText);
+    if (process.env.NODE_ENV === "development") {
+      console.log(
+        "[process-daily-log] Claude response length:",
+        rawText.length,
+      );
+    }
   } catch (e) {
     const message =
       e instanceof Error ? e.message : "Claude API request failed.";

@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { HomeEmployeeRequestsWidget } from "@/components/home-employee-requests-widget";
 import { TeamStatusWidget } from "@/components/team-status-widget";
 import { TimeClockSummaryCard } from "@/components/time-clock-summary-card";
 import { useUserRole } from "@/hooks/use-user-role";
@@ -43,6 +44,9 @@ export function HomeMarketingHeroToolsSection({ children }: Props) {
           <TeamStatusWidget surface="marketing" />
         </div>
       ) : null}
+      <div className="mx-auto mt-4 w-full max-w-md self-stretch">
+        <HomeEmployeeRequestsWidget surface="marketing" />
+      </div>
       {toolGrid}
     </>
   );

@@ -95,6 +95,9 @@ ${question}`;
   const {
     data: { user: authUser },
   } = await supabaseAuth.auth.getUser();
+  if (!authUser?.id) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
 
   let answerText: string;
   try {

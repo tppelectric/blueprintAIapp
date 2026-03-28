@@ -13,9 +13,13 @@ import { TppLogoPill } from "@/components/tpp-logo-pill";
 import { TPP_COMPANY_FULL, TPP_TAGLINE } from "@/lib/tpp-branding";
 import { AppMobileNavButton } from "@/components/app-mobile-nav";
 import { useUserRole } from "@/hooks/use-user-role";
+import { InternalRequestsNavBadge } from "@/components/internal-requests-nav-badge";
+import { LicensesNavBadge } from "@/components/licenses-nav-badge";
 import {
   canManageIntegrations,
+  canManageLicenses,
   canUseFieldPunch,
+  canViewAdminRequestQueue,
   canViewTeamClock,
 } from "@/lib/user-roles";
 
@@ -49,6 +53,8 @@ export function WideAppHeader({
   const { role, loading: roleLoading, profile } = useUserRole();
   const showAdminUsersNav = !roleLoading && role === "super_admin";
   const showIntegrationsNav = !roleLoading && canManageIntegrations(role);
+  const showLicensesNav = !roleLoading && canManageLicenses(role);
+  const showRequestsQueueNav = !roleLoading && canViewAdminRequestQueue(role);
   const showTeamClockNav = !roleLoading && canViewTeamClock(role);
   const showFieldPunchNav =
     !roleLoading && canUseFieldPunch(profile ?? null);
@@ -75,6 +81,9 @@ export function WideAppHeader({
     active === "team_clock" || pathname.startsWith("/team-clock");
   const settingsActive =
     active === "settings" || pathname.startsWith("/settings");
+  const licensesActive = pathname.startsWith("/licenses");
+  const myRequestsActive = pathname.startsWith("/my-requests");
+  const requestsQueueActive = pathname.startsWith("/requests");
 
   const navItems = (
     <>
@@ -152,6 +161,22 @@ export function WideAppHeader({
           Calendar
         </Link>
       )}
+      {myRequestsActive ? (
+        <span className={NAV_ACTIVE}>My requests</span>
+      ) : (
+        <Link href="/my-requests" className={NAV_IDLE}>
+          My requests
+        </Link>
+      )}
+      {showRequestsQueueNav ? (
+        <Link
+          href="/requests"
+          className={`${requestsQueueActive ? NAV_ACTIVE : NAV_IDLE} inline-flex items-center`}
+        >
+          Requests
+          <InternalRequestsNavBadge />
+        </Link>
+      ) : null}
       {showFieldPunchNav ? (
         fieldActive ? (
           <span className={NAV_ACTIVE}>Field punch</span>
@@ -186,6 +211,22 @@ export function WideAppHeader({
         ) : (
           <Link href="/settings/integrations" className={NAV_IDLE}>
             Settings
+          </Link>
+        )
+      ) : null}
+      {showLicensesNav ? (
+        licensesActive ? (
+          <span className={`${NAV_ACTIVE} inline-flex items-center`}>
+            Licenses
+            <LicensesNavBadge />
+          </span>
+        ) : (
+          <Link
+            href="/licenses"
+            className={`${NAV_IDLE} inline-flex items-center`}
+          >
+            Licenses
+            <LicensesNavBadge />
           </Link>
         )
       ) : null}

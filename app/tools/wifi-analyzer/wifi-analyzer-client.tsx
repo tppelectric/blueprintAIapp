@@ -599,7 +599,6 @@ export function WifiAnalyzerClient() {
       setPdfUploadProgress(100);
       setPdfError(null);
     } catch (e) {
-      console.error(e);
       setPdfError(pdfFailureMessage(e));
       setPdfArrayBuffer(null);
       setPdfPageCount(0);
@@ -743,7 +742,6 @@ export function WifiAnalyzerClient() {
         setResults(next);
         setCalcGeneration((g) => g + 1);
       } catch (e) {
-        if (process.env.NODE_ENV === "development") console.error(e);
         setCalcError(
           e instanceof Error ? e.message : "Calculation failed. Check inputs.",
         );
@@ -775,7 +773,6 @@ export function WifiAnalyzerClient() {
         setResults(next);
         setCalcGeneration((g) => g + 1);
       } catch (e) {
-        if (process.env.NODE_ENV === "development") console.error(e);
         setCalcError(
           e instanceof Error ? e.message : "Calculation failed. Check inputs.",
         );
@@ -1004,7 +1001,6 @@ export function WifiAnalyzerClient() {
             roomSectionId="wifi-analyzer-room-list"
             onApply={(a) => {
               const newRooms = analysisToWifiRooms(a, newId);
-              console.log("Setting rooms from assistant:", newRooms);
               setRooms(newRooms);
               setTotalBuildingSqFtInput(
                 String(totalSqFtFromAnalysis(a)),

@@ -393,7 +393,6 @@ export function SmartHomeAnalyzerClient() {
             roomSectionId="smarthome-analyzer-room-list"
             onApply={(a) => {
               const newRooms = analysisToSmartHomeRooms(a, newId);
-              console.log("Setting rooms from assistant:", newRooms);
               setRooms(newRooms);
               setTotalSqFt(totalSqFtFromAnalysis(a));
               setFloors(

@@ -447,8 +447,6 @@ export function ElectricalAnalyzerClient() {
             onApply={(a) => {
               const newRooms = analysisToElectricalRooms(a, newId);
               const setupPatch = electricalSetupFromAnalysis(a);
-              console.log("Setting rooms from assistant:", newRooms);
-              console.log("Setting setup from assistant:", setupPatch);
               setRooms(newRooms);
               setSetup((s) => ({ ...s, ...setupPatch }));
             }}

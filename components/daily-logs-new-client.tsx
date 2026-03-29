@@ -685,9 +685,6 @@ export function DailyLogsNewClient() {
         extractedSnippet?: string;
       };
 
-      const rawLog = j.rawResponse ?? "(no raw body)";
-      console.log("Claude raw response:", rawLog);
-
       if (!r.ok) {
         setAiProcessError({
           message: j.error ?? `Request failed (${r.status}).`,
@@ -716,7 +713,6 @@ export function DailyLogsNewClient() {
 
       try {
         const normalized = normalizeProcessDailyLogJson(j.data);
-        console.log("AI result:", normalized);
 
         const prevJobId = form.job_id?.trim() || null;
         const prevEmployeeNames = employeeLines
@@ -1238,10 +1234,9 @@ export function DailyLogsNewClient() {
           } catch {
             /* ignore */
           }
-          console.warn("[daily-log] auto PDF failed:", pdfErr);
         }
-      } catch (pdfE) {
-        console.warn("[daily-log] auto PDF failed:", pdfE);
+      } catch {
+        /* ignore */
       }
 
       showToast({

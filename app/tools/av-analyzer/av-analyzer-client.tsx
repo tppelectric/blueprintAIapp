@@ -403,7 +403,6 @@ export function AvAnalyzerClient() {
             onApply={(a) => {
               const next = analysisToAvRooms(a, newId);
               const newRooms = avRoomsWithDisplayFromAnalysis(next, a);
-              console.log("Setting rooms from assistant:", newRooms);
               setRooms(newRooms);
               setTotalSqFt(totalSqFtFromAnalysis(a));
               setFloors(

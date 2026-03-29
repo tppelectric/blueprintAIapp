@@ -374,6 +374,52 @@ export function ReceiptDetailClient() {
               </div>
             </div>
 
+            {receipt.line_items && receipt.line_items.length > 0 ? (
+              <section className="mt-10">
+                <h2 className="text-sm font-bold uppercase tracking-wide text-[#E8C84A]">
+                  Line Items
+                </h2>
+                <div className="mt-3 overflow-x-auto rounded-xl border border-white/12">
+                  <table className="w-full min-w-[500px] border-collapse text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-white/10 bg-white/[0.04]">
+                        <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wide text-[#E8C84A]">Description</th>
+                        <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wide text-[#E8C84A]">Qty</th>
+                        <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wide text-[#E8C84A]">Unit Price</th>
+                        <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wide text-[#E8C84A]">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {receipt.line_items.map((item, i) => (
+                        <tr key={i} className="border-b border-white/5 odd:bg-white/[0.02]">
+                          <td className="px-4 py-3 text-white/88">{item.description}</td>
+                          <td className="px-4 py-3 text-right tabular-nums text-white/70">
+                            {item.quantity ?? "—"}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-white/70">
+                            {item.unit_price != null ? formatReceiptCurrency(item.unit_price) : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums font-semibold text-[#E8C84A]">
+                            {formatReceiptCurrency(item.total)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-white/15 bg-white/[0.04]">
+                        <td colSpan={3} className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-white/55">
+                          Total
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums font-bold text-[#E8C84A]">
+                          {formatReceiptCurrency(receipt.total_amount)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </section>
+            ) : null}
+
             {aiRows.length > 0 ? (
               <section className="mt-10">
                 <h2 className="text-sm font-bold uppercase tracking-wide text-[#E8C84A]">

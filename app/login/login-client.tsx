@@ -128,7 +128,7 @@ export function LoginClient() {
       const sb = createBrowserClient();
       const origin = window.location.origin;
       const { error: rErr } = await sb.auth.resetPasswordForEmail(em, {
-        redirectTo: `${origin}/auth/callback?next=/login`,
+        redirectTo: `${origin}/auth/callback?next=/reset-password`,
       });
       if (rErr) {
         setForgotMsg(rErr.message);

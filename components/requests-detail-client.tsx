@@ -20,6 +20,7 @@ import type { InternalRequestRow } from "@/lib/internal-request-types";
 import { REQUEST_TYPE_OPTIONS } from "@/lib/internal-request-types";
 import {
   daysOpen,
+  internalRequestDetailsRows,
   priorityBadgeClass,
   statusBadgeClass,
   statusLabel,
@@ -346,6 +347,7 @@ export function RequestsDetailClient({ requestId }: { requestId: string }) {
   const typeMeta = REQUEST_TYPE_OPTIONS.find(
     (x) => x.value === req.request_type,
   );
+  const detailRows = internalRequestDetailsRows(req.request_type, req.details);
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -452,14 +454,23 @@ export function RequestsDetailClient({ requestId }: { requestId: string }) {
             ) : null}
           </dl>
 
-          {Object.keys(req.details).length > 0 ? (
+          {detailRows.length > 0 ? (
             <div className="mt-4 rounded-lg border border-white/10 bg-[#071422]/80 p-3">
               <p className="text-[10px] font-bold uppercase text-white/45">
                 Extra information
               </p>
-              <pre className="mt-2 max-h-48 overflow-auto text-xs text-white/75">
-                {JSON.stringify(req.details, null, 2)}
-              </pre>
+              <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+                {detailRows.map((row) => (
+                  <div key={row.key} className="min-w-0 sm:col-span-1">
+                    <dt className="text-[10px] uppercase text-white/40">
+                      {row.label}
+                    </dt>
+                    <dd className="mt-0.5 whitespace-pre-wrap text-white/88">
+                      {row.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
             </div>
           ) : null}
 

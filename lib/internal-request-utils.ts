@@ -1,7 +1,9 @@
 import type {
+  InternalRequestDetails,
   InternalRequestPriority,
   InternalRequestRow,
   InternalRequestStatus,
+  InternalRequestType,
 } from "@/lib/internal-request-types";
 
 const DAY_MS = 86_400_000;
@@ -98,4 +100,155 @@ export function adminNavAttentionCount(rows: InternalRequestRow[]): number {
     if (r.priority === "urgent" || r.priority === "emergency") ids.add(r.id);
   }
   return ids.size;
+}
+
+const PIPELINE_STATUSES = new Set<InternalRequestStatus>([
+  "in_review",
+  "approved",
+  "in_progress",
+  "waiting",
+]);
+
+const DETAIL_FIELD_LABELS: Record<string, string> = {
+  vehicle_issue_noticed: "When issue noticed",
+  vehicle_safe_to_drive: "Safe to drive",
+  tool_still_usable: "Still usable",
+  material_preferred_vendor: "Preferred vendor",
+  document_for_who: "Who / what for",
+  document_requirements: "Requirements",
+  safety_when: "When",
+  safety_where: "Where",
+  safety_what: "What happened",
+  safety_injured: "Anyone injured",
+  safety_injury_details: "Injury details",
+  safety_medical_attention: "Medical attention needed",
+  safety_witnesses: "Witnesses",
+  safety_osha_recordable: "OSHA recordable",
+  additional_notes: "Additional notes",
+};
+
+function detailKeyOrderForType(t: InternalRequestType): string[] {
+  switch (t) {
+    case "vehicle_maintenance":
+    case "vehicle_request":
+      return ["vehicle_issue_noticed", "vehicle_safe_to_drive", "additional_notes"];
+    case "tool_repair":
+      return ["tool_still_usable", "additional_notes"];
+    case "material_order":
+      return ["material_preferred_vendor", "additional_notes"];
+    case "document_request":
+      return [
+        "document_for_who",
+        "document_requirements",
+        "additional_notes",
+      ];
+    case "safety_incident":
+      return [
+        "safety_when",
+        "safety_where",
+        "safety_what",
+        "safety_injured",
+        "safety_injury_details",
+        "safety_medical_attention",
+        "safety_witnesses",
+        "safety_osha_recordable",
+        "additional_notes",
+      ];
+    case "tool_request":
+      return ["additional_notes"];
+    default:
+      return ["additional_notes"];
+  }
+}
+
+function formatDetailValue(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "boolean") return v ? "Yes" : "No";
+  if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  if (typeof v === "string") return v.trim();
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+
+function isDetailValuePresent(v: unknown): boolean {
+  if (v === null || v === undefined) return false;
+  if (typeof v === "boolean") return true;
+  if (typeof v === "string") return v.trim().length > 0;
+  if (typeof v === "number") return Number.isFinite(v);
+  return true;
+}
+
+function humanizeDetailKey(key: string): string {
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Label/value rows for request detail UI (replaces raw JSON). */
+export function internalRequestDetailsRows(
+  requestType: InternalRequestType,
+  details: InternalRequestDetails,
+): { key: string; label: string; value: string }[] {
+  const raw = details as Record<string, unknown>;
+  const preferred = detailKeyOrderForType(requestType);
+  const seen = new Set<string>();
+  const rows: { key: string; label: string; value: string }[] = [];
+
+  for (const key of preferred) {
+    if (!(key in raw)) continue;
+    const v = raw[key];
+    if (!isDetailValuePresent(v)) continue;
+    seen.add(key);
+    rows.push({
+      key,
+      label: DETAIL_FIELD_LABELS[key] ?? humanizeDetailKey(key),
+      value: formatDetailValue(v),
+    });
+  }
+
+  const rest = Object.keys(raw)
+    .filter((k) => !seen.has(k))
+    .sort();
+  for (const key of rest) {
+    const v = raw[key];
+    if (!isDetailValuePresent(v)) continue;
+    rows.push({
+      key,
+      label: DETAIL_FIELD_LABELS[key] ?? humanizeDetailKey(key),
+      value: formatDetailValue(v),
+    });
+  }
+
+  return rows;
+}
+
+export type AdminListCardFilter =
+  | null
+  | "new"
+  | "pipeline"
+  | "urgent"
+  | "done_today";
+
+export function rowMatchesAdminListCardFilter(
+  r: InternalRequestRow,
+  filter: AdminListCardFilter,
+): boolean {
+  if (!filter) return true;
+  if (filter === "new") return r.status === "new";
+  if (filter === "pipeline") return PIPELINE_STATUSES.has(r.status);
+  if (filter === "urgent") {
+    return (
+      !isTerminalStatus(r.status) &&
+      (r.priority === "urgent" || r.priority === "emergency")
+    );
+  }
+  if (filter === "done_today") {
+    const ymd = new Date().toISOString().slice(0, 10);
+    return (
+      r.status === "completed" &&
+      Boolean(r.resolved_at) &&
+      r.resolved_at!.slice(0, 10) === ymd
+    );
+  }
+  return true;
 }

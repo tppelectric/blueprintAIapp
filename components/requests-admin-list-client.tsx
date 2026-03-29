@@ -10,12 +10,14 @@ import { mapInternalRequestRow } from "@/lib/internal-request-mappers";
 import type { InternalRequestRow, InternalRequestType } from "@/lib/internal-request-types";
 import { REQUEST_TYPE_OPTIONS } from "@/lib/internal-request-types";
 import {
+  type AdminListCardFilter,
   completedTodayUtcCount,
   daysOpen,
   inProgressPipelineCount,
   isTerminalStatus,
   overdueOpenCount,
   priorityBadgeClass,
+  rowMatchesAdminListCardFilter,
   statusBadgeClass,
   statusLabel,
   urgentOpenCount,
@@ -43,6 +45,7 @@ export function RequestsAdminListClient() {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [urgentOnly, setUrgentOnly] = useState(false);
   const [search, setSearch] = useState("");
+  const [cardFilter, setCardFilter] = useState<AdminListCardFilter>(null);
 
   const [users, setUsers] = useState<
     { id: string; full_name: string | null; email: string | null }[]
@@ -133,6 +136,7 @@ export function RequestsAdminListClient() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((r) => {
+      if (!rowMatchesAdminListCardFilter(r, cardFilter)) return false;
       if (typeFilter && r.request_type !== typeFilter) return false;
       if (statusFilter && r.status !== statusFilter) return false;
       if (
@@ -149,7 +153,17 @@ export function RequestsAdminListClient() {
         (r.description?.toLowerCase().includes(q) ?? false)
       );
     });
-  }, [rows, typeFilter, statusFilter, urgentOnly, search]);
+  }, [rows, cardFilter, typeFilter, statusFilter, urgentOnly, search]);
+
+  const toggleCardFilter = (next: Exclude<AdminListCardFilter, null>) => {
+    setCardFilter((cur) => (cur === next ? null : next));
+  };
+
+  useEffect(() => {
+    if (!cardFilter) return;
+    setStatusFilter("");
+    setUrgentOnly(false);
+  }, [cardFilter]);
 
   const patchStatus = async (id: string, status: InternalRequestRow["status"]) => {
     try {
@@ -217,38 +231,74 @@ export function RequestsAdminListClient() {
         </div>
 
         <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <div className="rounded-xl border border-violet-400/25 bg-violet-500/10 p-3 text-center">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => toggleCardFilter("new")}
+            className={`rounded-xl border p-3 text-center transition hover:brightness-110 disabled:opacity-60 ${
+              cardFilter === "new"
+                ? "border-violet-300/60 bg-violet-500/20 ring-2 ring-violet-400/40"
+                : "border-violet-400/25 bg-violet-500/10"
+            }`}
+          >
             <p className="text-[10px] font-bold uppercase text-violet-200/90">
               New
             </p>
             <p className="mt-1 text-xl font-bold tabular-nums text-white">
               {loading ? "—" : stats.new}
             </p>
-          </div>
-          <div className="rounded-xl border border-sky-400/25 bg-sky-500/10 p-3 text-center">
+          </button>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => toggleCardFilter("pipeline")}
+            className={`rounded-xl border p-3 text-center transition hover:brightness-110 disabled:opacity-60 ${
+              cardFilter === "pipeline"
+                ? "border-sky-300/50 bg-sky-500/20 ring-2 ring-sky-400/40"
+                : "border-sky-400/25 bg-sky-500/10"
+            }`}
+          >
             <p className="text-[10px] font-bold uppercase text-sky-100/90">
               In progress
             </p>
             <p className="mt-1 text-xl font-bold tabular-nums text-white">
               {loading ? "—" : stats.inProgress}
             </p>
-          </div>
-          <div className="rounded-xl border border-orange-400/30 bg-orange-500/10 p-3 text-center">
+          </button>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => toggleCardFilter("urgent")}
+            className={`rounded-xl border p-3 text-center transition hover:brightness-110 disabled:opacity-60 ${
+              cardFilter === "urgent"
+                ? "border-orange-300/50 bg-orange-500/20 ring-2 ring-orange-400/45"
+                : "border-orange-400/30 bg-orange-500/10"
+            }`}
+          >
             <p className="text-[10px] font-bold uppercase text-orange-100/90">
               Urgent
             </p>
             <p className="mt-1 text-xl font-bold tabular-nums text-white">
               {loading ? "—" : stats.urgent}
             </p>
-          </div>
-          <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 p-3 text-center">
+          </button>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => toggleCardFilter("done_today")}
+            className={`rounded-xl border p-3 text-center transition hover:brightness-110 disabled:opacity-60 ${
+              cardFilter === "done_today"
+                ? "border-emerald-300/50 bg-emerald-500/20 ring-2 ring-emerald-400/45"
+                : "border-emerald-400/25 bg-emerald-500/10"
+            }`}
+          >
             <p className="text-[10px] font-bold uppercase text-emerald-100/90">
               Done today
             </p>
             <p className="mt-1 text-xl font-bold tabular-nums text-white">
               {loading ? "—" : stats.completedToday}
             </p>
-          </div>
+          </button>
         </div>
 
         {stats.overdue > 0 ? (
@@ -264,7 +314,10 @@ export function RequestsAdminListClient() {
             <select
               className="mt-1 w-full rounded-lg border border-white/15 bg-[#071422] px-2 py-2 text-sm text-white"
               value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
+              onChange={(e) => {
+                setTypeFilter(e.target.value);
+                setCardFilter(null);
+              }}
             >
               <option value="">All types</option>
               {REQUEST_TYPE_OPTIONS.map((o) => (
@@ -279,7 +332,10 @@ export function RequestsAdminListClient() {
             <select
               className="mt-1 w-full rounded-lg border border-white/15 bg-[#071422] px-2 py-2 text-sm text-white"
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setCardFilter(null);
+              }}
             >
               <option value="">All statuses</option>
               {(
@@ -304,7 +360,10 @@ export function RequestsAdminListClient() {
             <input
               type="checkbox"
               checked={urgentOnly}
-              onChange={(e) => setUrgentOnly(e.target.checked)}
+              onChange={(e) => {
+                setUrgentOnly(e.target.checked);
+                setCardFilter(null);
+              }}
             />
             Urgent / emergency only
           </label>

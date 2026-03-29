@@ -72,9 +72,7 @@ const cardClass =
 
 export function ProfileClient() {
   const { showToast } = useAppToast();
-  const { role: sessionRole, refresh } = useUserRole();
-  const canEditNames =
-    sessionRole === "super_admin" || sessionRole === "admin";
+  const { refresh } = useUserRole();
 
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<UserProfileRow | null>(null);
@@ -176,7 +174,13 @@ export function ProfileClient() {
     setPwdBusy(true);
     try {
       const sb = createBrowserClient();
-      const { error } = await sb.auth.resetPasswordForEmail(profile.email);
+      const origin =
+        typeof window !== "undefined" ? window.location.origin : "";
+      const { error } = await sb.auth.resetPasswordForEmail(profile.email, {
+        redirectTo: origin
+          ? `${origin}/auth/callback?next=/reset-password`
+          : undefined,
+      });
       if (error) throw error;
       showToast({
         message: "Check your email for a password reset link.",
@@ -264,60 +268,58 @@ export function ProfileClient() {
                 </div>
               </div>
 
-              {canEditNames ? (
-                <div className="mt-4 border-t border-white/10 pt-4">
-                  {!editing ? (
-                    <button
-                      type="button"
-                      className="rounded-lg border border-[#E8C84A]/40 px-3 py-2 text-xs font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10"
-                      onClick={() => {
-                        setFirstName(profile.first_name);
-                        setLastName(profile.last_name);
-                        setEditing(true);
-                      }}
-                    >
-                      Edit
-                    </button>
-                  ) : (
-                    <div className="space-y-3">
-                      <label className="block text-xs text-white/50">
-                        First name
-                        <input
-                          className="app-input mt-1 w-full text-sm"
-                          value={firstName}
-                          onChange={(e) => setFirstName(e.target.value)}
-                        />
-                      </label>
-                      <label className="block text-xs text-white/50">
-                        Last name
-                        <input
-                          className="app-input mt-1 w-full text-sm"
-                          value={lastName}
-                          onChange={(e) => setLastName(e.target.value)}
-                        />
-                      </label>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          className="rounded-lg bg-[#E8C84A] px-3 py-2 text-xs font-bold text-[#0a1628] disabled:opacity-50"
-                          disabled={saveBusy}
-                          onClick={() => void saveNames()}
-                        >
-                          {saveBusy ? "Saving…" : "Save"}
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded-lg border border-white/20 px-3 py-2 text-xs text-white/80"
-                          disabled={saveBusy}
-                          onClick={() => setEditing(false)}
-                        >
-                          Cancel
-                        </button>
-                      </div>
+              <div className="mt-4 border-t border-white/10 pt-4">
+                {!editing ? (
+                  <button
+                    type="button"
+                    className="rounded-lg border border-[#E8C84A]/40 px-3 py-2 text-xs font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10"
+                    onClick={() => {
+                      setFirstName(profile.first_name);
+                      setLastName(profile.last_name);
+                      setEditing(true);
+                    }}
+                  >
+                    Edit name
+                  </button>
+                ) : (
+                  <div className="space-y-3">
+                    <label className="block text-xs text-white/50">
+                      First name
+                      <input
+                        className="app-input mt-1 w-full text-sm"
+                        value={firstName}
+                        onChange={(e) => setFirstName(e.target.value)}
+                      />
+                    </label>
+                    <label className="block text-xs text-white/50">
+                      Last name
+                      <input
+                        className="app-input mt-1 w-full text-sm"
+                        value={lastName}
+                        onChange={(e) => setLastName(e.target.value)}
+                      />
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="rounded-lg bg-[#E8C84A] px-3 py-2 text-xs font-bold text-[#0a1628] disabled:opacity-50"
+                        disabled={saveBusy}
+                        onClick={() => void saveNames()}
+                      >
+                        {saveBusy ? "Saving…" : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-lg border border-white/20 px-3 py-2 text-xs text-white/80"
+                        disabled={saveBusy}
+                        onClick={() => setEditing(false)}
+                      >
+                        Cancel
+                      </button>
                     </div>
-                  )}
-                </div>
-              ) : null}
+                  </div>
+                )}
+              </div>
             </section>
 
             <section className={cardClass}>

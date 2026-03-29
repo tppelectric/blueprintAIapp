@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     process.env.NEXT_PUBLIC_SITE_URL?.trim() ??
     "";
   const redirectTo = origin
-    ? `${origin.replace(/\/$/, "")}/auth/callback`
+    ? `${origin.replace(/\/$/, "")}/auth/callback?next=/reset-password`
     : undefined;
 
   let body: { userId?: string };

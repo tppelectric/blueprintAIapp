@@ -64,6 +64,15 @@ export function TeamCommandCenterCard({
   const [fleetAttentionCount, setFleetAttentionCount] = useState<number | null>(
     null,
   );
+  const [expanded, setExpanded] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const saved = localStorage.getItem("command-center-expanded");
+    return saved === null ? true : saved === "true";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("command-center-expanded", String(expanded));
+  }, [expanded]);
 
   useEffect(() => {
     if (!enabled || !showQuickLinks) {
@@ -218,6 +227,53 @@ export function TeamCommandCenterCard({
             Open {stragglerCount}
           </span>
         ) : null}
+        <span
+          role="button"
+          tabIndex={0}
+          aria-expanded={expanded}
+          aria-label={
+            expanded ? "Collapse command center" : "Expand command center"
+          }
+          className="ml-auto inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md p-1 text-[#E8C84A] hover:bg-white/10"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setExpanded((x) => !x);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              e.stopPropagation();
+              setExpanded((x) => !x);
+            }
+          }}
+        >
+          {expanded ? (
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              className="h-4 w-4"
+              aria-hidden
+            >
+              <path d="M18 15l-6-6-6 6" />
+            </svg>
+          ) : (
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              className="h-4 w-4"
+              aria-hidden
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          )}
+        </span>
       </div>
     </div>
   );
@@ -489,93 +545,198 @@ export function TeamCommandCenterCard({
     </Link>
   );
 
+  const collapsedSummaryAlertCount =
+    otAlertCount +
+    stragglerCount +
+    (fleetAttentionCount ?? 0) +
+    (licExpiring30 ?? 0) +
+    (irUrgent ?? 0);
+
+  const collapsedSummaryBar = (
+    <button
+      type="button"
+      className={`flex w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-[#E8C84A]/30 py-3 px-4 text-left ${isMarketing ? "bg-white/[0.05]" : "bg-transparent"}`}
+      onClick={() => setExpanded((e) => !e)}
+    >
+      <span
+        className={
+          marketingHomeSplit
+            ? "shrink-0 text-base font-semibold text-white lg:text-lg"
+            : `shrink-0 ${titleClass}`
+        }
+      >
+        Command Center
+      </span>
+      <span
+        className={`flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 rounded-full border border-[#E8C84A]/35 px-3 py-1 text-[11px] leading-tight ${isMarketing ? "text-white/90" : fg}`}
+      >
+        <span className={`font-semibold tabular-nums ${gold}`}>
+          {collapsedSummaryAlertCount} alerts
+        </span>
+        <span className={isMarketing ? "text-white/60" : muted}>·</span>
+        <span className={`tabular-nums ${isMarketing ? "" : fg}`}>
+          {onClock} clocked in
+        </span>
+        {canViewAdminRequestQueue(role) ? (
+          <>
+            <span className={isMarketing ? "text-white/60" : muted}>·</span>
+            <span className="tabular-nums">{irNew ?? 0} requests</span>
+          </>
+        ) : null}
+      </span>
+      <span className="ml-auto inline-flex shrink-0 items-center justify-center text-[#E8C84A]">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          className="h-4 w-4"
+          aria-hidden
+        >
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </span>
+    </button>
+  );
+
   const inner = marketingHomeSplit ? (
     <>
-      {headerBlock}
-      {loading ? (
-        <p className={`mt-2 text-sm ${muted}`}>Loading…</p>
+      {!expanded ? (
+        collapsedSummaryBar
       ) : (
-        <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start lg:gap-6">
-          <div className="min-w-0 space-y-2">
-            <h3 className={sectionHeaderClass}>Who&apos;s clocked in today</h3>
-            {onClockBlock}
-            {workingNames.length > 0 ? (
-              <p className={`text-[11px] leading-snug ${muted}`}>
-                <span className="font-medium text-white/85">Crew:</span>{" "}
-                {workingNames.length > 8
-                  ? `${workingNames.slice(0, 8).join(", ")} +${workingNames.length - 8}`
-                  : workingNames.join(", ")}
-              </p>
-            ) : (
-              <p className={`text-[11px] ${muted}`}>No one punched in.</p>
-            )}
-            {quickLinkButtons}
-          </div>
-          <div className="min-w-0 space-y-2 border-t border-[#E8C84A]/15 pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
-            <h3 className={sectionHeaderClass}>Active jobs + alerts</h3>
-            {activeJobsHeading}
-            {jobsList(6, true)}
-            {otAlertNames.length > 0 ? (
-              <p className="text-[11px] font-medium text-orange-300">
-                OT:{" "}
-                {otAlertNames.length > 4
-                  ? `${otAlertNames.slice(0, 4).join(", ")} +${otAlertNames.length - 4}`
-                  : otAlertNames.join(", ")}
-              </p>
-            ) : null}
-            {receiptsTimeOffBlock}
-            {stragglersBlock(3, "p-2")}
-          </div>
-        </div>
+        <>
+          {headerBlock}
+          {marketingHomeSplit && surface === "marketing" && showQuickLinks ? (
+            <div className="w-full space-y-2">
+              {role === "super_admin" || role === "admin" ? (
+                <div className="w-full rounded-lg border border-red-500/30 bg-red-950/20 px-3 py-2">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-red-400">
+                    Critical Alerts
+                  </p>
+                  <p className="mt-1 text-[11px] text-white/50">
+                    No critical alerts — system nominal
+                  </p>
+                </div>
+              ) : null}
+              {role === "super_admin" ? (
+                <div className="w-full rounded-lg border border-[#E8C84A]/20 bg-white/[0.03] px-3 py-2">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-[#E8C84A]">
+                    Email Intelligence
+                  </p>
+                  <p className="mt-1 text-[11px] text-white/50">
+                    Coming soon — inbound email scanning via Postmark
+                  </p>
+                </div>
+              ) : null}
+              {canViewAdminRequestQueue(role) ? (
+                <div className="w-full rounded-lg border border-sky-500/25 bg-sky-950/15 px-3 py-2">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-sky-400">
+                    Meetings
+                  </p>
+                  <p className="mt-1 text-[11px] text-white/50">
+                    Coming soon — meeting scheduler and transcriber
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {loading ? (
+            <p className={`mt-2 text-sm ${muted}`}>Loading…</p>
+          ) : (
+            <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start lg:gap-6">
+              <div className="min-w-0 space-y-2">
+                <h3 className={sectionHeaderClass}>Who&apos;s clocked in today</h3>
+                {onClockBlock}
+                {workingNames.length > 0 ? (
+                  <p className={`text-[11px] leading-snug ${muted}`}>
+                    <span className="font-medium text-white/85">Crew:</span>{" "}
+                    {workingNames.length > 8
+                      ? `${workingNames.slice(0, 8).join(", ")} +${workingNames.length - 8}`
+                      : workingNames.join(", ")}
+                  </p>
+                ) : (
+                  <p className={`text-[11px] ${muted}`}>No one punched in.</p>
+                )}
+                {quickLinkButtons}
+              </div>
+              <div className="min-w-0 space-y-2 border-t border-[#E8C84A]/15 pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
+                <h3 className={sectionHeaderClass}>Active jobs + alerts</h3>
+                {activeJobsHeading}
+                {jobsList(6, true)}
+                {otAlertNames.length > 0 ? (
+                  <p className="text-[11px] font-medium text-orange-300">
+                    OT:{" "}
+                    {otAlertNames.length > 4
+                      ? `${otAlertNames.slice(0, 4).join(", ")} +${otAlertNames.length - 4}`
+                      : otAlertNames.join(", ")}
+                  </p>
+                ) : null}
+                {receiptsTimeOffBlock}
+                {stragglersBlock(3, "p-2")}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </>
   ) : (
     <>
-      {headerBlock}
-      {loading ? (
-        <p className={`mt-3 text-sm ${muted}`}>Loading…</p>
+      {!expanded ? (
+        collapsedSummaryBar
       ) : (
         <>
-          {onClockBlock}
-          {activeJobsHeading}
-          {workingNames.length > 0 ? (
-            <p className={`mt-2 text-xs leading-relaxed ${muted}`}>
-              <span
-                className={
-                  isMarketing
-                    ? "font-medium text-white/80"
-                    : "font-medium text-[var(--foreground)]"
-                }
-              >
-                On clock:
-              </span>{" "}
-              {compact && workingNames.length > 4
-                ? `${workingNames.slice(0, 4).join(", ")} +${workingNames.length - 4} more`
-                : workingNames.join(", ")}
-            </p>
+          {headerBlock}
+          {loading ? (
+            <p className={`mt-3 text-sm ${muted}`}>Loading…</p>
           ) : (
-            <p className={`mt-2 text-xs ${muted}`}>
-              No one is punched in right now.
-            </p>
+            <>
+              {onClockBlock}
+              {activeJobsHeading}
+              {workingNames.length > 0 ? (
+                <p className={`mt-2 text-xs leading-relaxed ${muted}`}>
+                  <span
+                    className={
+                      isMarketing
+                        ? "font-medium text-white/80"
+                        : "font-medium text-[var(--foreground)]"
+                    }
+                  >
+                    On clock:
+                  </span>{" "}
+                  {compact && workingNames.length > 4
+                    ? `${workingNames.slice(0, 4).join(", ")} +${workingNames.length - 4} more`
+                    : workingNames.join(", ")}
+                </p>
+              ) : (
+                <p className={`mt-2 text-xs ${muted}`}>
+                  No one is punched in right now.
+                </p>
+              )}
+              {jobsList(compact ? 4 : activeJobsToday.length, compact)}
+              {otAlertNames.length > 0 ? (
+                <p className="mt-2 text-xs font-medium text-orange-300">
+                  Overtime:{" "}
+                  {compact && otAlertNames.length > 3
+                    ? `${otAlertNames.slice(0, 3).join(", ")} +${otAlertNames.length - 3}`
+                    : otAlertNames.join(", ")}
+                </p>
+              ) : null}
+              {receiptsTimeOffBlock}
+              {stragglersBlock(compact ? 3 : stragglers.length, "mt-3 p-3")}
+              {quickLinkButtons}
+            </>
           )}
-          {jobsList(compact ? 4 : activeJobsToday.length, compact)}
-          {otAlertNames.length > 0 ? (
-            <p className="mt-2 text-xs font-medium text-orange-300">
-              Overtime:{" "}
-              {compact && otAlertNames.length > 3
-                ? `${otAlertNames.slice(0, 3).join(", ")} +${otAlertNames.length - 3}`
-                : otAlertNames.join(", ")}
-            </p>
-          ) : null}
-          {receiptsTimeOffBlock}
-          {stragglersBlock(compact ? 3 : stragglers.length, "mt-3 p-3")}
-          {quickLinkButtons}
         </>
       )}
     </>
   );
 
   if (compact || showQuickLinks) {
+    return <div className={cardClass}>{inner}</div>;
+  }
+
+  if (!expanded) {
     return <div className={cardClass}>{inner}</div>;
   }
 

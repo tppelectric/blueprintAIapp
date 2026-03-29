@@ -64,15 +64,27 @@ export function TeamCommandCenterCard({
   const [fleetAttentionCount, setFleetAttentionCount] = useState<number | null>(
     null,
   );
-  const [expanded, setExpanded] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    const saved = localStorage.getItem("command-center-expanded");
-    return saved === null ? true : saved === "true";
-  });
+  const [expanded, setExpanded] = useState(true);
+  const [expandedStorageReady, setExpandedStorageReady] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem("command-center-expanded", String(expanded));
-  }, [expanded]);
+    try {
+      const saved = localStorage.getItem("command-center-expanded");
+      if (saved !== null) setExpanded(saved === "true");
+    } catch {
+      /* ignore */
+    }
+    setExpandedStorageReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!expandedStorageReady) return;
+    try {
+      localStorage.setItem("command-center-expanded", String(expanded));
+    } catch {
+      /* ignore */
+    }
+  }, [expanded, expandedStorageReady]);
 
   useEffect(() => {
     if (!enabled || !showQuickLinks) {
@@ -732,20 +744,10 @@ export function TeamCommandCenterCard({
     </>
   );
 
-  if (compact || showQuickLinks) {
-    return <div className={cardClass}>{inner}</div>;
-  }
+  const shellClass =
+    !compact && !showQuickLinks
+      ? `transition-colors hover:border-[#E8C84A]/45 ${cardClass}`
+      : cardClass;
 
-  if (!expanded) {
-    return <div className={cardClass}>{inner}</div>;
-  }
-
-  return (
-    <Link
-      href="/team-clock"
-      className={`block transition-colors hover:border-[#E8C84A]/45 ${cardClass}`}
-    >
-      {inner}
-    </Link>
-  );
+  return <div className={shellClass}>{inner}</div>;
 }

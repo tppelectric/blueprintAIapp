@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   CLAUDE_OVERLOADED_USER_MESSAGE,
   withClaudeOverloadRetries,
@@ -263,6 +264,14 @@ function parseLegendResponse(
 }
 
 export async function POST(request: Request) {
+  {
+    const supabase = await createSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
+
   const rl = checkAiRouteRateLimit(request, "detect-legend");
   if (!rl.allowed) {
     return NextResponse.json(

@@ -11,6 +11,7 @@ import {
 import { buildAnalysisLegendAppendix } from "@/lib/analysis-legend-context";
 import { MAX_IMAGE_BYTES } from "@/lib/pdf-page-image";
 import { createServiceRoleClient } from "@/lib/supabase/service";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { checkAiRouteRateLimit } from "@/lib/rate-limit";
 import {
   CLAUDE_OVERLOADED_USER_MESSAGE,
@@ -64,6 +65,12 @@ Rules:
 - rooms: include rooms only if helpful for context; may be an empty array.`;
 
 export async function POST(request: Request) {
+  const supabase = await createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const rl = checkAiRouteRateLimit(request, "analyze-target");
   if (!rl.allowed) {
     return NextResponse.json(

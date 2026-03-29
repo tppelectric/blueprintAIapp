@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   EmptyState,
@@ -113,6 +114,7 @@ function appendTimesheetNote(existing: string | null, line: string): string {
 }
 
 export function TimesheetsClient() {
+  const router = useRouter();
   const { showToast } = useAppToast();
   const { profile, canManageTeamTime, role } = useUserRole();
   const [anchor, setAnchor] = useState(() => startOfWeekMonday(new Date()));
@@ -775,7 +777,8 @@ export function TimesheetsClient() {
                     {todayRows.map((row) => (
                       <tr
                         key={row.id}
-                        className="border-b border-white/8 odd:bg-white/[0.02]"
+                        className="border-b border-white/8 odd:bg-white/[0.02] cursor-pointer hover:bg-white/[0.05] transition-colors"
+                        onClick={() => router.push(`/team-clock`)}
                       >
                         <td className="px-3 py-3 font-medium">{row.employeeName}</td>
                         <td className="max-w-[14rem] truncate px-3 py-3 text-white/75">

@@ -1001,6 +1001,12 @@ export function InventoryDashboardClient() {
                       Print QR
                     </button>
                   </div>
+                  <Link
+                    href={`/inventory/${a.id}`}
+                    className="mt-2 block w-full rounded-lg border border-violet-500/30 px-3 py-2 text-center text-xs font-semibold text-violet-200 hover:bg-violet-500/10"
+                  >
+                    View details →
+                  </Link>
                 </div>
               ))}
             </div>

@@ -18,7 +18,7 @@ export function InventoryHubCards({
 }: Props) {
   return (
     <section
-      className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
+      className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"
       aria-label="Inventory areas"
     >
       <button
@@ -45,6 +45,17 @@ export function InventoryHubCards({
         </span>
         <span className="mt-1 text-xs text-white/55">
           Registration, service, recalls
+        </span>
+      </Link>
+      <Link href="/inventory/tools" className={cardBase}>
+        <span className="text-2xl" aria-hidden>
+          🧰
+        </span>
+        <span className="mt-2 text-sm font-semibold text-white">
+          Tool Inventory
+        </span>
+        <span className="mt-1 text-xs text-white/55">
+          Tools and equipment table view
         </span>
       </Link>
       <button

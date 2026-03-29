@@ -130,6 +130,14 @@ export function HeaderAuthMenu() {
             </p>
           ) : null}
         </div>
+        <Link
+          href="/profile"
+          role="menuitem"
+          className="block px-3 py-2.5 text-sm font-medium text-white/90 transition-colors hover:bg-white/10"
+          onClick={() => setOpen(false)}
+        >
+          My Profile
+        </Link>
         {showSettings ? (
           <Link
             href="/settings/integrations"

@@ -174,7 +174,7 @@ function MobileDrawerUserSection({ onNavigate }: { onNavigate: () => void }) {
       {expanded ? (
         <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
           <Link
-            href="/dashboard"
+            href="/profile"
             className="block rounded-lg px-2 py-2 text-sm font-medium text-white/90 transition-colors hover:bg-white/10"
             onClick={onNavigate}
           >

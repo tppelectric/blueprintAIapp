@@ -145,10 +145,10 @@ export async function fetchJobtreadCustomers(
   try {
     const accountsArgs: Record<string, unknown> = {
       size: 100,
-      page: page ?? "1",
       where: {
         and: [["type", "=", "customer"]],
       },
+      ...(page ? { page } : {}),
     };
 
     const raw = await jobtreadQuery(grantKey, {
@@ -234,7 +234,7 @@ export async function fetchJobtreadJobs(
   try {
     const jobsArgs: Record<string, unknown> = {
       size: 100,
-      page: page ?? "1",
+      ...(page ? { page } : {}),
     };
 
     const raw = await jobtreadQuery(grantKey, {

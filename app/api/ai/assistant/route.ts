@@ -70,6 +70,14 @@ actions array is optional — only include when genuinely useful.
 action types: navigate, create, info
 Keep message under 200 words.
 
+CRITICAL RULES — Live app snapshot:
+- You MUST use the provided "Live app snapshot" (the JSON block below) to answer any question about: team members on site (who is clocked in), open requests, or active jobs.
+- DO NOT tell the user to check another page or screen if the answer already exists in the snapshot.
+- DO NOT give generic instructions when snapshot data is available for that question.
+- ALWAYS prioritize snapshot data over general knowledge for those topics.
+- If the snapshot contains data for what they asked → summarize it directly in your message.
+- If the snapshot is empty for what they asked → say "No data available" (do not invent entries).
+
 ${liveSnapshot}`;
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   EmptyState,
   JobListSkeleton,
@@ -25,6 +25,13 @@ const KANBAN_STATUSES = [
   "On Hold",
   "Cancelled",
 ] as const;
+
+const JOB_BOARD_ACTIVE_STATUSES = new Set<string>([
+  "Lead",
+  "Quoted",
+  "Active",
+  "On Hold",
+]);
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -98,14 +105,18 @@ export function JobsClient() {
     canCreateOrEditJobs,
     canDeleteJobs,
     canAssignJobs,
+    profile,
   } = useUserRole();
+  const currentUserId = profile?.id ?? null;
   const [assignees, setAssignees] = useState<AssigneeOption[]>([]);
   const [jobs, setJobs] = useState<JobListRow[]>([]);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<"kanban" | "list">("kanban");
+  const [view, setView] = useState<"kanban" | "list" | "board">("kanban");
+  const [boardActiveOnly, setBoardActiveOnly] = useState(true);
+  const [assignedToMeOnly, setAssignedToMeOnly] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<JobFormState>(emptyJobForm);
@@ -185,7 +196,7 @@ export function JobsClient() {
   }, [modalOpen, loadCustomers]);
 
   useEffect(() => {
-    if (!modalOpen || !canAssignJobs) return;
+    if (!canAssignJobs) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -203,7 +214,47 @@ export function JobsClient() {
     return () => {
       cancelled = true;
     };
-  }, [modalOpen, canAssignJobs]);
+  }, [canAssignJobs]);
+
+  const visibleJobs = useMemo(() => {
+    if (!assignedToMeOnly || !currentUserId) return jobs;
+    return jobs.filter((j) => j.assigned_user_id === currentUserId);
+  }, [jobs, assignedToMeOnly, currentUserId]);
+
+  const boardJobs = useMemo(() => {
+    if (boardActiveOnly) {
+      return visibleJobs.filter((j) =>
+        JOB_BOARD_ACTIVE_STATUSES.has(j.status),
+      );
+    }
+    return visibleJobs;
+  }, [visibleJobs, boardActiveOnly]);
+
+  const assigneeLabel = (j: JobListRow): string => {
+    if (!j.assigned_user_id) return "—";
+    const u = assignees.find((a) => a.id === j.assigned_user_id);
+    if (u?.full_name?.trim()) return u.full_name.trim();
+    if (u?.email) return u.email;
+    return canAssignJobs ? `${j.assigned_user_id.slice(0, 8)}…` : "Assigned";
+  };
+
+  const updateJobAssignee = async (jobId: string, assignedUserId: string) => {
+    try {
+      const sb = createBrowserClient();
+      const { error: ue } = await sb
+        .from("jobs")
+        .update({ assigned_user_id: assignedUserId.trim() || null })
+        .eq("id", jobId);
+      if (ue) throw ue;
+      showToast({ message: "Assignment updated.", variant: "success" });
+      void load();
+    } catch (e) {
+      showToast({
+        message: e instanceof Error ? e.message : "Update failed.",
+        variant: "error",
+      });
+    }
+  };
 
   const customerLabel = (j: JobListRow) => {
     const raw = j.customers;
@@ -443,7 +494,7 @@ export function JobsClient() {
                 Add job
               </button>
             ) : null}
-            <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
+            <div className="grid w-full grid-cols-3 gap-2 sm:flex sm:w-auto">
             <button
               type="button"
               onClick={() => setView("kanban")}
@@ -465,6 +516,17 @@ export function JobsClient() {
               }`}
             >
               List
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("board")}
+              className={`min-h-[2.75rem] rounded-lg px-4 text-sm font-semibold ${
+                view === "board"
+                  ? "inline-flex h-11 items-center justify-center bg-[#E8C84A] text-[#0a1628]"
+                  : "btn-secondary btn-h-11"
+              }`}
+            >
+              Board
             </button>
             </div>
             <Link
@@ -496,6 +558,32 @@ export function JobsClient() {
           </div>
         </div>
 
+        {!loading && !error && jobs.length > 0 ? (
+          <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-white/80">
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={assignedToMeOnly}
+                onChange={(e) => setAssignedToMeOnly(e.target.checked)}
+                className="rounded border-white/30"
+              />
+              Assigned to me
+            </label>
+
+            {view === "board" ? (
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={boardActiveOnly}
+                  onChange={(e) => setBoardActiveOnly(e.target.checked)}
+                  className="rounded border-white/30"
+                />
+                Active jobs only (Lead, Quoted, Active, On Hold)
+              </label>
+            ) : null}
+          </div>
+        ) : null}
+
         {loading ? (
           <JobListSkeleton />
         ) : error ? (
@@ -510,12 +598,79 @@ export function JobsClient() {
           />
         ) : view === "list" ? (
           <ul className="space-y-3">
-            {jobs.map((j) => (
+            {visibleJobs.map((j) => (
               <li key={j.id}>
                 <JobCard j={j} />
               </li>
             ))}
           </ul>
+        ) : view === "board" ? (
+          <>
+            <div className="app-card mt-4 overflow-x-auto p-0">
+              <table className="w-full min-w-[640px] text-left text-sm">
+                <thead className="border-b border-white/10 text-xs uppercase text-white/50">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Job</th>
+                    <th className="px-4 py-3 font-medium">Number</th>
+                    <th className="px-4 py-3 font-medium">Status</th>
+                    <th className="px-4 py-3 font-medium">Assigned</th>
+                    {canAssignJobs ? (
+                      <th className="px-4 py-3 font-medium">Assign</th>
+                    ) : null}
+                  </tr>
+                </thead>
+                <tbody>
+                  {boardJobs.map((j) => (
+                    <tr
+                      key={j.id}
+                      className="border-b border-white/[0.06]"
+                    >
+                      <td className="px-4 py-3 font-medium text-white">
+                        <Link
+                          href={`/jobs/${j.id}`}
+                          className="hover:text-[#E8C84A] hover:underline"
+                        >
+                          {j.job_name}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3 text-white/80">
+                        {j.job_number}
+                      </td>
+                      <td className="px-4 py-3 text-[#E8C84A]">{j.status}</td>
+                      <td className="px-4 py-3 text-white/75">
+                        {assigneeLabel(j)}
+                      </td>
+                      {canAssignJobs ? (
+                        <td className="px-4 py-3">
+                          <select
+                            className={`${inp} max-w-[14rem] text-xs`}
+                            value={j.assigned_user_id ?? ""}
+                            onChange={(e) =>
+                              void updateJobAssignee(j.id, e.target.value)
+                            }
+                          >
+                            <option value="">— Unassigned —</option>
+                            {assignees.map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.full_name?.trim()
+                                  ? `${u.full_name} (${u.email})`
+                                  : u.email}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      ) : null}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {boardJobs.length === 0 ? (
+              <p className="app-body mt-4 text-white/55">
+                No jobs in this view.
+              </p>
+            ) : null}
+          </>
         ) : (
           <div className="flex gap-4 overflow-x-auto pb-4 [-webkit-overflow-scrolling:touch]">
             {KANBAN_STATUSES.map((st) => (
@@ -527,7 +682,7 @@ export function JobsClient() {
                   {st}
                 </h2>
                 <div className="space-y-2">
-                  {jobs
+                  {visibleJobs
                     .filter((j) => j.status === st)
                     .map((j) => (
                       <JobCard key={j.id} j={j} />

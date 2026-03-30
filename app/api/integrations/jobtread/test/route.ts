@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { fetchJobtreadOrganization } from "@/lib/jobtread-client";
 import { fetchJobtreadRow, getStoredJobtreadApiKey } from "@/lib/jobtread-server-store";
 import { requireIntegrationAdmin } from "@/lib/require-integration-admin";
 import { createServiceRoleClient } from "@/lib/supabase/service";
@@ -6,8 +7,7 @@ import { createServiceRoleClient } from "@/lib/supabase/service";
 export const dynamic = "force-dynamic";
 
 /**
- * Validates credentials shape and records a connection check.
- * Full JobTread HTTP verification will replace the stub later.
+ * Verifies JobTread grant key + org id via Pave API and records status on integration_settings.
  */
 export async function POST(request: Request) {
   const auth = await requireIntegrationAdmin();
@@ -37,8 +37,20 @@ export async function POST(request: Request) {
     typeof body.apiKey === "string" && body.apiKey.trim()
       ? body.apiKey.trim()
       : null;
-  const storedKey = await getStoredJobtreadApiKey();
-  const apiKey = apiKeyFromBody ?? storedKey;
+  let apiKey: string | null = apiKeyFromBody;
+  if (!apiKey) {
+    try {
+      apiKey = await getStoredJobtreadApiKey();
+    } catch (e) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: e instanceof Error ? e.message : "Could not read stored API key.",
+        },
+        { status: 500 },
+      );
+    }
+  }
 
   const row = await fetchJobtreadRow();
   const companyFromBody =
@@ -60,25 +72,67 @@ export async function POST(request: Request) {
 
   const testedAt = new Date().toISOString();
 
-  if (row) {
-    const { error } = await admin
-      .from("integration_settings")
-      .update({
-        connection_status: "ok",
-        connection_message:
-          "Test recorded — JobTread API client not wired yet; credentials accepted.",
-        updated_at: testedAt,
-      })
-      .eq("id", row.id);
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+  try {
+    const org = await fetchJobtreadOrganization(apiKey, companyId);
+    if (org?.name) {
+      const message = `Connected to ${org.name}`;
+      if (row) {
+        const { error } = await admin
+          .from("integration_settings")
+          .update({
+            connection_status: "ok",
+            connection_message: message,
+            updated_at: testedAt,
+          })
+          .eq("id", row.id);
+        if (error) {
+          return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+      }
+      return NextResponse.json({
+        ok: true,
+        orgName: org.name,
+        testedAt,
+        message,
+      });
     }
-  }
 
-  return NextResponse.json({
-    ok: true,
-    testedAt,
-    message:
-      "Credentials look valid locally. Full JobTread API calls will be added in a follow-up.",
-  });
+    const failMsg = "JobTread did not return an organization for that ID.";
+    if (row) {
+      await admin
+        .from("integration_settings")
+        .update({
+          connection_status: "error",
+          connection_message: failMsg,
+          updated_at: testedAt,
+        })
+        .eq("id", row.id);
+    }
+    return NextResponse.json({
+      ok: false,
+      error: failMsg,
+      testedAt,
+    });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Connection test failed.";
+    if (row) {
+      try {
+        await admin
+          .from("integration_settings")
+          .update({
+            connection_status: "error",
+            connection_message: message,
+            updated_at: testedAt,
+          })
+          .eq("id", row.id);
+      } catch {
+        /* ignore secondary failure */
+      }
+    }
+    return NextResponse.json({
+      ok: false,
+      error: message,
+      testedAt,
+    });
+  }
 }

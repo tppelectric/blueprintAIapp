@@ -1,14 +1,274 @@
 import { NextResponse } from "next/server";
-import { fetchJobtreadRow } from "@/lib/jobtread-server-store";
+import type { JobtreadCustomer, JobtreadJob } from "@/lib/jobtread-client";
+import {
+  fetchJobtreadCustomers,
+  fetchJobtreadJobs,
+} from "@/lib/jobtread-client";
+import { fetchJobtreadRow, getStoredJobtreadApiKey } from "@/lib/jobtread-server-store";
+import type { JobtreadIntegrationRow } from "@/lib/jobtread-settings";
 import { requireIntegrationAdmin } from "@/lib/require-integration-admin";
 import { createServiceRoleClient } from "@/lib/supabase/service";
+
+type ServiceAdmin = ReturnType<typeof createServiceRoleClient>;
 
 export const dynamic = "force-dynamic";
 
 const TARGETS = new Set(["customers", "jobs", "daily_logs"]);
 
 /**
- * Manual sync entrypoint (stub). Query: ?target=customers|jobs|daily_logs
+ * If upsert on jobtread_id fails, apply `supabase/jobtread_integration_columns.sql` in Supabase.
+ */
+const JOBTREAD_SCHEMA_HINT =
+  "Ensure supabase/jobtread_integration_columns.sql has been applied (jobtread_id + unique index).";
+
+async function insertSyncLog(
+  admin: ServiceAdmin,
+  syncType: string,
+  userId: string,
+): Promise<string | null> {
+  const startedAt = new Date().toISOString();
+  const { data, error } = await admin
+    .from("jobtread_sync_log")
+    .insert({
+      sync_type: syncType,
+      status: "running",
+      triggered_by: userId,
+      started_at: startedAt,
+      records_synced: 0,
+    })
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    console.error("[jobtread sync] jobtread_sync_log insert failed:", error.message);
+    return null;
+  }
+  return (data as { id?: string } | null)?.id ?? null;
+}
+
+async function finishSyncLog(
+  admin: ServiceAdmin,
+  logId: string | null,
+  status: "success" | "failed",
+  recordsSynced: number,
+  errorMessage: string | null,
+) {
+  if (!logId) return;
+  const completedAt = new Date().toISOString();
+  const { error } = await admin
+    .from("jobtread_sync_log")
+    .update({
+      status,
+      completed_at: completedAt,
+      records_synced: recordsSynced,
+      error_message: errorMessage,
+    })
+    .eq("id", logId);
+  if (error) {
+    console.error("[jobtread sync] jobtread_sync_log update failed:", error.message);
+  }
+}
+
+async function upsertCustomerChunk(
+  admin: ServiceAdmin,
+  slice: Record<string, unknown>[],
+): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await admin.from("customers").upsert(slice, {
+    onConflict: "jobtread_id",
+  });
+  if (!error) return { ok: true };
+  return { ok: false, error: error.message };
+}
+
+async function fallbackUpsertCustomers(
+  admin: ServiceAdmin,
+  slice: Record<string, unknown>[],
+): Promise<number> {
+  let n = 0;
+  for (const row of slice) {
+    const jt = row.jobtread_id as string;
+    if (!jt) continue;
+    const { data: existing } = await admin
+      .from("customers")
+      .select("id")
+      .eq("jobtread_id", jt)
+      .maybeSingle();
+    const payload = { ...row };
+    if (existing?.id) {
+      const { error } = await admin
+        .from("customers")
+        .update(payload)
+        .eq("id", existing.id as string);
+      if (!error) n += 1;
+    } else {
+      const { error } = await admin.from("customers").insert(payload);
+      if (!error) n += 1;
+    }
+  }
+  return n;
+}
+
+async function syncCustomersImport(
+  admin: ServiceAdmin,
+  customers: JobtreadCustomer[],
+): Promise<{ count: number; error?: string }> {
+  const now = new Date().toISOString();
+  const rows = customers.map((c) => ({
+    jobtread_id: c.id,
+    company_name: c.name,
+    contact_name: c.primaryContact?.name ?? null,
+    email: c.primaryContact?.email ?? null,
+    phone: c.primaryContact?.phone ?? null,
+    updated_at: now,
+  }));
+
+  let total = 0;
+  const chunkSize = 80;
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const slice = rows.slice(i, i + chunkSize);
+    const res = await upsertCustomerChunk(admin, slice);
+    if (res.ok) {
+      total += slice.length;
+      continue;
+    }
+    const fb = await fallbackUpsertCustomers(admin, slice);
+    total += fb;
+    if (fb < slice.length && res.error) {
+      return {
+        count: total,
+        error: `${res.error}. ${JOBTREAD_SCHEMA_HINT}`,
+      };
+    }
+  }
+  return { count: total };
+}
+
+async function loadJobtreadCustomerIdMap(
+  admin: ServiceAdmin,
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const { data, error } = await admin
+    .from("customers")
+    .select("id,jobtread_id")
+    .not("jobtread_id", "is", null);
+  if (error) return map;
+  for (const r of data ?? []) {
+    const rec = r as { id: string; jobtread_id: string | null };
+    if (rec.jobtread_id) map.set(rec.jobtread_id, rec.id);
+  }
+  return map;
+}
+
+async function upsertJobChunk(
+  admin: ServiceAdmin,
+  slice: Record<string, unknown>[],
+): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await admin.from("jobs").upsert(slice, {
+    onConflict: "jobtread_id",
+  });
+  if (!error) return { ok: true };
+  return { ok: false, error: error.message };
+}
+
+async function fallbackUpsertJobs(
+  admin: ServiceAdmin,
+  slice: Record<string, unknown>[],
+): Promise<number> {
+  let n = 0;
+  for (const row of slice) {
+    const jt = row.jobtread_id as string;
+    if (!jt) continue;
+    const { data: existing } = await admin
+      .from("jobs")
+      .select("id")
+      .eq("jobtread_id", jt)
+      .maybeSingle();
+    if (existing?.id) {
+      const { error } = await admin
+        .from("jobs")
+        .update(row)
+        .eq("id", existing.id as string);
+      if (!error) n += 1;
+    } else {
+      const { error } = await admin.from("jobs").insert(row);
+      if (!error) n += 1;
+    }
+  }
+  return n;
+}
+
+async function syncJobsImport(
+  admin: ServiceAdmin,
+  jobs: JobtreadJob[],
+  accountToCustomerId: Map<string, string>,
+): Promise<{ count: number; error?: string }> {
+  const now = new Date().toISOString();
+  const rows = jobs.map((j) => {
+    const accountId = j.account?.id;
+    const customerId =
+      accountId && accountToCustomerId.has(accountId)
+        ? accountToCustomerId.get(accountId)!
+        : null;
+    return {
+      job_name: j.name?.trim() || "Job",
+      job_number: j.number?.trim() || "",
+      jobtread_id: j.id,
+      status: "Active",
+      address: j.location?.address?.trim() || null,
+      customer_id: customerId,
+      updated_at: now,
+    };
+  });
+
+  let total = 0;
+  const chunkSize = 80;
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const slice = rows.slice(i, i + chunkSize);
+    const res = await upsertJobChunk(admin, slice);
+    if (res.ok) {
+      total += slice.length;
+      continue;
+    }
+    const fb = await fallbackUpsertJobs(admin, slice);
+    total += fb;
+    if (fb < slice.length && res.error) {
+      return {
+        count: total,
+        error: `${res.error}. ${JOBTREAD_SCHEMA_HINT}`,
+      };
+    }
+  }
+  return { count: total };
+}
+
+async function updateIntegrationAfterSuccess(
+  admin: ServiceAdmin,
+  row: JobtreadIntegrationRow,
+  target: "customers" | "jobs",
+  count: number,
+  syncedAt: string,
+) {
+  const patch: Record<string, unknown> = {
+    last_sync_at: syncedAt,
+    updated_at: syncedAt,
+    connection_message: `Last ${target} sync: ${count} record(s).`,
+  };
+  if (target === "customers") {
+    patch.customers_synced_count =
+      Number(row.customers_synced_count) + count;
+  } else {
+    patch.jobs_synced_count = Number(row.jobs_synced_count) + count;
+  }
+  const { error } = await admin
+    .from("integration_settings")
+    .update(patch)
+    .eq("id", row.id);
+  if (error) {
+    console.error("[jobtread sync] integration_settings update failed:", error.message);
+  }
+}
+
+/**
+ * Manual JobTread import. Query: ?target=customers|jobs|daily_logs
  */
 export async function GET(request: Request) {
   const auth = await requireIntegrationAdmin();
@@ -37,34 +297,141 @@ export async function GET(request: Request) {
     );
   }
 
-  try {
-    const row = await fetchJobtreadRow();
+  if (target === "daily_logs") {
     const syncedAt = new Date().toISOString();
-
-    if (row) {
-      const { error } = await admin
-        .from("integration_settings")
-        .update({
-          last_sync_at: syncedAt,
-          updated_at: syncedAt,
-          connection_message:
-            `Last manual sync (${target}) — implementation pending; timestamp recorded.`,
-        })
-        .eq("id", row.id);
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
-      }
-    }
-
     return NextResponse.json({
       ok: true,
       target,
       syncedAt,
-      message:
-        "Sync stub completed — JobTread import/export logic will run here later.",
+      message: "Daily log export coming soon",
     });
+  }
+
+  let apiKey: string | null;
+  try {
+    apiKey = await getStoredJobtreadApiKey();
+  } catch (e) {
+    return NextResponse.json(
+      { ok: false, error: e instanceof Error ? e.message : "Key error." },
+      { status: 500 },
+    );
+  }
+
+  let row: JobtreadIntegrationRow | null;
+  try {
+    row = await fetchJobtreadRow();
+  } catch (e) {
+    return NextResponse.json(
+      { ok: false, error: e instanceof Error ? e.message : "Settings error." },
+      { status: 500 },
+    );
+  }
+
+  const companyId = row?.company_id?.trim() ?? "";
+  if (!apiKey || !companyId) {
+    return NextResponse.json(
+      { ok: false, error: "JobTread not configured" },
+      { status: 400 },
+    );
+  }
+
+  const logId = await insertSyncLog(admin, target, auth.userId);
+  const syncedAt = new Date().toISOString();
+
+  try {
+    if (target === "customers") {
+      const all: JobtreadCustomer[] = [];
+      let page: string | undefined = undefined;
+      for (;;) {
+        const { nodes, nextPage } = await fetchJobtreadCustomers(
+          apiKey,
+          companyId,
+          page,
+        );
+        all.push(...nodes);
+        if (!nextPage) break;
+        page = nextPage ?? undefined;
+      }
+
+      const { count, error: importErr } = await syncCustomersImport(admin, all);
+      if (importErr) {
+        await finishSyncLog(admin, logId, "failed", count, importErr);
+        return NextResponse.json({
+          ok: false,
+          target,
+          count,
+          syncedAt,
+          error: importErr,
+        });
+      }
+
+      await finishSyncLog(admin, logId, "success", count, null);
+      if (row) {
+        await updateIntegrationAfterSuccess(admin, row, "customers", count, syncedAt);
+      }
+      return NextResponse.json({
+        ok: true,
+        target,
+        count,
+        syncedAt,
+        message: `Imported ${count} customer(s) from JobTread.`,
+      });
+    }
+
+    if (target === "jobs") {
+      const all: JobtreadJob[] = [];
+      let page: string | undefined = undefined;
+      for (;;) {
+        const { nodes, nextPage } = await fetchJobtreadJobs(
+          apiKey,
+          companyId,
+          page,
+        );
+        all.push(...nodes);
+        if (!nextPage) break;
+        page = nextPage ?? undefined;
+      }
+
+      const accountToCustomerId = await loadJobtreadCustomerIdMap(admin);
+      const { count, error: importErr } = await syncJobsImport(
+        admin,
+        all,
+        accountToCustomerId,
+      );
+      if (importErr) {
+        await finishSyncLog(admin, logId, "failed", count, importErr);
+        return NextResponse.json({
+          ok: false,
+          target,
+          count,
+          syncedAt,
+          error: importErr,
+        });
+      }
+
+      await finishSyncLog(admin, logId, "success", count, null);
+      if (row) {
+        await updateIntegrationAfterSuccess(admin, row, "jobs", count, syncedAt);
+      }
+      return NextResponse.json({
+        ok: true,
+        target,
+        count,
+        syncedAt,
+        message: `Imported ${count} job(s) from JobTread.`,
+      });
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Sync failed.";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    await finishSyncLog(admin, logId, "failed", 0, msg);
+    return NextResponse.json({
+      ok: false,
+      target,
+      count: 0,
+      syncedAt,
+      error: msg,
+    });
   }
+
+  return NextResponse.json({ ok: false, error: "Unsupported target." }, { status: 400 });
 }

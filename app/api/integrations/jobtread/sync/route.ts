@@ -116,8 +116,8 @@ async function syncCustomersImport(
     jobtread_id: c.id,
     company_name: c.name,
     contact_name: c.primaryContact?.name ?? null,
-    email: c.primaryContact?.email ?? null,
-    phone: c.primaryContact?.phone ?? null,
+    email: null,
+    phone: null,
     updated_at: now,
   }));
 

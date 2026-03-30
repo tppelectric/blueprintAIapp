@@ -12,8 +12,6 @@ export type JobtreadCustomer = {
   primaryContact?: {
     id: string;
     name: string;
-    email?: string;
-    phone?: string;
   } | null;
 };
 
@@ -131,8 +129,6 @@ function parseCustomerNode(n: Record<string, unknown>): JobtreadCustomer {
       ? {
           id: str(pc.id),
           name: str(pc.name),
-          email: pc.email != null ? str(pc.email) : undefined,
-          phone: pc.phone != null ? str(pc.phone) : undefined,
         }
       : null,
   };
@@ -170,8 +166,6 @@ export async function fetchJobtreadCustomers(
             primaryContact: {
               id: {},
               name: {},
-              email: {},
-              phone: {},
             },
           },
         },

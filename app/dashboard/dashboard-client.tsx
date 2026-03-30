@@ -7,6 +7,7 @@ import {
   SectionTitle,
 } from "@/components/app-polish";
 import { DashboardApiUsageCard } from "@/components/dashboard-api-usage-card";
+import { DashboardMyWorkCard } from "@/components/dashboard-my-work-card";
 import { WideAppHeader } from "@/components/wide-app-header";
 import { TeamCommandCenterCard } from "@/components/team-command-center-card";
 import { TimeClockSummaryCard } from "@/components/time-clock-summary-card";
@@ -30,7 +31,6 @@ import { fetchBlueprintSignedUrl } from "@/lib/fetch-blueprint-signed-url";
 import { getPdfjs } from "@/lib/pdfjs-worker";
 import { formatUsd } from "@/lib/scan-modes";
 import type { JobListRow } from "@/lib/jobs-types";
-import type { UserProfileRow } from "@/lib/user-profile-types";
 
 type SheetPageRow = {
   page_count: number | null;
@@ -258,11 +258,7 @@ export function DashboardClient() {
   const [deleteTarget, setDeleteTarget] = useState<ProjectRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [recentJobs, setRecentJobs] = useState<JobListRow[]>([]);
-  const [myWorkTop, setMyWorkTop] = useState<JobListRow[]>([]);
-  const [myWorkActiveCount, setMyWorkActiveCount] = useState(0);
-  const [myWorkCompletedCount, setMyWorkCompletedCount] = useState(0);
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [users, setUsers] = useState<UserProfileRow[]>([]);
+  const [quickActionsOpen, setQuickActionsOpen] = useState(true);
   const [scanSummaries, setScanSummaries] = useState<
     Record<string, ProjectScansSummary>
   >({});
@@ -283,32 +279,6 @@ export function DashboardClient() {
         console.log("Current user:", user);
       }
 
-      const assigneeId = selectedUserId ?? user?.id ?? null;
-      if (assigneeId) {
-        const { data: mine, error: mineErr } = await supabase
-          .from("jobs")
-          .select("id,job_name,job_number,status,updated_at")
-          .eq("assigned_user_id", assigneeId)
-          .order("updated_at", { ascending: false });
-
-        if (mineErr) {
-          setMyWorkTop([]);
-          setMyWorkActiveCount(0);
-          setMyWorkCompletedCount(0);
-        } else {
-          const rows = mine ?? [];
-          const completed = rows.filter((j) => j.status === "Complete").length;
-
-          setMyWorkActiveCount(rows.length - completed);
-          setMyWorkCompletedCount(completed);
-          setMyWorkTop(rows.slice(0, 5) as unknown as JobListRow[]);
-        }
-      } else {
-        setMyWorkTop([]);
-        setMyWorkActiveCount(0);
-        setMyWorkCompletedCount(0);
-      }
-
       const { data, error: qError } = await supabase
         .from("projects")
         .select(
@@ -322,9 +292,6 @@ export function DashboardClient() {
         }
         setError(qError.message);
         setProjects([]);
-        setMyWorkTop([]);
-        setMyWorkActiveCount(0);
-        setMyWorkCompletedCount(0);
         return;
       }
       setProjects((data ?? []) as ProjectRow[]);
@@ -357,47 +324,14 @@ export function DashboardClient() {
       );
       setProjects([]);
       setRecentJobs([]);
-      setMyWorkTop([]);
-      setMyWorkActiveCount(0);
-      setMyWorkCompletedCount(0);
     } finally {
       setLoading(false);
     }
-  }, [selectedUserId]);
+  }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    if (!showAdminUsersQuick) {
-      setUsers([]);
-      setSelectedUserId(null);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const sb = createBrowserClient();
-        const { data, error } = await sb
-          .from("user_profiles")
-          .select("id,email,full_name,first_name,last_name")
-          .eq("is_active", true)
-          .order("full_name", { ascending: true });
-        if (cancelled) return;
-        if (error) {
-          setUsers([]);
-          return;
-        }
-        setUsers((data ?? []) as UserProfileRow[]);
-      } catch {
-        if (!cancelled) setUsers([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [showAdminUsersQuick]);
 
   useEffect(() => {
     const supabase = createBrowserClient();
@@ -659,90 +593,7 @@ export function DashboardClient() {
               : "lg:grid-cols-3 lg:items-start"
           }`}
         >
-          <div className="min-w-0 space-y-3">
-            {showAdminUsersQuick ? (
-              <label className="block text-sm text-white/80">
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-white/50">
-                  View employee
-                </span>
-                <select
-                  className="app-input w-full max-w-full text-sm"
-                  value={selectedUserId ?? ""}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setSelectedUserId(v === "" ? null : v);
-                  }}
-                >
-                  <option value="">My Work</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.full_name?.trim()
-                        ? u.full_name
-                        : [u.first_name, u.last_name]
-                            .filter(Boolean)
-                            .join(" ") || u.email}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-
-            {/* My Work — assigned jobs */}
-            <div className="rounded-xl border border-white/10 bg-[#0a1628] p-4">
-            <p className="text-xs font-bold uppercase tracking-wide text-white/55">
-              My Work
-            </p>
-
-            <div className="mt-2 flex flex-wrap items-end gap-4">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-white/50">
-                  Active jobs
-                </p>
-                <p className="text-3xl font-bold tabular-nums text-[#E8C84A]">
-                  {myWorkActiveCount}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-white/50">
-                  Completed
-                </p>
-                <p className="text-lg font-semibold tabular-nums text-white/80">
-                  {myWorkCompletedCount}
-                </p>
-              </div>
-            </div>
-
-            {myWorkTop.length > 0 ? (
-              <ul className="mt-3 space-y-2 border-t border-white/10 pt-3">
-                {myWorkTop.map((j) => (
-                  <li key={j.id}>
-                    <Link
-                      href={`/jobs/${j.id}`}
-                      className="block text-sm text-white/90 hover:text-[#E8C84A] hover:underline"
-                    >
-                      <span className="font-medium">{j.job_name}</span>
-                      <span className="ml-2 text-xs text-white/55">
-                        · {j.status}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-3 border-t border-white/10 pt-3 text-xs text-white/55">
-                No assigned jobs yet.
-              </p>
-            )}
-
-            <Link
-              href="/jobs"
-              className="mt-3 inline-block text-sm font-semibold text-[#E8C84A] hover:underline"
-            >
-              View My Jobs →
-            </Link>
-            </div>
-          </div>
+          <DashboardMyWorkCard />
           <DashboardRequestsSummaryCard />
           <HomeEmployeeRequestsWidget surface="app" />
           {showInternalRequestsAdmin ? (
@@ -751,8 +602,40 @@ export function DashboardClient() {
         </section>
 
         <section className="app-card app-card-pad-lg">
-          <SectionTitle className="mb-4">Quick actions</SectionTitle>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <button
+            type="button"
+            className="mb-4 flex w-full items-center justify-between gap-3 rounded-lg border border-transparent px-1 py-1.5 text-left transition-colors hover:border-white/10 hover:bg-white/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
+            aria-expanded={quickActionsOpen}
+            aria-controls="dashboard-quick-actions-panel"
+            id="dashboard-quick-actions-heading"
+            onClick={() => setQuickActionsOpen((o) => !o)}
+          >
+            <SectionTitle className="mb-0">Quick actions</SectionTitle>
+            <svg
+              className={`h-5 w-5 shrink-0 text-[#E8C84A] transition-transform duration-200 ease-out ${
+                quickActionsOpen ? "rotate-0" : "-rotate-180"
+              }`}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+          <div
+            id="dashboard-quick-actions-panel"
+            role="region"
+            aria-labelledby="dashboard-quick-actions-heading"
+            className={`grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none ${
+              quickActionsOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+            }`}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {showTeamClock ? (
               <Link
                 href="/team-clock"
@@ -893,6 +776,8 @@ export function DashboardClient() {
             >
               Upload new blueprint
             </Link>
+              </div>
+            </div>
           </div>
         </section>
 

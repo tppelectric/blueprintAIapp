@@ -15,6 +15,99 @@ import type {
 
 type ChatMessage = AIMessage & { actions?: AIAction[] };
 
+const AI_CHAT_STORAGE_KEY = "ai_chat_messages";
+
+function parseStoredChatMessages(raw: string): ChatMessage[] {
+  try {
+    const p = JSON.parse(raw) as unknown;
+    if (!Array.isArray(p)) return [];
+    const out: ChatMessage[] = [];
+    for (const item of p) {
+      if (item == null || typeof item !== "object" || Array.isArray(item)) {
+        continue;
+      }
+      const o = item as Record<string, unknown>;
+      if (o.role !== "user" && o.role !== "assistant") continue;
+      if (typeof o.content !== "string" || typeof o.timestamp !== "string") {
+        continue;
+      }
+      const msg: ChatMessage = {
+        role: o.role,
+        content: o.content,
+        timestamp: o.timestamp,
+      };
+      if (Array.isArray(o.actions)) {
+        msg.actions = o.actions as AIAction[];
+      }
+      out.push(msg);
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/** Ensure cloned chat DOM is readable on white PDF background. */
+function forcePdfReadableColors(root: HTMLElement) {
+  const nodes = root.querySelectorAll<HTMLElement>("div, p, span, button, a");
+  nodes.forEach((el) => {
+    el.style.color = "#0a1628";
+  });
+  root
+    .querySelectorAll<HTMLElement>(".rounded-2xl, .rounded-full")
+    .forEach((el) => {
+      el.style.backgroundColor = "#f1f5f9";
+      el.style.border = "1px solid #e2e8f0";
+    });
+}
+
+/** Maps material-list payload fields into internal request prefill shape. */
+function materialListPrefillExtras(
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  const extra: Record<string, unknown> = {};
+  if (
+    typeof payload.itemDescription === "string" &&
+    payload.itemDescription.trim()
+  ) {
+    extra.itemDescription = payload.itemDescription.trim();
+  }
+  const lineItems = payload.lineItems ?? payload.line_items;
+  if (Array.isArray(lineItems) && lineItems.length > 0) {
+    const lines = lineItems.map((item) => {
+      if (typeof item === "string") return item.trim();
+      if (item && typeof item === "object" && !Array.isArray(item)) {
+        const o = item as Record<string, unknown>;
+        const desc = [o.description, o.item, o.name, o.label].find(
+          (x): x is string => typeof x === "string" && x.trim().length > 0,
+        );
+        const qty = o.quantity ?? o.qty;
+        const qtyStr =
+          qty !== undefined && qty !== null && String(qty).trim() !== ""
+            ? ` × ${String(qty)}`
+            : "";
+        return desc ? `${desc.trim()}${qtyStr}` : JSON.stringify(o);
+      }
+      return String(item);
+    });
+    const joined = lines.filter(Boolean).join("\n").trim();
+    if (joined) {
+      if (typeof extra.itemDescription === "string") {
+        extra.itemDescription = `${extra.itemDescription}\n${joined}`;
+      } else {
+        extra.itemDescription = joined;
+      }
+    }
+  }
+  if (typeof payload.quantity === "number" || typeof payload.quantity === "string") {
+    extra.quantity = payload.quantity;
+  }
+  if (typeof payload.qty === "number" || typeof payload.qty === "string") {
+    extra.quantity = payload.qty;
+  }
+  return extra;
+}
+
 function getPageContext(pathname: string): AIPageContext {
   const parts = pathname.split("/").filter(Boolean);
 
@@ -141,8 +234,14 @@ function buildPrefillPayload(structured: AIStructuredAction): Record<string, unk
     _aiStructuredAction: type,
   };
   switch (type) {
-    case "CREATE_MATERIAL_LIST":
-      return { ...base, requestType: "material_order" };
+    case "CREATE_MATERIAL_LIST": {
+      const extras = materialListPrefillExtras(payload);
+      return {
+        ...base,
+        ...extras,
+        requestType: "material_order",
+      };
+    }
     case "CREATE_REQUEST":
     default: {
       const rt = payload.requestType;
@@ -201,6 +300,7 @@ export function FloatingAIAssistant() {
 
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [chatHydrated, setChatHydrated] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [hasUnread, setHasUnread] = useState(false);
@@ -227,6 +327,30 @@ export function FloatingAIAssistant() {
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, loading]);
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(AI_CHAT_STORAGE_KEY);
+      if (raw) {
+        const restored = parseStoredChatMessages(raw);
+        if (restored.length > 0) {
+          setMessages(restored);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    setChatHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!chatHydrated) return;
+    try {
+      localStorage.setItem(AI_CHAT_STORAGE_KEY, JSON.stringify(messages));
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }, [messages, chatHydrated]);
+
   const toggleOpen = useCallback(() => {
     setOpen((o) => {
       const next = !o;
@@ -238,6 +362,11 @@ export function FloatingAIAssistant() {
   const clearChat = useCallback(() => {
     setMessages([]);
     setHasUnread(false);
+    try {
+      localStorage.removeItem(AI_CHAT_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   const sendMessage = useCallback(async () => {
@@ -369,59 +498,43 @@ export function FloatingAIAssistant() {
       });
       return;
     }
+    const source = document.getElementById("chat-export");
+    if (!source) {
+      showToast({
+        message: "Could not find chat content to export.",
+        variant: "error",
+      });
+      return;
+    }
     setPdfExportBusy(true);
+    const host = document.createElement("div");
+    host.style.position = "fixed";
+    host.style.left = "-9999px";
+    host.style.top = "0";
+    host.style.width = "480px";
+    host.style.padding = "16px";
+    host.style.fontSize = "11px";
+    host.style.fontFamily = "system-ui, Segoe UI, sans-serif";
+    host.style.color = "#0a1628";
+    host.style.background = "#ffffff";
+    host.style.zIndex = "2147483646";
+    host.setAttribute("aria-hidden", "true");
+    const title = document.createElement("div");
+    title.textContent = "Blueprint AI Assistant";
+    title.style.fontWeight = "700";
+    title.style.marginBottom = "6px";
+    host.appendChild(title);
+    const sub = document.createElement("div");
+    sub.textContent = pageCtx.pageTitle;
+    sub.style.color = "#444444";
+    sub.style.marginBottom = "12px";
+    sub.style.fontSize = "10px";
+    host.appendChild(sub);
+    const clone = source.cloneNode(true) as HTMLElement;
+    forcePdfReadableColors(clone);
+    host.appendChild(clone);
+    document.body.appendChild(host);
     try {
-      const el = document.createElement("div");
-      el.style.padding = "12px 16px";
-      el.style.fontSize = "11px";
-      el.style.fontFamily = "system-ui, Segoe UI, sans-serif";
-      el.style.color = "#0a1628";
-      el.style.background = "#ffffff";
-
-      const h = document.createElement("div");
-      h.textContent = "Blueprint AI Assistant";
-      h.style.fontWeight = "700";
-      h.style.marginBottom = "8px";
-      el.appendChild(h);
-
-      const sub = document.createElement("div");
-      sub.textContent = pageCtx.pageTitle;
-      sub.style.color = "#444444";
-      sub.style.marginBottom = "16px";
-      sub.style.fontSize = "10px";
-      el.appendChild(sub);
-
-      for (const m of messages) {
-        const block = document.createElement("div");
-        block.style.marginBottom = "10px";
-        block.style.padding = "8px";
-        block.style.borderRadius = "8px";
-        block.style.background = m.role === "user" ? "#fef9e7" : "#f4f4f5";
-
-        const lab = document.createElement("div");
-        lab.textContent = m.role === "user" ? "You" : "Assistant";
-        lab.style.fontWeight = "600";
-        lab.style.fontSize = "9px";
-        lab.style.marginBottom = "4px";
-        lab.style.textTransform = "uppercase";
-        block.appendChild(lab);
-
-        const p = document.createElement("div");
-        p.style.whiteSpace = "pre-wrap";
-        p.textContent = m.content;
-        block.appendChild(p);
-
-        if (m.actions?.length) {
-          const acts = document.createElement("div");
-          acts.textContent = m.actions.map((a) => a.label).join(" · ");
-          acts.style.marginTop = "6px";
-          acts.style.fontSize = "9px";
-          acts.style.color = "#666666";
-          block.appendChild(acts);
-        }
-        el.appendChild(block);
-      }
-
       const ts = new Date().toISOString().replace(/[:.]/g, "-");
       const html2pdf = (await import("html2pdf.js")).default;
       await html2pdf()
@@ -432,7 +545,7 @@ export function FloatingAIAssistant() {
           html2canvas: { scale: 2 },
           jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
         })
-        .from(el)
+        .from(host)
         .save();
     } catch {
       showToast({
@@ -440,9 +553,10 @@ export function FloatingAIAssistant() {
         variant: "error",
       });
     } finally {
+      host.remove();
       setPdfExportBusy(false);
     }
-  }, [messages, pageCtx.pageTitle, showToast]);
+  }, [messages.length, pageCtx.pageTitle, showToast]);
 
   const openSaveJobPanel = useCallback(async () => {
     if (messages.length === 0) {
@@ -547,7 +661,7 @@ export function FloatingAIAssistant() {
 
       {open ? (
         <div
-          className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] right-[max(1rem,env(safe-area-inset-right,0px))] z-[100] flex max-h-[min(32rem,calc(100dvh-6rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)))] w-[min(24rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-[#E8C84A]/30 bg-[#0a1628] shadow-2xl md:bottom-8 md:right-6 md:max-h-[min(32rem,calc(100dvh-2.5rem))] md:w-96"
+          className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] right-[max(1rem,env(safe-area-inset-right,0px))] z-[115] flex max-h-[min(32rem,calc(100dvh-6rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)))] w-[min(24rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-[#E8C84A]/30 bg-[#0a1628] shadow-2xl md:bottom-8 md:right-6 md:max-h-[min(32rem,calc(100dvh-2.5rem))] md:w-96"
           role="dialog"
           aria-label="Blueprint AI Assistant"
         >
@@ -652,54 +766,56 @@ export function FloatingAIAssistant() {
             ref={scrollRef}
             className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4"
           >
-            {messages.length === 0 && !loading ? (
-              <p className="text-center text-sm text-white/50">
-                Ask me anything about your jobs, tools, NEC code, or anything
-                Blueprint AI related.
-              </p>
-            ) : null}
-            {messages.map((m, i) => (
-              <div key={`${m.timestamp}-${i}`} className="flex flex-col gap-2">
-                <div
-                  className={
-                    m.role === "user"
-                      ? "ml-8 flex justify-end"
-                      : "mr-4 flex justify-start"
-                  }
-                >
+            <div id="chat-export" className="flex flex-col gap-3">
+              {messages.length === 0 && !loading ? (
+                <p className="text-center text-sm text-white/50">
+                  Ask me anything about your jobs, tools, NEC code, or anything
+                  Blueprint AI related.
+                </p>
+              ) : null}
+              {messages.map((m, i) => (
+                <div key={`${m.timestamp}-${i}`} className="flex flex-col gap-2">
                   <div
                     className={
                       m.role === "user"
-                        ? "max-w-[95%] rounded-2xl bg-[#E8C84A]/20 px-3 py-2 text-sm text-white"
-                        : "max-w-[95%] rounded-2xl bg-white/[0.06] px-3 py-2 text-sm text-white/90"
+                        ? "ml-8 flex justify-end"
+                        : "mr-4 flex justify-start"
                     }
                   >
-                    <p className="whitespace-pre-wrap">{m.content}</p>
+                    <div
+                      className={
+                        m.role === "user"
+                          ? "max-w-[95%] rounded-2xl bg-[#E8C84A]/20 px-3 py-2 text-sm text-white"
+                          : "max-w-[95%] rounded-2xl bg-white/[0.06] px-3 py-2 text-sm text-white/90"
+                      }
+                    >
+                      <p className="whitespace-pre-wrap">{m.content}</p>
+                    </div>
+                  </div>
+                  {m.role === "assistant" && m.actions?.length ? (
+                    <div className="mr-4 flex flex-wrap gap-2 pl-0">
+                      {m.actions.map((a, ai) => (
+                        <button
+                          key={`${a.label}-${ai}`}
+                          type="button"
+                          onClick={() => onActionClick(a)}
+                          className="rounded-full border border-[#E8C84A]/40 px-3 py-1 text-xs text-[#E8C84A] hover:bg-[#E8C84A]/10"
+                        >
+                          {a.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+              {loading ? (
+                <div className="mr-4 flex justify-start">
+                  <div className="rounded-2xl bg-white/[0.06] px-4">
+                    <LoadingDots />
                   </div>
                 </div>
-                {m.role === "assistant" && m.actions?.length ? (
-                  <div className="mr-4 flex flex-wrap gap-2 pl-0">
-                    {m.actions.map((a, ai) => (
-                      <button
-                        key={`${a.label}-${ai}`}
-                        type="button"
-                        onClick={() => onActionClick(a)}
-                        className="rounded-full border border-[#E8C84A]/40 px-3 py-1 text-xs text-[#E8C84A] hover:bg-[#E8C84A]/10"
-                      >
-                        {a.label}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ))}
-            {loading ? (
-              <div className="mr-4 flex justify-start">
-                <div className="rounded-2xl bg-white/[0.06] px-4">
-                  <LoadingDots />
-                </div>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
           </div>
 
           <div className="shrink-0 border-t border-white/10 p-3">

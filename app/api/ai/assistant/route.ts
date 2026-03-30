@@ -1,9 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
-import type {
-  AIMessage,
-  AIResponse,
-  AIPageContext,
+import {
+  AI_STRUCTURED_ACTION_TYPES,
+  type AIMessage,
+  type AIResponse,
+  type AIPageContext,
+  type AIStructuredAction,
+  type AIStructuredActionType,
 } from "@/lib/ai-assistant-context";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -58,11 +61,18 @@ Return JSON only in this exact shape:
   "actions": [
     { "type": "navigate", "label": "Open Jobs", "href": "/jobs" },
     { "type": "navigate", "label": "NEC Checker", "href": "/tools/nec-checker" }
-  ]
+  ],
+  "action": { "type": "CREATE_MATERIAL_LIST", "payload": { "title": "...", "description": "..." } }
 }
 
 actions array is optional — only include when genuinely useful.
-action types: navigate, create, info
+action types for "actions": navigate, create, info
+
+Optional top-level "action" (at most one) — only when the user clearly wants to start a workflow:
+- type must be one of: CREATE_PROPOSAL, CREATE_MATERIAL_LIST, CREATE_REQUEST
+- payload is an object with fields like title, description, itemDescription, quantity, jobId (uuid string), etc.
+CREATE_MATERIAL_LIST should set payload useful for a material order. CREATE_PROPOSAL for estimate/proposal follow-up. CREATE_REQUEST for a generic internal request.
+
 Keep message under 200 words.`;
 }
 
@@ -113,10 +123,68 @@ function parseAssistantJson(raw: string): AIResponse {
         .filter(Boolean) as AIResponse["actions"];
       if (actions?.length === 0) actions = undefined;
     }
-    return { message, actions };
+
+    let action: AIStructuredAction | undefined;
+    const actionRaw = o.action;
+    if (actionRaw && typeof actionRaw === "object" && !Array.isArray(actionRaw)) {
+      const ar = actionRaw as Record<string, unknown>;
+      const t = ar.type;
+      if (
+        typeof t === "string" &&
+        (AI_STRUCTURED_ACTION_TYPES as readonly string[]).includes(t)
+      ) {
+        const payloadRaw = ar.payload;
+        const payload =
+          payloadRaw &&
+          typeof payloadRaw === "object" &&
+          !Array.isArray(payloadRaw)
+            ? (payloadRaw as Record<string, unknown>)
+            : {};
+        action = { type: t as AIStructuredActionType, payload };
+      }
+    }
+
+    return { message, actions, action };
   } catch {
     return { message: raw };
   }
+}
+
+/**
+ * PASS 2: If the assistant `message` mentions a proposal and no structured
+ * `action` was parsed from the model, attach CREATE_PROPOSAL with a minimal payload.
+ * Does not alter `message` text. Backward compatible: `action` stays omitted when N/A.
+ */
+function applyProposalKeywordAction(parsed: AIResponse): AIResponse {
+  if (parsed.action) {
+    return parsed;
+  }
+
+  const text = parsed.message;
+  if (!text || !/proposal/i.test(text)) {
+    return parsed;
+  }
+
+  const firstLine =
+    text
+      .split(/\n/)
+      .map((l) => l.trim())
+      .find((l) => l.length > 0) ?? text;
+  const title =
+    firstLine.length > 0 && firstLine.length <= 120
+      ? firstLine
+      : "Proposal request";
+
+  return {
+    ...parsed,
+    action: {
+      type: "CREATE_PROPOSAL",
+      payload: {
+        title,
+        description: text,
+      },
+    },
+  };
 }
 
 export async function POST(request: Request) {
@@ -213,7 +281,8 @@ export async function POST(request: Request) {
       .join("\n")
       .trim();
 
-    const response = parseAssistantJson(rawText || "No response.");
+    const parsed = parseAssistantJson(rawText || "No response.");
+    const response = applyProposalKeywordAction(parsed);
 
     return NextResponse.json({ ok: true, response });
   } catch (e) {

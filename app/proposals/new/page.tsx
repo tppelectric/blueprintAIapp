@@ -1,20 +1,20 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { RequestsNewClient } from "@/components/requests-new-client";
+import { ProposalsNewClient } from "@/components/proposals-new-client";
 
 export const metadata: Metadata = {
-  title: "New request",
-  description: "Submit an internal request to the office.",
+  title: "New proposal",
+  description: "Create or draft a client proposal.",
 };
 
-export default function RequestsNewPage() {
+export default function ProposalsNewPage() {
   return (
     <Suspense
       fallback={
         <div className="app-page-shell p-8 text-sm text-white/60">Loading…</div>
       }
     >
-      <RequestsNewClient />
+      <ProposalsNewClient />
     </Suspense>
   );
 }

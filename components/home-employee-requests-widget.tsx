@@ -47,8 +47,6 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
     };
   }, [profile?.id, loading]);
 
-  if (loading || !profile?.id) return null;
-
   const isMarketing = surface === "marketing";
   const cardClass = isMarketing
     ? "w-full max-w-md rounded-xl border border-[#E8C84A]/25 bg-white/[0.05] p-4 text-left shadow-lg shadow-black/20"
@@ -87,7 +85,19 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
       >
         + New request
       </Link>
-      {rows.length === 0 ? (
+      {loading ? (
+        <p
+          className={`mt-3 text-xs ${isMarketing ? "text-white/50" : "text-[var(--foreground-muted)]"}`}
+        >
+          Loading recent requests…
+        </p>
+      ) : !profile?.id ? (
+        <p
+          className={`mt-3 text-xs ${isMarketing ? "text-white/50" : "text-[var(--foreground-muted)]"}`}
+        >
+          Requests will show here when your profile is available.
+        </p>
+      ) : rows.length === 0 ? (
         <p
           className={`mt-3 text-xs ${isMarketing ? "text-white/50" : "text-[var(--foreground-muted)]"}`}
         >

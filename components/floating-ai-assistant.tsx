@@ -1,14 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAppToast } from "@/components/toast-provider";
 import { useUserRole } from "@/hooks/use-user-role";
+import { createBrowserClient } from "@/lib/supabase/client";
 import type {
   AIAction,
   AIMessage,
   AIResponse,
   AIPageContext,
+  AIStructuredAction,
 } from "@/lib/ai-assistant-context";
 
 type ChatMessage = AIMessage & { actions?: AIAction[] };
@@ -56,6 +58,8 @@ function getPageContext(pathname: string): AIPageContext {
     return { page: "requests", pageTitle: "Requests Queue" };
   if (pathname === "/requests/new")
     return { page: "new_request", pageTitle: "New Request" };
+  if (pathname === "/proposals/new")
+    return { page: "new_proposal", pageTitle: "New Proposal" };
   if (pathname.startsWith("/requests/")) {
     return {
       page: "request_detail",
@@ -112,12 +116,53 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+const JOB_PAGE_UUID_RE =
+  /^\/jobs\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/|$)/i;
+
+function jobIdFromPathname(pathname: string | null): string | null {
+  if (!pathname) return null;
+  const m = pathname.match(JOB_PAGE_UUID_RE);
+  return m?.[1] ?? null;
+}
+
 function toHistoryPayload(messages: ChatMessage[]): AIMessage[] {
   return messages.map(({ role, content, timestamp }) => ({
     role,
     content,
     timestamp,
   }));
+}
+
+/** Maps assistant structured action → internal request prefill on `/requests/new`. */
+function buildPrefillPayload(structured: AIStructuredAction): Record<string, unknown> {
+  const { type, payload } = structured;
+  const base: Record<string, unknown> = {
+    ...payload,
+    _aiStructuredAction: type,
+  };
+  switch (type) {
+    case "CREATE_MATERIAL_LIST":
+      return { ...base, requestType: "material_order" };
+    case "CREATE_REQUEST":
+    default: {
+      const rt = payload.requestType;
+      return {
+        ...base,
+        requestType:
+          typeof rt === "string" && rt.trim() ? rt : "other",
+      };
+    }
+  }
+}
+
+/** Minimal JSON for `/proposals/new?prefill=` — title + description only. */
+function buildProposalPrefillPayload(
+  payload: Record<string, unknown>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (typeof payload.title === "string") out.title = payload.title;
+  if (typeof payload.description === "string") out.description = payload.description;
+  return out;
 }
 
 function SparkleIcon() {
@@ -152,7 +197,7 @@ export function FloatingAIAssistant() {
   const pathname = usePathname();
   const router = useRouter();
   const { showToast } = useAppToast();
-  const { role, profile, loading: roleLoading } = useUserRole();
+  const { role, loading: roleLoading } = useUserRole();
 
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -164,6 +209,18 @@ export function FloatingAIAssistant() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const pageCtx = getPageContext(pathname ?? "/");
+  const contextJobId = useMemo(
+    () => jobIdFromPathname(pathname ?? null),
+    [pathname],
+  );
+
+  const [pdfExportBusy, setPdfExportBusy] = useState(false);
+  const [saveJobPanelOpen, setSaveJobPanelOpen] = useState(false);
+  const [jobsForSave, setJobsForSave] = useState<
+    { id: string; label: string }[]
+  >([]);
+  const [selectedJobId, setSelectedJobId] = useState("");
+  const [saveChatBusy, setSaveChatBusy] = useState(false);
 
   useEffect(() => {
     if (!scrollRef.current) return;
@@ -237,12 +294,36 @@ export function FloatingAIAssistant() {
 
       setMessages((m) => [...m, assistantMsg]);
 
-      setOpen((isOpen) => {
-        if (!isOpen) {
-          setHasUnread(true);
+      if (j.response.action) {
+        try {
+          if (j.response.action.type === "CREATE_PROPOSAL") {
+            const prefillObj = buildProposalPrefillPayload(
+              j.response.action.payload,
+            );
+            router.push(
+              `/proposals/new?prefill=${encodeURIComponent(JSON.stringify(prefillObj))}`,
+            );
+          } else {
+            const prefillObj = buildPrefillPayload(j.response.action);
+            router.push(
+              `/requests/new?prefill=${encodeURIComponent(JSON.stringify(prefillObj))}`,
+            );
+          }
+          setOpen(false);
+        } catch {
+          showToast({
+            message: "Could not open form from assistant action.",
+            variant: "error",
+          });
         }
-        return isOpen;
-      });
+      } else {
+        setOpen((isOpen) => {
+          if (!isOpen) {
+            setHasUnread(true);
+          }
+          return isOpen;
+        });
+      }
     } catch {
       setMessages((m) => m.slice(0, -1));
       showToast({
@@ -258,6 +339,7 @@ export function FloatingAIAssistant() {
     messages,
     pageCtx,
     role,
+    router,
     showToast,
   ]);
 
@@ -279,6 +361,163 @@ export function FloatingAIAssistant() {
     }
   };
 
+  const handleExportPdf = useCallback(async () => {
+    if (messages.length === 0) {
+      showToast({
+        message: "Nothing to export yet.",
+        variant: "error",
+      });
+      return;
+    }
+    setPdfExportBusy(true);
+    try {
+      const el = document.createElement("div");
+      el.style.padding = "12px 16px";
+      el.style.fontSize = "11px";
+      el.style.fontFamily = "system-ui, Segoe UI, sans-serif";
+      el.style.color = "#0a1628";
+      el.style.background = "#ffffff";
+
+      const h = document.createElement("div");
+      h.textContent = "Blueprint AI Assistant";
+      h.style.fontWeight = "700";
+      h.style.marginBottom = "8px";
+      el.appendChild(h);
+
+      const sub = document.createElement("div");
+      sub.textContent = pageCtx.pageTitle;
+      sub.style.color = "#444444";
+      sub.style.marginBottom = "16px";
+      sub.style.fontSize = "10px";
+      el.appendChild(sub);
+
+      for (const m of messages) {
+        const block = document.createElement("div");
+        block.style.marginBottom = "10px";
+        block.style.padding = "8px";
+        block.style.borderRadius = "8px";
+        block.style.background = m.role === "user" ? "#fef9e7" : "#f4f4f5";
+
+        const lab = document.createElement("div");
+        lab.textContent = m.role === "user" ? "You" : "Assistant";
+        lab.style.fontWeight = "600";
+        lab.style.fontSize = "9px";
+        lab.style.marginBottom = "4px";
+        lab.style.textTransform = "uppercase";
+        block.appendChild(lab);
+
+        const p = document.createElement("div");
+        p.style.whiteSpace = "pre-wrap";
+        p.textContent = m.content;
+        block.appendChild(p);
+
+        if (m.actions?.length) {
+          const acts = document.createElement("div");
+          acts.textContent = m.actions.map((a) => a.label).join(" · ");
+          acts.style.marginTop = "6px";
+          acts.style.fontSize = "9px";
+          acts.style.color = "#666666";
+          block.appendChild(acts);
+        }
+        el.appendChild(block);
+      }
+
+      const ts = new Date().toISOString().replace(/[:.]/g, "-");
+      const html2pdf = (await import("html2pdf.js")).default;
+      await html2pdf()
+        .set({
+          margin: 10,
+          filename: `blueprint-chat-${ts}.pdf`,
+          image: { type: "jpeg", quality: 0.95 },
+          html2canvas: { scale: 2 },
+          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        })
+        .from(el)
+        .save();
+    } catch {
+      showToast({
+        message: "Could not export PDF.",
+        variant: "error",
+      });
+    } finally {
+      setPdfExportBusy(false);
+    }
+  }, [messages, pageCtx.pageTitle, showToast]);
+
+  const openSaveJobPanel = useCallback(async () => {
+    if (messages.length === 0) {
+      showToast({
+        message: "Nothing to save yet.",
+        variant: "error",
+      });
+      return;
+    }
+    setSaveJobPanelOpen(true);
+    setSelectedJobId("");
+    setJobsForSave([]);
+    try {
+      const sb = createBrowserClient();
+      const { data, error } = await sb
+        .from("jobs")
+        .select("id, job_name, job_number")
+        .order("updated_at", { ascending: false })
+        .limit(120);
+      if (error) throw error;
+      const rows = (data ?? []).map((r) => {
+        const num = String((r as { job_number?: string }).job_number ?? "").trim();
+        const nm = String((r as { job_name?: string }).job_name ?? "").trim();
+        const id = String((r as { id: string }).id);
+        const label =
+          num && nm ? `${num} · ${nm}` : num || nm || id.slice(0, 8);
+        return { id, label };
+      });
+      setJobsForSave(rows);
+      if (contextJobId && rows.some((r) => r.id === contextJobId)) {
+        setSelectedJobId(contextJobId);
+      } else if (rows[0]) {
+        setSelectedJobId(rows[0].id);
+      }
+    } catch {
+      showToast({
+        message: "Could not load jobs.",
+        variant: "error",
+      });
+      setSaveJobPanelOpen(false);
+    }
+  }, [contextJobId, messages.length, showToast]);
+
+  const commitSaveChatToJob = useCallback(async () => {
+    if (!selectedJobId.trim()) {
+      showToast({ message: "Select a job.", variant: "error" });
+      return;
+    }
+    setSaveChatBusy(true);
+    try {
+      const res = await fetch(
+        `/api/jobs/${encodeURIComponent(selectedJobId)}/save-chat`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: messages }),
+        },
+      );
+      const j = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || !j.success) {
+        throw new Error(j.error || "Save failed.");
+      }
+      showToast({ message: "Chat saved to job.", variant: "success" });
+      setSaveJobPanelOpen(false);
+    } catch (e) {
+      showToast({
+        message: e instanceof Error ? e.message : "Save failed.",
+        variant: "error",
+      });
+    } finally {
+      setSaveChatBusy(false);
+    }
+  }, [messages, selectedJobId, showToast]);
+
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -286,67 +525,127 @@ export function FloatingAIAssistant() {
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, [input]);
 
-  if (!roleLoading && !profile) {
+  if (roleLoading) {
     return null;
   }
 
   return (
     <>
-      <button
-        type="button"
-        onClick={toggleOpen}
-        className="fixed bottom-24 right-4 z-[90] flex h-12 w-12 items-center justify-center rounded-full bg-[#E8C84A] shadow-lg ring-2 ring-[#0a1628]/20 transition hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-[#E8C84A]/60 sm:right-5"
-        aria-label={open ? "Close AI assistant" : "Open AI assistant"}
-      >
-        <SparkleIcon />
-        {hasUnread && !open ? (
-          <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-[#0a1628]" />
-        ) : null}
-      </button>
+      {!open ? (
+        <button
+          type="button"
+          onClick={toggleOpen}
+          className="fixed bottom-24 right-[max(1rem,env(safe-area-inset-right,0px))] z-[80] flex h-12 w-12 items-center justify-center rounded-full bg-[#E8C84A] shadow-lg ring-2 ring-[#0a1628]/20 transition hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-[#E8C84A]/60 md:bottom-8 md:right-6"
+          aria-label="Open AI assistant"
+        >
+          <SparkleIcon />
+          {hasUnread ? (
+            <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-[#0a1628]" />
+          ) : null}
+        </button>
+      ) : null}
 
       {open ? (
         <div
-          className="fixed bottom-40 right-4 z-[90] flex w-80 max-h-[32rem] flex-col overflow-hidden rounded-2xl border border-[#E8C84A]/30 bg-[#0a1628] shadow-2xl sm:right-5 sm:w-96"
+          className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] right-[max(1rem,env(safe-area-inset-right,0px))] z-[100] flex max-h-[min(32rem,calc(100dvh-6rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)))] w-[min(24rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-[#E8C84A]/30 bg-[#0a1628] shadow-2xl md:bottom-8 md:right-6 md:max-h-[min(32rem,calc(100dvh-2.5rem))] md:w-96"
           role="dialog"
           aria-label="Blueprint AI Assistant"
         >
-          <header className="flex shrink-0 items-start justify-between border-b border-white/10 px-4 py-3">
-            <div className="min-w-0 pr-2">
-              <h2 className="text-sm font-bold text-white">
-                Blueprint AI Assistant
-              </h2>
-              <p className="truncate text-xs text-white/55">{pageCtx.pageTitle}</p>
-            </div>
-            <div className="flex shrink-0 items-center gap-1">
-              <button
-                type="button"
-                onClick={clearChat}
-                className="rounded-lg p-1.5 text-white/60 hover:bg-white/10 hover:text-white"
-                aria-label="Clear conversation"
-                title="Clear conversation"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="h-4 w-4"
+          <header className="flex shrink-0 flex-col gap-2 border-b border-white/10 px-4 py-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 pr-2">
+                <h2 className="text-sm font-bold text-white">
+                  Blueprint AI Assistant
+                </h2>
+                <p className="truncate text-xs text-white/55">
+                  {pageCtx.pageTitle}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  onClick={clearChat}
+                  className="rounded-lg p-1.5 text-white/60 hover:bg-white/10 hover:text-white"
+                  aria-label="Clear conversation"
+                  title="Clear conversation"
                 >
-                  <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14zM10 11v6M14 11v6" />
-                </svg>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    className="h-4 w-4"
+                  >
+                    <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14zM10 11v6M14 11v6" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                  }}
+                  className="rounded-lg p-1.5 text-lg leading-none text-white/70 hover:bg-white/10 hover:text-white"
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                disabled={pdfExportBusy || messages.length === 0}
+                onClick={() => void handleExportPdf()}
+                className="rounded-md border border-white/15 bg-white/[0.06] px-2 py-1 text-[10px] font-semibold text-white/90 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {pdfExportBusy ? "Exporting…" : "Export PDF"}
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setOpen(false);
-                }}
-                className="rounded-lg p-1.5 text-lg leading-none text-white/70 hover:bg-white/10 hover:text-white"
-                aria-label="Close"
+                disabled={saveChatBusy}
+                onClick={() => void openSaveJobPanel()}
+                className="rounded-md border border-white/15 bg-white/[0.06] px-2 py-1 text-[10px] font-semibold text-white/90 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                ×
+                Save to Job
               </button>
             </div>
+            {saveJobPanelOpen ? (
+              <div className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/[0.04] p-2">
+                <label className="text-[10px] text-white/55">
+                  Job
+                  <select
+                    className="mt-1 w-full rounded-md border border-white/15 bg-[#071422] px-2 py-1.5 text-xs text-white"
+                    value={selectedJobId}
+                    onChange={(e) => setSelectedJobId(e.target.value)}
+                  >
+                    <option value="">Select job…</option>
+                    {jobsForSave.map((j) => (
+                      <option key={j.id} value={j.id}>
+                        {j.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSaveJobPanelOpen(false)}
+                    className="rounded-md px-2 py-1 text-[10px] text-white/70 hover:bg-white/10"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saveChatBusy || !selectedJobId}
+                    onClick={() => void commitSaveChatToJob()}
+                    className="rounded-md bg-[#E8C84A] px-2 py-1 text-[10px] font-bold text-[#0a1628] disabled:opacity-40"
+                  >
+                    {saveChatBusy ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </header>
 
           <div

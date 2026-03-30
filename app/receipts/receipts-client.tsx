@@ -17,6 +17,7 @@ import {
 import { parseReceiptRow } from "@/lib/receipts-parse";
 import { canManageReceiptsAdmin } from "@/lib/user-roles";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { useReceiptThumbIntersection } from "@/hooks/use-receipt-thumb-intersection";
 
 type TabKey = "all" | "unassigned" | "by_job" | "mine";
 
@@ -78,6 +79,11 @@ export function ReceiptsClient() {
   const [receiptActionId, setReceiptActionId] = useState<string | null>(null);
   const [editing, setEditing] = useState<ReceiptRow | null>(null);
 
+  const { bindReceiptThumb, getOrFetchThumbUrl } = useReceiptThumbIntersection(
+    thumbs,
+    setThumbs,
+  );
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -126,14 +132,7 @@ export function ReceiptsClient() {
       }
       setProfiles(pmap);
 
-      const nextThumbs: Record<string, string> = {};
-      for (const r of rows) {
-        const { data: signed } = await sb.storage
-          .from("job-receipts")
-          .createSignedUrl(r.storage_path, 3600);
-        if (signed?.signedUrl) nextThumbs[r.id] = signed.signedUrl;
-      }
-      setThumbs(nextThumbs);
+      setThumbs({});
     } catch (e) {
       showToast({
         message: e instanceof Error ? e.message : "Load failed.",
@@ -356,26 +355,32 @@ export function ReceiptsClient() {
             <div className="h-full w-full origin-left animate-pulse bg-[#E8C84A]" />
           </div>
         ) : null}
-        <button
-          type="button"
-          className="shrink-0"
-          onClick={() =>
-            thumbs[r.id] ? setLightbox(thumbs[r.id]!) : undefined
-          }
-        >
-          {thumbs[r.id] ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={thumbs[r.id]}
-              alt=""
-              className="h-24 w-24 rounded-lg object-cover ring-1 ring-white/10"
-            />
-          ) : (
-            <div className="flex h-24 w-24 items-center justify-center rounded-lg bg-white/5 text-xs text-white/40">
-              —
-            </div>
-          )}
-        </button>
+        <div ref={bindReceiptThumb(r)} className="shrink-0">
+          <button
+            type="button"
+            className="shrink-0"
+            onClick={() => {
+              void (async () => {
+                const u =
+                  thumbs[r.id] ?? (await getOrFetchThumbUrl(r));
+                if (u) setLightbox(u);
+              })();
+            }}
+          >
+            {thumbs[r.id] ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={thumbs[r.id]}
+                alt=""
+                className="h-24 w-24 rounded-lg object-cover ring-1 ring-white/10"
+              />
+            ) : (
+              <div className="flex h-24 w-24 items-center justify-center rounded-lg bg-white/5 text-xs text-white/40">
+                —
+              </div>
+            )}
+          </button>
+        </div>
         <div className="min-w-0 flex-1">
           <p className="font-bold text-white">{r.vendor_name ?? "—"}</p>
           <p className="text-xs text-white/50">{r.receipt_date ?? "—"}</p>

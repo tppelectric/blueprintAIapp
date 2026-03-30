@@ -16,6 +16,7 @@ import {
 import { parseReceiptRow } from "@/lib/receipts-parse";
 import { canManageReceiptsAdmin } from "@/lib/user-roles";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { useReceiptThumbIntersection } from "@/hooks/use-receipt-thumb-intersection";
 
 export function JobReceiptsTab({
   jobId,
@@ -30,6 +31,10 @@ export function JobReceiptsTab({
   const [receipts, setReceipts] = useState<ReceiptRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
+  const { bindReceiptThumb } = useReceiptThumbIntersection(
+    thumbUrls,
+    setThumbUrls,
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -46,14 +51,7 @@ export function JobReceiptsTab({
       );
       setReceipts(rows);
 
-      const next: Record<string, string> = {};
-      for (const r of rows) {
-        const { data: signed } = await sb.storage
-          .from("job-receipts")
-          .createSignedUrl(r.storage_path, 3600);
-        if (signed?.signedUrl) next[r.id] = signed.signedUrl;
-      }
-      setThumbUrls(next);
+      setThumbUrls({});
     } catch (e) {
       showToast({
         message: e instanceof Error ? e.message : "Could not load receipts.",
@@ -172,18 +170,20 @@ export function JobReceiptsTab({
               key={r.id}
               className="flex flex-wrap gap-3 rounded-xl border border-white/10 bg-black/20 p-3"
             >
-              {thumbUrls[r.id] ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={thumbUrls[r.id]}
-                  alt=""
-                  className="h-20 w-20 shrink-0 rounded-lg object-cover"
-                />
-              ) : (
-                <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg bg-white/5 text-xs text-white/40">
-                  —
-                </div>
-              )}
+              <div ref={bindReceiptThumb(r)} className="shrink-0">
+                {thumbUrls[r.id] ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={thumbUrls[r.id]}
+                    alt=""
+                    className="h-20 w-20 shrink-0 rounded-lg object-cover"
+                  />
+                ) : (
+                  <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg bg-white/5 text-xs text-white/40">
+                    —
+                  </div>
+                )}
+              </div>
               <div className="min-w-0 flex-1">
                 <p className="font-medium text-white">
                   {r.vendor_name ?? "—"}

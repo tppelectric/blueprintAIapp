@@ -12,6 +12,16 @@ import {
 } from "@/lib/jobtread-settings";
 import { canManageIntegrations } from "@/lib/user-roles";
 
+type JobtreadSyncLogEntry = {
+  id: string;
+  sync_type: string;
+  status: string;
+  started_at: string;
+  completed_at: string | null;
+  records_synced: number;
+  error_message: string | null;
+};
+
 function formatWhen(iso: string | null): string {
   if (!iso) return "Never";
   try {
@@ -101,6 +111,13 @@ export function IntegrationsSettingsClient() {
   const [exportTimeEntries, setExportTimeEntries] = useState(false);
 
   const [showApiKey, setShowApiKey] = useState(false);
+  const [syncActivity, setSyncActivity] = useState<{
+    target: string;
+    label: string;
+  } | null>(null);
+  const [syncLog, setSyncLog] = useState<JobtreadSyncLogEntry[]>([]);
+  const [syncLogLoading, setSyncLogLoading] = useState(false);
+  const [syncLogOpen, setSyncLogOpen] = useState(false);
   const [connectionTest, setConnectionTest] = useState<{
     ok: boolean;
     fading: boolean;
@@ -180,6 +197,30 @@ export function IntegrationsSettingsClient() {
   useEffect(() => {
     if (!roleLoading && allowed) void load();
   }, [roleLoading, allowed, load]);
+
+  const loadSyncLog = useCallback(async () => {
+    setSyncLogLoading(true);
+    try {
+      const r = await fetch("/api/integrations/jobtread/sync-log?limit=30", {
+        credentials: "include",
+      });
+      const j = (await r.json()) as {
+        ok?: boolean;
+        entries?: JobtreadSyncLogEntry[];
+        error?: string;
+      };
+      if (!r.ok || !j.ok) return;
+      setSyncLog(j.entries ?? []);
+    } catch {
+      /* ignore */
+    } finally {
+      setSyncLogLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!roleLoading && allowed && !loading) void loadSyncLog();
+  }, [roleLoading, allowed, loading, loadSyncLog]);
 
   const save = async () => {
     setSaving(true);
@@ -323,23 +364,52 @@ export function IntegrationsSettingsClient() {
   };
 
   const runSync = async (target: "customers" | "jobs" | "daily_logs") => {
+    const label =
+      target === "customers"
+        ? "Importing customers from JobTread…"
+        : target === "jobs"
+          ? "Importing jobs from JobTread…"
+          : "Running daily log export…";
+    setSyncActivity({ target, label });
     try {
       const r = await fetch(
         `/api/integrations/jobtread/sync?target=${encodeURIComponent(target)}`,
         { credentials: "include" },
       );
-      const j = (await r.json()) as { ok?: boolean; error?: string; message?: string };
-      if (!r.ok) throw new Error(j.error ?? "Sync failed.");
+      const j = (await r.json()) as {
+        ok?: boolean;
+        error?: string;
+        message?: string;
+        count?: number;
+      };
+      if (!r.ok) {
+        throw new Error(j.error ?? "Sync failed.");
+      }
+      if (j.ok === false) {
+        throw new Error(j.error ?? "Sync failed.");
+      }
+      const countPart =
+        typeof j.count === "number"
+          ? target === "customers"
+            ? `Imported ${j.count} customer(s) from JobTread.`
+            : target === "jobs"
+              ? `Imported ${j.count} job(s) from JobTread.`
+              : `${j.count} record(s) processed.`
+          : null;
       showToast({
-        message: j.message ?? "Sync recorded.",
+        message: j.message?.trim() || countPart || "Sync completed.",
         variant: "success",
       });
       void load();
+      void loadSyncLog();
     } catch (e) {
       showToast({
         message: e instanceof Error ? e.message : "Sync failed.",
         variant: "error",
       });
+      void loadSyncLog();
+    } finally {
+      setSyncActivity(null);
     }
   };
 
@@ -610,11 +680,23 @@ export function IntegrationsSettingsClient() {
               <p className="text-xs font-bold uppercase tracking-wide text-[#E8C84A]/90">
                 Manual sync
               </p>
+              {syncActivity ? (
+                <div
+                  className="mt-3 rounded-lg border border-[#E8C84A]/35 bg-[#E8C84A]/10 px-4 py-3 text-sm text-[#E8C84A]"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <p className="font-medium">{syncActivity.label}</p>
+                  <p className="mt-1 text-xs text-white/60">
+                    This can take a minute for large JobTread accounts.
+                  </p>
+                </div>
+              ) : null}
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
                   className="btn-secondary btn-h-11"
-                  disabled={saving}
+                  disabled={saving || syncActivity !== null}
                   onClick={() => void runSync("customers")}
                 >
                   Sync customers now
@@ -622,7 +704,7 @@ export function IntegrationsSettingsClient() {
                 <button
                   type="button"
                   className="btn-secondary btn-h-11"
-                  disabled={saving}
+                  disabled={saving || syncActivity !== null}
                   onClick={() => void runSync("jobs")}
                 >
                   Sync jobs now
@@ -630,12 +712,92 @@ export function IntegrationsSettingsClient() {
                 <button
                   type="button"
                   className="btn-secondary btn-h-11"
-                  disabled={saving}
+                  disabled={saving || syncActivity !== null}
                   onClick={() => void runSync("daily_logs")}
                 >
                   Export daily logs
                 </button>
               </div>
+            </div>
+
+            <div className="mt-6 border-t border-white/10 pt-6">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between text-left"
+                onClick={() => setSyncLogOpen((o) => !o)}
+                aria-expanded={syncLogOpen}
+              >
+                <p className="text-xs font-bold uppercase tracking-wide text-[#E8C84A]/90">
+                  Sync history
+                </p>
+                <span className="text-white/50">{syncLogOpen ? "▼" : "▶"}</span>
+              </button>
+              {syncLogOpen ? (
+                <div className="mt-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-white/45">
+                      Recent runs (newest first)
+                    </span>
+                    <button
+                      type="button"
+                      className="text-xs text-[#E8C84A] hover:underline"
+                      disabled={syncLogLoading}
+                      onClick={() => void loadSyncLog()}
+                    >
+                      {syncLogLoading ? "Loading…" : "Refresh"}
+                    </button>
+                  </div>
+                  {syncLog.length === 0 && !syncLogLoading ? (
+                    <p className="text-sm text-white/45">No sync runs logged yet.</p>
+                  ) : (
+                    <div className="max-h-64 overflow-auto rounded-lg border border-white/10">
+                      <table className="w-full text-left text-xs text-white/80">
+                        <thead className="sticky top-0 bg-[#0a1628] text-white/50">
+                          <tr>
+                            <th className="px-2 py-2 font-medium">Started</th>
+                            <th className="px-2 py-2 font-medium">Type</th>
+                            <th className="px-2 py-2 font-medium">Status</th>
+                            <th className="px-2 py-2 font-medium">#</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {syncLog.map((row) => (
+                            <tr
+                              key={row.id}
+                              className="border-t border-white/10 align-top"
+                            >
+                              <td className="whitespace-nowrap px-2 py-2 font-mono text-[10px] text-white/65">
+                                {formatWhen(row.started_at)}
+                              </td>
+                              <td className="px-2 py-2">{row.sync_type}</td>
+                              <td
+                                className={`px-2 py-2 font-medium ${statusColor(row.status === "success" ? "ok" : row.status === "failed" ? "error" : "unknown")}`}
+                              >
+                                {row.status}
+                              </td>
+                              <td className="px-2 py-2 tabular-nums text-[#E8C84A]">
+                                {row.records_synced}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {syncLog.some((r) => r.error_message) ? (
+                    <ul className="mt-2 space-y-1 text-[11px] text-red-200/90">
+                      {syncLog
+                        .filter((r) => r.error_message)
+                        .slice(0, 3)
+                        .map((r) => (
+                          <li key={`err-${r.id}`}>
+                            {formatWhen(r.started_at)} — {r.error_message}
+                          </li>
+                        ))}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             <div className="mt-6 border-t border-white/10 pt-6">

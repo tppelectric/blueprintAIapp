@@ -266,6 +266,25 @@ export function FloatingAIAssistant() {
     })();
   }, [pageCtx.page]);
 
+  const saveMessagesRemote = useCallback(
+    async (next: ChatMessage[]) => {
+      try {
+        await fetch("/api/ai/conversation", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pageContext: pageCtx.page,
+            messages: toPersistPayload(next),
+          }),
+        });
+      } catch {
+        /* offline or table missing */
+      }
+    },
+    [pageCtx.page],
+  );
+
   const sendMessage = useCallback(async () => {
     const text = input.trim();
     if (!text || loading) return;
@@ -346,7 +365,33 @@ export function FloatingAIAssistant() {
     pageCtx,
     role,
     showToast,
+    saveMessagesRemote,
   ]);
+
+  useEffect(() => {
+    if (!profile?.id || roleLoading) return;
+    const pageKey = pageCtx.page;
+    let cancelled = false;
+    setMessages([]);
+    void (async () => {
+      try {
+        const r = await fetch(
+          `/api/ai/conversation?page_context=${encodeURIComponent(pageKey)}`,
+          { credentials: "include" },
+        );
+        if (!r.ok || cancelled) return;
+        const j = (await r.json()) as { messages?: unknown[] };
+        const rows = Array.isArray(j.messages) ? j.messages : [];
+        if (cancelled) return;
+        setMessages(storedRowsToMessages(rows));
+      } catch {
+        /* table may not exist yet */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.id, roleLoading, pageCtx.page]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -354,25 +399,6 @@ export function FloatingAIAssistant() {
       void sendMessage();
     }
   };
-
-  const saveMessagesRemote = useCallback(
-    async (next: ChatMessage[]) => {
-      try {
-        await fetch("/api/ai/conversation", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            pageContext: pageCtx.page,
-            messages: toPersistPayload(next),
-          }),
-        });
-      } catch {
-        /* offline or table missing */
-      }
-    },
-    [pageCtx.page],
-  );
 
   const onActionClick = (action: AIAction) => {
     if (action.type === "navigate") {

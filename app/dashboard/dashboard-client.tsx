@@ -586,200 +586,234 @@ export function DashboardClient() {
           </div>
         </section>
 
-        <section
-          className={`mt-4 grid w-full gap-4 ${
-            showInternalRequestsAdmin
-              ? "lg:grid-cols-4 lg:items-start"
-              : "lg:grid-cols-3 lg:items-start"
-          }`}
-        >
-          <DashboardMyWorkCard />
-          <DashboardRequestsSummaryCard />
-          <HomeEmployeeRequestsWidget surface="app" />
-          {showInternalRequestsAdmin ? (
-            <DashboardInternalRequestsAdminCard />
-          ) : null}
-        </section>
+        <div className="mt-4 w-full max-w-6xl space-y-6">
+          <section className="grid gap-4 md:grid-cols-2">
+            <DashboardMyWorkCard />
+            <DashboardRequestsSummaryCard />
+          </section>
 
-        <section className="app-card app-card-pad-lg">
-          <button
-            type="button"
-            className="mb-4 flex w-full items-center justify-between gap-3 rounded-lg border border-transparent px-1 py-1.5 text-left transition-colors hover:border-white/10 hover:bg-white/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
-            aria-expanded={quickActionsOpen}
-            aria-controls="dashboard-quick-actions-panel"
-            id="dashboard-quick-actions-heading"
-            onClick={() => setQuickActionsOpen((o) => !o)}
-          >
-            <SectionTitle className="mb-0">Quick actions</SectionTitle>
-            <svg
-              className={`h-5 w-5 shrink-0 text-[#E8C84A] transition-transform duration-200 ease-out ${
-                quickActionsOpen ? "rotate-0" : "-rotate-180"
-              }`}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-            >
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </button>
-          <div
-            id="dashboard-quick-actions-panel"
-            role="region"
-            aria-labelledby="dashboard-quick-actions-heading"
-            className={`grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none ${
-              quickActionsOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-            }`}
-          >
-            <div className="min-h-0 overflow-hidden">
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {showTeamClock ? (
-              <Link
-                href="/team-clock"
-                className="btn-secondary btn-h-11 w-full border-orange-500/35 text-orange-200"
-              >
-                Team time clock
-              </Link>
-            ) : null}
-            <Link
-              href="/requests/new"
-              className="btn-secondary btn-h-11 w-full border-sky-400/35 text-sky-100"
-            >
-              + New request
-            </Link>
-            <Link
-              href="/my-requests"
-              className="btn-secondary btn-h-11 w-full border-sky-500/30 text-sky-200"
-            >
-              My requests
-            </Link>
+          <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <HomeEmployeeRequestsWidget surface="app" />
             {showInternalRequestsAdmin ? (
-              <Link
-                href="/requests"
-                className="btn-secondary btn-h-11 w-full border-violet-400/35 text-violet-200"
-              >
-                Requests queue
-              </Link>
+              <DashboardInternalRequestsAdminCard />
             ) : null}
-            <Link href="/tools" className="btn-secondary btn-h-11 w-full">
-              Tools hub
-            </Link>
-            {showIntegrationsSettings ? (
-              <Link
-                href="/settings/integrations"
-                className="btn-secondary btn-h-11 w-full border-violet-400/35 text-violet-200"
-              >
-                ⚙️ Settings
-              </Link>
-            ) : null}
-            {showAdminUsersQuick ? (
-              <Link
-                href="/admin/users"
-                className="btn-secondary btn-h-11 w-full border-[#E8C84A]/35 text-[#E8C84A]"
-              >
-                User management
-              </Link>
-            ) : null}
-            <Link
-              href="/jobs/daily-logs/new"
-              className="btn-secondary btn-h-11 w-full border-orange-500/35 text-orange-200"
-            >
-              📝 New Daily Log
-            </Link>
-            <Link
-              href="/jobs/daily-logs"
-              className="btn-secondary btn-h-11 w-full border-[#E8C84A]/35 text-[#E8C84A]"
-            >
-              📋 View All Logs
-            </Link>
-            <Link
-              href="/receipts"
-              className="btn-secondary btn-h-11 w-full border-[#E8C84A]/35 text-[#E8C84A]"
-            >
-              📷 Receipts
-            </Link>
-            <Link
-              href="/inventory"
-              className="btn-secondary btn-h-11 w-full border-violet-500/35 text-violet-200"
-            >
-              📦 Inventory & QR
-            </Link>
-            <Link href="/timesheets" className="btn-secondary btn-h-11 w-full">
-              Timesheets
-            </Link>
-            <Link
-              href="/field"
-              className="btn-secondary btn-h-11 w-full border-emerald-500/35 text-emerald-100"
-            >
-              Field punch in/out
-            </Link>
-            <Link href="/time-off" className="btn-secondary btn-h-11 w-full">
-              Time off
-            </Link>
-            <Link href="/calendar" className="btn-secondary btn-h-11 w-full">
-              Work calendar
-            </Link>
-            <Link href="/reference" className="btn-secondary btn-h-11 w-full">
-              Reference library
-            </Link>
-            <Link
-              href="/tools/load-calculator"
-              className="btn-secondary btn-h-11 w-full"
-            >
-              Load calculator
-            </Link>
-            <Link href="/tools/nec-checker" className="btn-secondary btn-h-11 w-full">
-              NEC checker
-            </Link>
-            <Link
-              href="/tools/electrical-reference"
-              className="btn-secondary btn-h-11 w-full"
-            >
-              Electrical reference
-            </Link>
-            <Link
-              href="/tools/motor-hvac-calculator"
-              className="btn-secondary btn-h-11 w-full"
-            >
-              Motor / HVAC
-            </Link>
-            <Link href="/tools/wifi-analyzer" className="btn-secondary btn-h-11 w-full">
-              Wi‑Fi analyzer
-            </Link>
-            <Link href="/tools/av-analyzer" className="btn-secondary btn-h-11 w-full">
-              AV analyzer
-            </Link>
-            <Link
-              href="/tools/smarthome-analyzer"
-              className="btn-secondary btn-h-11 w-full"
-            >
-              Smart home
-            </Link>
-            <Link
-              href="/tools/electrical-analyzer"
-              className="btn-secondary btn-h-11 w-full"
-            >
-              Electrical analyzer
-            </Link>
-            <Link
-              href="/tools/project-describer"
-              className="btn-secondary btn-h-11 w-full"
-            >
-              AI describer
-            </Link>
-            <Link
-              href="/upload"
-              className="btn-primary btn-h-11 col-span-1 w-full sm:col-span-2 lg:col-span-3"
-            >
-              Upload new blueprint
-            </Link>
-              </div>
+            <div className="min-w-0 md:col-span-2 lg:col-span-3">
+              <section className="app-card app-card-pad-lg">
+                <button
+                  type="button"
+                  className="mb-4 flex w-full items-center justify-between gap-3 rounded-lg border border-transparent px-1 py-1.5 text-left transition-colors hover:border-white/10 hover:bg-white/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
+                  aria-expanded={quickActionsOpen}
+                  aria-controls="dashboard-quick-actions-panel"
+                  id="dashboard-quick-actions-heading"
+                  onClick={() => setQuickActionsOpen((o) => !o)}
+                >
+                  <SectionTitle className="mb-0">Quick actions</SectionTitle>
+                  <svg
+                    className={`h-5 w-5 shrink-0 text-[#E8C84A] transition-transform duration-200 ease-out ${
+                      quickActionsOpen ? "rotate-0" : "-rotate-180"
+                    }`}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden
+                  >
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </button>
+                <div
+                  id="dashboard-quick-actions-panel"
+                  role="region"
+                  aria-labelledby="dashboard-quick-actions-heading"
+                  className={`grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none ${
+                    quickActionsOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                  }`}
+                >
+                  <div className="min-h-0 overflow-hidden">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {showTeamClock ? (
+                        <Link
+                          href="/team-clock"
+                          className="btn-secondary btn-h-11 w-full border-orange-500/35 text-orange-200"
+                        >
+                          Team time clock
+                        </Link>
+                      ) : null}
+                      <Link
+                        href="/requests/new"
+                        className="btn-secondary btn-h-11 w-full border-sky-400/35 text-sky-100"
+                      >
+                        + New request
+                      </Link>
+                      <Link
+                        href="/my-requests"
+                        className="btn-secondary btn-h-11 w-full border-sky-500/30 text-sky-200"
+                      >
+                        My requests
+                      </Link>
+                      {showInternalRequestsAdmin ? (
+                        <Link
+                          href="/requests"
+                          className="btn-secondary btn-h-11 w-full border-violet-400/35 text-violet-200"
+                        >
+                          Requests queue
+                        </Link>
+                      ) : null}
+                      <Link href="/tools" className="btn-secondary btn-h-11 w-full">
+                        Tools hub
+                      </Link>
+                      {showIntegrationsSettings ? (
+                        <Link
+                          href="/settings/integrations"
+                          className="btn-secondary btn-h-11 w-full border-violet-400/35 text-violet-200"
+                        >
+                          ⚙️ Settings
+                        </Link>
+                      ) : null}
+                      {showAdminUsersQuick ? (
+                        <Link
+                          href="/admin/users"
+                          className="btn-secondary btn-h-11 w-full border-[#E8C84A]/35 text-[#E8C84A]"
+                        >
+                          User management
+                        </Link>
+                      ) : null}
+                      <Link
+                        href="/jobs/daily-logs/new"
+                        className="btn-secondary btn-h-11 w-full border-orange-500/35 text-orange-200"
+                      >
+                        📝 New Daily Log
+                      </Link>
+                      <Link
+                        href="/jobs/daily-logs"
+                        className="btn-secondary btn-h-11 w-full border-[#E8C84A]/35 text-[#E8C84A]"
+                      >
+                        📋 View All Logs
+                      </Link>
+                      <Link
+                        href="/receipts"
+                        className="btn-secondary btn-h-11 w-full border-[#E8C84A]/35 text-[#E8C84A]"
+                      >
+                        📷 Receipts
+                      </Link>
+                      <Link
+                        href="/inventory"
+                        className="btn-secondary btn-h-11 w-full border-violet-500/35 text-violet-200"
+                      >
+                        📦 Inventory & QR
+                      </Link>
+                      <Link href="/timesheets" className="btn-secondary btn-h-11 w-full">
+                        Timesheets
+                      </Link>
+                      <Link
+                        href="/field"
+                        className="btn-secondary btn-h-11 w-full border-emerald-500/35 text-emerald-100"
+                      >
+                        Field punch in/out
+                      </Link>
+                      <Link href="/time-off" className="btn-secondary btn-h-11 w-full">
+                        Time off
+                      </Link>
+                      <Link href="/calendar" className="btn-secondary btn-h-11 w-full">
+                        Work calendar
+                      </Link>
+                      <Link href="/reference" className="btn-secondary btn-h-11 w-full">
+                        Reference library
+                      </Link>
+                      <Link
+                        href="/tools/load-calculator"
+                        className="btn-secondary btn-h-11 w-full"
+                      >
+                        Load calculator
+                      </Link>
+                      <Link href="/tools/nec-checker" className="btn-secondary btn-h-11 w-full">
+                        NEC checker
+                      </Link>
+                      <Link
+                        href="/tools/electrical-reference"
+                        className="btn-secondary btn-h-11 w-full"
+                      >
+                        Electrical reference
+                      </Link>
+                      <Link
+                        href="/tools/motor-hvac-calculator"
+                        className="btn-secondary btn-h-11 w-full"
+                      >
+                        Motor / HVAC
+                      </Link>
+                      <Link href="/tools/wifi-analyzer" className="btn-secondary btn-h-11 w-full">
+                        Wi‑Fi analyzer
+                      </Link>
+                      <Link href="/tools/av-analyzer" className="btn-secondary btn-h-11 w-full">
+                        AV analyzer
+                      </Link>
+                      <Link
+                        href="/tools/smarthome-analyzer"
+                        className="btn-secondary btn-h-11 w-full"
+                      >
+                        Smart home
+                      </Link>
+                      <Link
+                        href="/tools/electrical-analyzer"
+                        className="btn-secondary btn-h-11 w-full"
+                      >
+                        Electrical analyzer
+                      </Link>
+                      <Link
+                        href="/tools/project-describer"
+                        className="btn-secondary btn-h-11 w-full"
+                      >
+                        AI describer
+                      </Link>
+                      <Link
+                        href="/upload"
+                        className="btn-primary btn-h-11 col-span-1 w-full sm:col-span-2 lg:col-span-3"
+                      >
+                        Upload new blueprint
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              </section>
             </div>
-          </div>
-        </section>
+            {!loading && !error && recentJobs.length > 0 ? (
+              <div className="min-w-0 md:col-span-2 lg:col-span-3">
+                <section className="app-card app-card-pad-lg">
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b-2 border-[#E8C84A]/45 pb-2">
+                    <h2 className="text-lg font-semibold text-[var(--foreground)]">
+                      Recent activity
+                    </h2>
+                    <Link
+                      href="/jobs"
+                      className="text-sm font-medium text-[#E8C84A] hover:underline"
+                    >
+                      View all →
+                    </Link>
+                  </div>
+                  <ul className="space-y-2">
+                    {recentJobs.map((j) => (
+                      <li key={j.id}>
+                        <Link
+                          href={`/jobs/${j.id}`}
+                          className="app-card flex flex-wrap items-baseline justify-between gap-2 !p-3 text-sm hover:border-[#E8C84A]/35"
+                        >
+                          <span className="text-base font-semibold text-[var(--foreground)]">
+                            {j.job_number} · {j.job_name}
+                          </span>
+                          <span className="app-muted">
+                            {j.status} · {j.job_type}
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              </div>
+            ) : null}
+          </section>
+        </div>
 
         <div className="w-full min-w-0">
           <DashboardApiUsageCard />
@@ -799,39 +833,6 @@ export function DashboardClient() {
           >
             {error}
           </div>
-        )}
-
-        {!loading && !error && recentJobs.length > 0 && (
-          <section className="app-card app-card-pad-lg">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b-2 border-[#E8C84A]/45 pb-2">
-              <h2 className="text-lg font-semibold text-[var(--foreground)]">
-                Recent activity
-              </h2>
-              <Link
-                href="/jobs"
-                className="text-sm font-medium text-[#E8C84A] hover:underline"
-              >
-                View all →
-              </Link>
-            </div>
-            <ul className="space-y-2">
-              {recentJobs.map((j) => (
-                <li key={j.id}>
-                  <Link
-                    href={`/jobs/${j.id}`}
-                    className="app-card flex flex-wrap items-baseline justify-between gap-2 !p-3 text-sm hover:border-[#E8C84A]/35"
-                  >
-                    <span className="text-base font-semibold text-[var(--foreground)]">
-                      {j.job_number} · {j.job_name}
-                    </span>
-                    <span className="app-muted">
-                      {j.status} · {j.job_type}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
         )}
 
         {!loading && !error && projects.length === 0 && (

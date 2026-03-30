@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DashboardMyWorkCard } from "@/components/dashboard-my-work-card";
 import { HomeMarketingCommandCenter } from "@/components/home-marketing-command-center";
 import { HomeMarketingHeroToolsSection } from "@/components/home-marketing-hero-tools";
 import { HomeIntegrationsSettingsLink } from "@/components/home-integrations-settings-link";
@@ -211,6 +212,13 @@ export default function Home() {
         <p className="mx-auto mt-5 max-w-xl text-center text-sm text-white/50 sm:text-base">
           Est. 1982 · Powered by Blueprint AI
         </p>
+
+        <section
+          className="mt-6 w-full max-w-6xl self-stretch text-left"
+          aria-label="My work"
+        >
+          <DashboardMyWorkCard />
+        </section>
 
         <HomeMarketingCommandCenter />
 

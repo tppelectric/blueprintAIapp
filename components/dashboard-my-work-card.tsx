@@ -38,6 +38,7 @@ export function DashboardMyWorkCard({
   const [myWorkActiveCount, setMyWorkActiveCount] = useState(0);
   const [myWorkCompletedCount, setMyWorkCompletedCount] = useState(0);
   const [users, setUsers] = useState<UserProfileRow[]>([]);
+  const [open, setOpen] = useState(true);
 
   const loadMyWork = useCallback(async () => {
     const supabase = createBrowserClient();
@@ -128,7 +129,7 @@ export function DashboardMyWorkCard({
 
   return (
     <div className={className ?? "min-w-0 space-y-3"}>
-      {showAdminUsersQuick ? (
+      {open && showAdminUsersQuick ? (
         <label className="block text-sm text-white/80">
           <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-white/50">
             View employee
@@ -155,58 +156,101 @@ export function DashboardMyWorkCard({
       ) : null}
 
       <div className="rounded-xl border border-white/10 bg-[#0a1628] p-4">
-        <p className="text-xs font-bold uppercase tracking-wide text-white/55">
-          My Work
-        </p>
+        <button
+          type="button"
+          className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg border border-transparent px-0 py-1 text-left transition-colors hover:border-white/10 hover:bg-white/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
+          aria-expanded={open}
+          aria-controls="dashboard-my-work-panel"
+          id="dashboard-my-work-heading"
+          onClick={() => setOpen((o) => !o)}
+        >
+          <span className="min-w-0 text-xs font-bold uppercase tracking-wide text-white/55">
+            {open ? (
+              "My Work"
+            ) : (
+              <>
+                My Work — {myWorkActiveCount} Active • {myWorkCompletedCount}{" "}
+                Completed
+              </>
+            )}
+          </span>
+          <svg
+            className={`h-5 w-5 shrink-0 text-[#E8C84A] transition-transform duration-200 ease-out ${
+              open ? "rotate-0" : "-rotate-180"
+            }`}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
 
-        <div className="mt-2 flex flex-wrap items-end gap-4">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-white/50">
-              Active jobs
-            </p>
-            <p className="text-3xl font-bold tabular-nums text-[#E8C84A]">
-              {myWorkActiveCount}
-            </p>
-          </div>
+        <div
+          id="dashboard-my-work-panel"
+          role="region"
+          aria-labelledby="dashboard-my-work-heading"
+          className={`grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none ${
+            open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+          }`}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <div className="pt-2">
+              <div className="mt-2 flex flex-wrap items-end gap-4">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-white/50">
+                    Active jobs
+                  </p>
+                  <p className="text-3xl font-bold tabular-nums text-[#E8C84A]">
+                    {myWorkActiveCount}
+                  </p>
+                </div>
 
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-white/50">
-              Completed
-            </p>
-            <p className="text-lg font-semibold tabular-nums text-white/80">
-              {myWorkCompletedCount}
-            </p>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-white/50">
+                    Completed
+                  </p>
+                  <p className="text-lg font-semibold tabular-nums text-white/80">
+                    {myWorkCompletedCount}
+                  </p>
+                </div>
+              </div>
+
+              {myWorkTop.length > 0 ? (
+                <ul className="mt-3 space-y-2 border-t border-white/10 pt-3">
+                  {myWorkTop.map((j) => (
+                    <li key={j.id}>
+                      <Link
+                        href={`/jobs/${j.id}`}
+                        className="block text-sm text-white/90 hover:text-[#E8C84A] hover:underline"
+                      >
+                        <span className="font-medium">{j.job_name}</span>
+                        <span className="ml-2 text-xs text-white/55">
+                          · {j.status}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-3 border-t border-white/10 pt-3 text-xs text-white/55">
+                  No assigned jobs yet.
+                </p>
+              )}
+
+              <Link
+                href="/jobs"
+                className="mt-3 inline-block text-sm font-semibold text-[#E8C84A] hover:underline"
+              >
+                View My Jobs →
+              </Link>
+            </div>
           </div>
         </div>
-
-        {myWorkTop.length > 0 ? (
-          <ul className="mt-3 space-y-2 border-t border-white/10 pt-3">
-            {myWorkTop.map((j) => (
-              <li key={j.id}>
-                <Link
-                  href={`/jobs/${j.id}`}
-                  className="block text-sm text-white/90 hover:text-[#E8C84A] hover:underline"
-                >
-                  <span className="font-medium">{j.job_name}</span>
-                  <span className="ml-2 text-xs text-white/55">
-                    · {j.status}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-3 border-t border-white/10 pt-3 text-xs text-white/55">
-            No assigned jobs yet.
-          </p>
-        )}
-
-        <Link
-          href="/jobs"
-          className="mt-3 inline-block text-sm font-semibold text-[#E8C84A] hover:underline"
-        >
-          View My Jobs →
-        </Link>
       </div>
     </div>
   );

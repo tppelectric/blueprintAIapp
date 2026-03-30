@@ -1,18 +1,10 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { withAuth } from "@/lib/api/withAuth";
 
 /**
  * Suggest a job for a new receipt: open punch today → job_id + job label.
  */
-export async function GET() {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user?.id) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
-  }
-
+export const GET = withAuth(async (_request, { user, supabase }) => {
   const { data: profile } = await supabase
     .from("user_profiles")
     .select("show_punch_interface")
@@ -62,4 +54,4 @@ export async function GET() {
       jobName: jobName || "Current job",
     },
   });
-}
+});

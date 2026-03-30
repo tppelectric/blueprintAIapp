@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WideAppHeader } from "@/components/wide-app-header";
 import { useAppToast } from "@/components/toast-provider";
 import { useUserRole } from "@/hooks/use-user-role";
@@ -26,9 +26,15 @@ function emptyDetails(): InternalRequestDetails {
   return {};
 }
 
+const VALID_REQUEST_TYPES = new Set<string>(
+  REQUEST_TYPE_OPTIONS.map((o) => o.value),
+);
+
 export function RequestsNewClient() {
   const { showToast } = useAppToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const prefillAppliedRef = useRef(false);
   const { profile, loading: roleLoading } = useUserRole();
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -76,6 +82,54 @@ export function RequestsNewClient() {
   useEffect(() => {
     void loadMeta();
   }, [loadMeta]);
+
+  useEffect(() => {
+    if (prefillAppliedRef.current) return;
+    const raw = searchParams.get("prefill")?.trim();
+    if (!raw) return;
+    prefillAppliedRef.current = true;
+    try {
+      const p = JSON.parse(decodeURIComponent(raw)) as Record<string, unknown>;
+      if (typeof p.title === "string") setTitle(p.title);
+      if (typeof p.description === "string") setDescription(p.description);
+      if (typeof p.itemDescription === "string")
+        setItemDescription(p.itemDescription);
+      if (typeof p.quantity === "number" || typeof p.quantity === "string") {
+        setQuantity(String(p.quantity));
+      }
+      if (typeof p.amount === "number" || typeof p.amount === "string") {
+        setAmount(String(p.amount));
+      }
+      if (typeof p.dateNeeded === "string") setDateNeeded(p.dateNeeded);
+      if (typeof p.jobId === "string") setJobId(p.jobId);
+      const pr = p.priority;
+      if (
+        pr === "low" ||
+        pr === "normal" ||
+        pr === "urgent" ||
+        pr === "emergency"
+      ) {
+        setPriority(pr);
+      }
+      const rt = p.requestType;
+      if (typeof rt === "string" && VALID_REQUEST_TYPES.has(rt)) {
+        setReqType(rt as InternalRequestType);
+        setStep(2);
+      }
+      const det = p.details;
+      if (det && typeof det === "object" && !Array.isArray(det)) {
+        setDetails((d) => ({
+          ...d,
+          ...(det as InternalRequestDetails),
+        }));
+      }
+    } catch {
+      showToast({
+        message: "Could not read prefill from link.",
+        variant: "error",
+      });
+    }
+  }, [searchParams, showToast]);
 
   const vehicles = useMemo(
     () => assets.filter((a) => a.asset_type === "vehicle"),

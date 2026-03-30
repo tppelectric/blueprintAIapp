@@ -1,53 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { mapInternalRequestRow } from "@/lib/internal-request-mappers";
+import { useMemo } from "react";
 import {
   isTerminalStatus,
   overdueOpenCount,
   urgentOpenCount,
 } from "@/lib/internal-request-utils";
-import { createBrowserClient } from "@/lib/supabase/client";
+import { useRequests } from "@/lib/hooks/useRequests";
 
-export function DashboardInternalRequestsAdminCard() {
-  const [newN, setNewN] = useState<number | null>(null);
-  const [urgentN, setUrgentN] = useState<number | null>(null);
-  const [overdueN, setOverdueN] = useState<number | null>(null);
+export function DashboardInternalRequestsAdminCard({
+  userId,
+}: {
+  userId: string | null;
+}) {
+  const { data, error, isLoading } = useRequests(userId);
 
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const sb = createBrowserClient();
-        const { data, error } = await sb.from("internal_requests").select("*");
-        if (cancelled || error) {
-          if (!cancelled) {
-            setNewN(null);
-            setUrgentN(null);
-            setOverdueN(null);
-          }
-          return;
-        }
-        const rows = (data ?? []).map((r) =>
-          mapInternalRequestRow(r as Record<string, unknown>),
-        );
-        const open = rows.filter((r) => !isTerminalStatus(r.status));
-        setNewN(open.filter((r) => r.status === "new").length);
-        setUrgentN(urgentOpenCount(rows));
-        setOverdueN(overdueOpenCount(rows));
-      } catch {
-        if (!cancelled) {
-          setNewN(null);
-          setUrgentN(null);
-          setOverdueN(null);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
+  const metrics = useMemo(() => {
+    if (!data) return null;
+    const open = data.filter((r) => !isTerminalStatus(r.status));
+    return {
+      newN: open.filter((r) => r.status === "new").length,
+      urgentN: urgentOpenCount(data),
+      overdueN: overdueOpenCount(data),
     };
-  }, []);
+  }, [data]);
+
+  const showDash = Boolean(error) || (isLoading && data === undefined);
 
   return (
     <Link
@@ -60,17 +39,17 @@ export function DashboardInternalRequestsAdminCard() {
       <p className="mt-2 text-sm text-[var(--foreground-muted)]">
         New:{" "}
         <span className="font-semibold tabular-nums text-[var(--foreground)]">
-          {newN ?? "—"}
+          {showDash || !metrics ? "—" : metrics.newN}
         </span>
         {" · "}
         Urgent:{" "}
         <span className="font-semibold tabular-nums text-orange-200">
-          {urgentN ?? "—"}
+          {showDash || !metrics ? "—" : metrics.urgentN}
         </span>
         {" · "}
         Open &gt;3d:{" "}
         <span className="font-semibold tabular-nums text-amber-200">
-          {overdueN ?? "—"}
+          {showDash || !metrics ? "—" : metrics.overdueN}
         </span>
       </p>
       <p className="mt-2 text-xs font-semibold text-[#E8C84A]">

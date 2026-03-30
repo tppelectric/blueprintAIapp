@@ -34,6 +34,154 @@ import type {
 type JobOpt = { id: string; job_name: string; job_number: string };
 type AssetOpt = { id: string; name: string; asset_number: string };
 
+const REQUEST_STATUS_PIPELINE: InternalRequestRow["status"][] = [
+  "new",
+  "in_review",
+  "approved",
+  "in_progress",
+  "waiting",
+  "completed",
+];
+
+function RequestStatusStepCheckIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      className={className}
+      aria-hidden
+    >
+      <path
+        d="M3.5 8.2 6.3 11 12.5 4.8"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function RequestStatusStepper({ status }: { status: InternalRequestRow["status"] }) {
+  if (status === "declined" || status === "cancelled") {
+    return (
+      <div className="mt-6 rounded-xl border border-white/10 bg-[#0a1628] p-4">
+        <p className="text-center text-sm font-semibold capitalize text-red-400">
+          {statusLabel(status)}
+        </p>
+        <p className="mt-1 text-center text-xs text-red-400/70">
+          This request will not continue through the normal workflow.
+        </p>
+      </div>
+    );
+  }
+
+  const currentIndex = REQUEST_STATUS_PIPELINE.indexOf(status);
+  const activeIndex = currentIndex >= 0 ? currentIndex : 0;
+
+  return (
+    <div className="mt-6 rounded-xl border border-white/10 bg-[#0a1628] p-4">
+      <div className="hidden items-stretch gap-0 md:flex">
+        {REQUEST_STATUS_PIPELINE.map((step, i) => {
+          const done = i < activeIndex;
+          const current = i === activeIndex;
+          return (
+            <div key={step} className="flex min-w-0 flex-1 items-center">
+              {i > 0 ? (
+                <div
+                  className="mx-1 h-px min-w-[8px] flex-1 border-t border-white/15"
+                  aria-hidden
+                />
+              ) : null}
+              <div
+                className={`flex shrink-0 flex-col items-center gap-1 px-1 text-center ${
+                  current ? "min-w-[4.5rem]" : "min-w-0"
+                }`}
+              >
+                <span
+                  className={`flex h-6 w-6 items-center justify-center rounded-full border ${
+                    done
+                      ? "border-[#E8C84A]/35 bg-[#E8C84A]/10 text-[#E8C84A]/70"
+                      : current
+                        ? "border-[#E8C84A] bg-[#E8C84A]/20 text-[#E8C84A]"
+                        : "border-white/15 bg-white/[0.04] text-white/35"
+                  }`}
+                >
+                  {done ? (
+                    <RequestStatusStepCheckIcon className="h-3.5 w-3.5" />
+                  ) : (
+                    <span className="text-[10px] font-bold tabular-nums text-current">
+                      {i + 1}
+                    </span>
+                  )}
+                </span>
+                <span
+                  className={`max-w-[5.5rem] text-[10px] font-medium capitalize leading-tight sm:max-w-none sm:text-xs ${
+                    done
+                      ? "text-[#E8C84A]/55"
+                      : current
+                        ? "text-base font-bold text-[#E8C84A]"
+                        : "text-white/50"
+                  }`}
+                >
+                  {statusLabel(step)}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex flex-col gap-0 md:hidden">
+        {REQUEST_STATUS_PIPELINE.map((step, i) => {
+          const done = i < activeIndex;
+          const current = i === activeIndex;
+          return (
+            <div key={step} className="flex gap-3">
+              <div className="flex flex-col items-center">
+                <span
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${
+                    done
+                      ? "border-[#E8C84A]/35 bg-[#E8C84A]/10 text-[#E8C84A]/70"
+                      : current
+                        ? "border-[#E8C84A] bg-[#E8C84A]/20 text-[#E8C84A]"
+                        : "border-white/15 bg-white/[0.04] text-white/35"
+                  }`}
+                >
+                  {done ? (
+                    <RequestStatusStepCheckIcon className="h-3.5 w-3.5" />
+                  ) : (
+                    <span className="text-[10px] font-bold tabular-nums text-current">
+                      {i + 1}
+                    </span>
+                  )}
+                </span>
+                {i < REQUEST_STATUS_PIPELINE.length - 1 ? (
+                  <div
+                    className="my-0.5 min-h-[10px] w-px flex-1 border-l border-white/15"
+                    aria-hidden
+                  />
+                ) : null}
+              </div>
+              <span
+                className={`pb-3 text-left text-sm capitalize ${
+                  done
+                    ? "text-[#E8C84A]/55"
+                    : current
+                      ? "text-base font-bold text-[#E8C84A]"
+                      : "text-white/50"
+                }`}
+              >
+                {statusLabel(step)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function RequestsDetailClient({ requestId }: { requestId: string }) {
   const { showToast } = useAppToast();
   const {
@@ -403,6 +551,8 @@ export function RequestsDetailClient({ requestId }: { requestId: string }) {
             </span>
           </p>
         </header>
+
+        <RequestStatusStepper status={req.status} />
 
         <section className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] p-4">
           <h2 className="text-sm font-bold uppercase tracking-wide text-[#E8C84A]/90">

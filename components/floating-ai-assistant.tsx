@@ -13,19 +13,6 @@ import type {
 
 type ChatMessage = AIMessage & { actions?: AIAction[] };
 
-/** Map assistant button labels to routes when the model omits or mis-sets href. */
-const NAV_LABEL_ALIASES: Record<string, string> = {
-  "submit material request": "/requests/new",
-  "new material request": "/requests/new",
-  "material request": "/requests/new",
-  "open field log": "/jobs/daily-logs",
-  "field log": "/jobs/daily-logs",
-  "daily logs": "/jobs/daily-logs",
-  "view timesheet": "/timesheets",
-  "view timesheets": "/timesheets",
-  timesheets: "/timesheets",
-};
-
 function normalizeNavigateHref(href: string | undefined): string | null {
   if (href == null) return null;
   const t = href.trim();
@@ -34,6 +21,49 @@ function normalizeNavigateHref(href: string | undefined): string | null {
   if (/^https?:\/\//i.test(t)) return null;
   const path = t.replace(/^\/+/, "");
   return path ? `/${path}` : null;
+}
+
+/** Semantic targets from action.data.target (model may send these). */
+const DATA_TARGET_ROUTES: Record<string, string> = {
+  material_order: "/requests/new",
+  daily_log: "/jobs/daily-logs/new",
+  request: "/requests/new",
+  timesheets: "/timesheets",
+  timesheet: "/timesheets",
+  team_clock: "/team-clock",
+  daily_logs: "/jobs/daily-logs",
+  inventory: "/inventory",
+};
+
+function pathFromDataTarget(data: Record<string, unknown> | undefined): string | null {
+  const raw = data?.target;
+  if (typeof raw !== "string") return null;
+  const k = raw.trim().toLowerCase();
+  return DATA_TARGET_ROUTES[k] ?? null;
+}
+
+/** Substring fallback on label when href and data.target miss. */
+function pathFromLabelFallback(label: string): string | null {
+  const l = label.trim().toLowerCase();
+  if (!l) return null;
+  if (l.includes("material") || l.includes("supply")) return "/requests/new";
+  if (l.includes("field log") || l.includes("daily log")) return "/jobs/daily-logs";
+  if (l.includes("timesheet")) return "/timesheets";
+  if (l.includes("team clock")) return "/team-clock";
+  if (l.includes("inventory")) return "/inventory";
+  return null;
+}
+
+function resolveNavigatePath(action: AIAction): string | null {
+  return (
+    normalizeNavigateHref(action.href) ??
+    pathFromDataTarget(action.data) ??
+    pathFromLabelFallback(action.label)
+  );
+}
+
+function resolveCreatePath(action: AIAction): string | null {
+  return pathFromDataTarget(action.data) ?? pathFromLabelFallback(action.label);
 }
 
 function getPageContext(pathname: string): AIPageContext {
@@ -167,7 +197,11 @@ function parseStoredActions(raw: unknown): AIAction[] | undefined {
     const label = typeof o.label === "string" ? o.label : "";
     if (!type || !label) continue;
     const href = typeof o.href === "string" ? o.href : undefined;
-    out.push({ type, label, href });
+    const data =
+      o.data && typeof o.data === "object" && !Array.isArray(o.data)
+        ? (o.data as Record<string, unknown>)
+        : undefined;
+    out.push({ type, label, href, ...(data ? { data } : {}) });
   }
   return out.length ? out : undefined;
 }
@@ -191,6 +225,19 @@ function storedRowsToMessages(rows: unknown[]): ChatMessage[] {
     });
   }
   return out;
+}
+
+const CONVERSATION_TITLE_MAX = 72;
+
+function deriveConversationTitleFromMessages(
+  messages: ChatMessage[],
+): string | null {
+  const first = messages.find((m) => m.role === "user" && m.content.trim());
+  if (!first) return null;
+  const t = first.content.trim().replace(/\s+/g, " ");
+  return t.length > CONVERSATION_TITLE_MAX
+    ? `${t.slice(0, CONVERSATION_TITLE_MAX - 1)}…`
+    : t;
 }
 
 function SparkleIcon() {
@@ -232,6 +279,9 @@ export function FloatingAIAssistant() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [hasUnread, setHasUnread] = useState(false);
+  const [conversationTitle, setConversationTitle] = useState<string | null>(
+    null,
+  );
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -253,6 +303,7 @@ export function FloatingAIAssistant() {
 
   const clearChat = useCallback(() => {
     setMessages([]);
+    setConversationTitle(null);
     setHasUnread(false);
     void (async () => {
       try {
@@ -268,21 +319,27 @@ export function FloatingAIAssistant() {
 
   const saveMessagesRemote = useCallback(
     async (next: ChatMessage[]) => {
+      const derived = deriveConversationTitleFromMessages(next);
+      const titleForSave = conversationTitle ?? derived ?? "Chat";
       try {
-        await fetch("/api/ai/conversation", {
+        const res = await fetch("/api/ai/conversation", {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             pageContext: pageCtx.page,
             messages: toPersistPayload(next),
+            title: titleForSave,
           }),
         });
+        if (res.ok) {
+          setConversationTitle((prev) => prev ?? titleForSave);
+        }
       } catch {
         /* offline or table missing */
       }
     },
-    [pageCtx.page],
+    [pageCtx.page, conversationTitle],
   );
 
   const sendMessage = useCallback(async () => {
@@ -311,7 +368,9 @@ export function FloatingAIAssistant() {
         body: JSON.stringify({
           message: text,
           context,
-          history: toHistoryPayload(messages),
+          history: toHistoryPayload(
+            messages.length <= 20 ? messages : messages.slice(-20),
+          ),
         }),
       });
 
@@ -373,6 +432,7 @@ export function FloatingAIAssistant() {
     const pageKey = pageCtx.page;
     let cancelled = false;
     setMessages([]);
+    setConversationTitle(null);
     void (async () => {
       try {
         const r = await fetch(
@@ -380,10 +440,18 @@ export function FloatingAIAssistant() {
           { credentials: "include" },
         );
         if (!r.ok || cancelled) return;
-        const j = (await r.json()) as { messages?: unknown[] };
+        const j = (await r.json()) as {
+          messages?: unknown[];
+          title?: string | null;
+        };
         const rows = Array.isArray(j.messages) ? j.messages : [];
         if (cancelled) return;
         setMessages(storedRowsToMessages(rows));
+        setConversationTitle(
+          typeof j.title === "string" && j.title.trim()
+            ? j.title.trim()
+            : null,
+        );
       } catch {
         /* table may not exist yet */
       }
@@ -402,16 +470,26 @@ export function FloatingAIAssistant() {
 
   const onActionClick = (action: AIAction) => {
     if (action.type === "navigate") {
-      const href =
-        normalizeNavigateHref(action.href) ??
-        NAV_LABEL_ALIASES[action.label.trim().toLowerCase()];
+      const href = resolveNavigatePath(action);
       if (href) {
         router.push(href);
         setOpen(false);
         return;
       }
+      showToast({ message: "Unable to open this action", variant: "error" });
+      return;
     }
-    if (action.type === "create" || action.type === "info") {
+    if (action.type === "create") {
+      const href = resolveCreatePath(action);
+      if (href) {
+        router.push(href);
+        setOpen(false);
+        return;
+      }
+      showToast({ message: "Unable to open this action", variant: "error" });
+      return;
+    }
+    if (action.type === "info") {
       showToast({ message: action.label, variant: "success" });
     }
   };
@@ -432,7 +510,7 @@ export function FloatingAIAssistant() {
       <button
         type="button"
         onClick={toggleOpen}
-        className="fixed bottom-24 right-4 z-[90] flex h-12 w-12 items-center justify-center rounded-full bg-[#E8C84A] shadow-lg ring-2 ring-[#0a1628]/20 transition hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-[#E8C84A]/60 sm:right-5"
+        className="fixed bottom-40 right-4 z-[100] md:bottom-24 md:z-[90] flex h-12 w-12 items-center justify-center rounded-full bg-[#E8C84A] shadow-lg ring-2 ring-[#0a1628]/20 transition hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-[#E8C84A]/60 sm:right-5"
         aria-label={open ? "Close AI assistant" : "Open AI assistant"}
       >
         <SparkleIcon />

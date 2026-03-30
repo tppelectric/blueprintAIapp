@@ -179,9 +179,10 @@ export function JobReceiptsTab({
                     className="h-20 w-20 shrink-0 rounded-lg object-cover"
                   />
                 ) : (
-                  <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg bg-white/5 text-xs text-white/40">
-                    —
-                  </div>
+                  <div
+                    className="h-20 w-20 shrink-0 rounded-lg bg-white/10 ring-1 ring-white/10 animate-pulse"
+                    aria-hidden
+                  />
                 )}
               </div>
               <div className="min-w-0 flex-1">

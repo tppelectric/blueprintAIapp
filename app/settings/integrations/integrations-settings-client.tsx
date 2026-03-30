@@ -37,6 +37,40 @@ function statusColor(status: string): string {
   return "text-white/60";
 }
 
+function syncTypeLabel(t: string): string {
+  const map: Record<string, string> = {
+    customers: "Customers",
+    jobs: "Jobs",
+    daily_logs: "Daily logs",
+  };
+  return map[t] ?? t.replace(/_/g, " ");
+}
+
+function syncStatusBadgeClass(status: string): string {
+  const s = status.toLowerCase();
+  if (s === "ok" || s === "success") {
+    return "bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-500/40";
+  }
+  if (s === "error" || s === "failed") {
+    return "bg-red-500/15 text-red-200 ring-1 ring-red-500/40";
+  }
+  return "bg-white/[0.08] text-white/65 ring-1 ring-white/15";
+}
+
+function formatShortWhen(iso: string | null): string {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
 function applyJobtreadPublicToDrafts(
   s: JobtreadSettingsPublic,
   setters: {
@@ -111,9 +145,15 @@ export function IntegrationsSettingsClient() {
   const [exportTimeEntries, setExportTimeEntries] = useState(false);
 
   const [showApiKey, setShowApiKey] = useState(false);
-  const [syncActivity, setSyncActivity] = useState<{
-    target: string;
-    label: string;
+  const [syncingTarget, setSyncingTarget] = useState<
+    "customers" | "jobs" | "daily_logs" | null
+  >(null);
+  const [lastSyncResult, setLastSyncResult] = useState<{
+    target: "customers" | "jobs" | "daily_logs";
+    ok: boolean;
+    message: string;
+    count?: number;
+    at: string;
   } | null>(null);
   const [syncLog, setSyncLog] = useState<JobtreadSyncLogEntry[]>([]);
   const [syncLogLoading, setSyncLogLoading] = useState(false);
@@ -123,9 +163,22 @@ export function IntegrationsSettingsClient() {
     fading: boolean;
   } | null>(null);
   const connectionTestTimersRef = useRef<{
-    fade: number;
-    clear: number;
+    fade: ReturnType<typeof setTimeout>;
+    clear: ReturnType<typeof setTimeout>;
   } | null>(null);
+  const lastSyncResultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearLastSyncResultTimer = useCallback(() => {
+    if (lastSyncResultTimerRef.current != null) {
+      clearTimeout(lastSyncResultTimerRef.current);
+      lastSyncResultTimerRef.current = null;
+    }
+  }, []);
+
+  const dismissLastSyncResult = useCallback(() => {
+    clearLastSyncResultTimer();
+    setLastSyncResult(null);
+  }, [clearLastSyncResultTimer]);
 
   const clearConnectionTestTimers = useCallback(() => {
     const t = connectionTestTimersRef.current;
@@ -140,12 +193,12 @@ export function IntegrationsSettingsClient() {
     (ok: boolean) => {
       clearConnectionTestTimers();
       setConnectionTest({ ok, fading: false });
-      const fade = window.setTimeout(() => {
+      const fade = setTimeout(() => {
         setConnectionTest((prev) =>
           prev ? { ...prev, fading: true } : null,
         );
       }, 5000);
-      const clear = window.setTimeout(() => {
+      const clear = setTimeout(() => {
         setConnectionTest(null);
         connectionTestTimersRef.current = null;
       }, 5500);
@@ -157,6 +210,19 @@ export function IntegrationsSettingsClient() {
   useEffect(() => {
     return () => clearConnectionTestTimers();
   }, [clearConnectionTestTimers]);
+
+  useEffect(() => {
+    if (!lastSyncResult) {
+      clearLastSyncResultTimer();
+      return;
+    }
+    clearLastSyncResultTimer();
+    lastSyncResultTimerRef.current = setTimeout(() => {
+      lastSyncResultTimerRef.current = null;
+      setLastSyncResult(null);
+    }, 12_000);
+    return () => clearLastSyncResultTimer();
+  }, [lastSyncResult, clearLastSyncResultTimer]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -201,7 +267,7 @@ export function IntegrationsSettingsClient() {
   const loadSyncLog = useCallback(async () => {
     setSyncLogLoading(true);
     try {
-      const r = await fetch("/api/integrations/jobtread/sync-log?limit=30", {
+      const r = await fetch("/api/integrations/jobtread/sync-log?limit=10", {
         credentials: "include",
       });
       const j = (await r.json()) as {
@@ -364,13 +430,7 @@ export function IntegrationsSettingsClient() {
   };
 
   const runSync = async (target: "customers" | "jobs" | "daily_logs") => {
-    const label =
-      target === "customers"
-        ? "Importing customers from JobTread…"
-        : target === "jobs"
-          ? "Importing jobs from JobTread…"
-          : "Running daily log export…";
-    setSyncActivity({ target, label });
+    setSyncingTarget(target);
     try {
       const r = await fetch(
         `/api/integrations/jobtread/sync?target=${encodeURIComponent(target)}`,
@@ -396,20 +456,27 @@ export function IntegrationsSettingsClient() {
               ? `Imported ${j.count} job(s) from JobTread.`
               : `${j.count} record(s) processed.`
           : null;
-      showToast({
-        message: j.message?.trim() || countPart || "Sync completed.",
-        variant: "success",
+      setLastSyncResult({
+        target,
+        ok: true,
+        message: (j.message?.trim() || countPart || "Sync completed.").trim(),
+        count: typeof j.count === "number" ? j.count : undefined,
+        at: new Date().toISOString(),
       });
       void load();
       void loadSyncLog();
     } catch (e) {
-      showToast({
-        message: e instanceof Error ? e.message : "Sync failed.",
-        variant: "error",
+      const msg = e instanceof Error ? e.message : "Sync failed.";
+      showToast({ message: msg, variant: "error" });
+      setLastSyncResult({
+        target,
+        ok: false,
+        message: msg,
+        at: new Date().toISOString(),
       });
       void loadSyncLog();
     } finally {
-      setSyncActivity(null);
+      setSyncingTarget(null);
     }
   };
 
@@ -680,44 +747,116 @@ export function IntegrationsSettingsClient() {
               <p className="text-xs font-bold uppercase tracking-wide text-[#E8C84A]/90">
                 Manual sync
               </p>
-              {syncActivity ? (
-                <div
-                  className="mt-3 rounded-lg border border-[#E8C84A]/35 bg-[#E8C84A]/10 px-4 py-3 text-sm text-[#E8C84A]"
-                  role="status"
-                  aria-live="polite"
-                >
-                  <p className="font-medium">{syncActivity.label}</p>
-                  <p className="mt-1 text-xs text-white/60">
-                    This can take a minute for large JobTread accounts.
-                  </p>
-                </div>
-              ) : null}
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  className="btn-secondary btn-h-11"
-                  disabled={saving || syncActivity !== null}
+                  className="btn-secondary btn-h-11 inline-flex min-w-[10.5rem] items-center justify-center gap-2"
+                  disabled={saving || syncingTarget === "customers"}
                   onClick={() => void runSync("customers")}
                 >
-                  Sync customers now
+                  {syncingTarget === "customers" ? (
+                    <>
+                      <span
+                        className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-white/25 border-t-white/80"
+                        aria-hidden
+                      />
+                      Syncing…
+                    </>
+                  ) : (
+                    "Sync customers now"
+                  )}
                 </button>
                 <button
                   type="button"
-                  className="btn-secondary btn-h-11"
-                  disabled={saving || syncActivity !== null}
+                  className="btn-secondary btn-h-11 inline-flex min-w-[9.5rem] items-center justify-center gap-2"
+                  disabled={saving || syncingTarget === "jobs"}
                   onClick={() => void runSync("jobs")}
                 >
-                  Sync jobs now
+                  {syncingTarget === "jobs" ? (
+                    <>
+                      <span
+                        className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-white/25 border-t-white/80"
+                        aria-hidden
+                      />
+                      Syncing…
+                    </>
+                  ) : (
+                    "Sync jobs now"
+                  )}
                 </button>
                 <button
                   type="button"
-                  className="btn-secondary btn-h-11"
-                  disabled={saving || syncActivity !== null}
+                  className="btn-secondary btn-h-11 inline-flex min-w-[10.5rem] items-center justify-center gap-2"
+                  disabled={saving || syncingTarget === "daily_logs"}
                   onClick={() => void runSync("daily_logs")}
                 >
-                  Export daily logs
+                  {syncingTarget === "daily_logs" ? (
+                    <>
+                      <span
+                        className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-white/25 border-t-white/80"
+                        aria-hidden
+                      />
+                      Exporting…
+                    </>
+                  ) : (
+                    "Export daily logs"
+                  )}
                 </button>
               </div>
+              {lastSyncResult ? (
+                <div
+                  className="mt-3 rounded-lg border border-white/10 px-3 py-2.5 text-sm"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <div
+                    className={`rounded-md border px-3 py-2 ${
+                      lastSyncResult.ok
+                        ? "border-emerald-500/40 bg-emerald-950/30 text-emerald-100"
+                        : "border-red-500/40 bg-red-950/30 text-red-100"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                          Last sync result
+                        </p>
+                        <p className="mt-1 font-medium text-white/90">
+                          {syncTypeLabel(lastSyncResult.target)}
+                          <span className="mx-1.5 text-white/35">·</span>
+                          <span
+                            className={
+                              lastSyncResult.ok
+                                ? "text-emerald-200"
+                                : "text-red-200"
+                            }
+                          >
+                            {lastSyncResult.ok ? "Success" : "Failed"}
+                          </span>
+                        </p>
+                        <p className="mt-1 text-xs leading-relaxed text-white/75">
+                          {lastSyncResult.message}
+                        </p>
+                        {typeof lastSyncResult.count === "number" ? (
+                          <p className="mt-1 font-mono text-xs tabular-nums text-[#E8C84A]">
+                            Count: {lastSyncResult.count}
+                          </p>
+                        ) : null}
+                        <p className="mt-1.5 text-[10px] text-white/40">
+                          {formatWhen(lastSyncResult.at)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="shrink-0 text-[11px] text-white/45 underline-offset-2 hover:text-white/80 hover:underline"
+                        onClick={dismissLastSyncResult}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="mt-6 border-t border-white/10 pt-6">
@@ -748,35 +887,71 @@ export function IntegrationsSettingsClient() {
                     </button>
                   </div>
                   {syncLog.length === 0 && !syncLogLoading ? (
-                    <p className="text-sm text-white/45">No sync runs logged yet.</p>
+                    <div className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-6 text-center">
+                      <p className="text-sm font-medium text-white/75">
+                        You don&apos;t have any sync history yet
+                      </p>
+                      <p className="mx-auto mt-2 max-w-sm text-xs leading-relaxed text-white/45">
+                        After you run a manual sync, successful and failed runs
+                        show up here so you can see what happened and when.
+                      </p>
+                    </div>
                   ) : (
-                    <div className="max-h-64 overflow-auto rounded-lg border border-white/10">
-                      <table className="w-full text-left text-xs text-white/80">
-                        <thead className="sticky top-0 bg-[#0a1628] text-white/50">
-                          <tr>
-                            <th className="px-2 py-2 font-medium">Started</th>
-                            <th className="px-2 py-2 font-medium">Type</th>
-                            <th className="px-2 py-2 font-medium">Status</th>
-                            <th className="px-2 py-2 font-medium">#</th>
+                    <div className="max-h-64 overflow-auto rounded-lg border border-white/10 bg-black/20">
+                      <table className="w-full table-fixed border-collapse text-left text-[11px] text-white/80">
+                        <thead className="sticky top-0 z-[1] bg-[#0a1628]/95 backdrop-blur-sm">
+                          <tr className="text-white/45">
+                            <th className="w-[22%] px-2.5 py-2 font-medium">
+                              Started
+                            </th>
+                            <th className="w-[18%] px-2.5 py-2 font-medium">
+                              Type
+                            </th>
+                            <th className="w-[16%] px-2.5 py-2 font-medium">
+                              Status
+                            </th>
+                            <th className="w-[10%] px-2.5 py-2 font-medium text-right">
+                              #
+                            </th>
+                            <th className="w-[18%] px-2.5 py-2 font-medium">
+                              Finished
+                            </th>
+                            <th className="w-[16%] px-2.5 py-2 font-medium">
+                              Error
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
                           {syncLog.map((row) => (
                             <tr
                               key={row.id}
-                              className="border-t border-white/10 align-top"
+                              className="border-t border-white/[0.08] align-top hover:bg-white/[0.03]"
                             >
-                              <td className="whitespace-nowrap px-2 py-2 font-mono text-[10px] text-white/65">
-                                {formatWhen(row.started_at)}
+                              <td className="px-2.5 py-2 font-mono text-[10px] text-white/60">
+                                {formatShortWhen(row.started_at)}
                               </td>
-                              <td className="px-2 py-2">{row.sync_type}</td>
-                              <td
-                                className={`px-2 py-2 font-medium ${statusColor(row.status === "success" ? "ok" : row.status === "failed" ? "error" : "unknown")}`}
-                              >
-                                {row.status}
+                              <td className="px-2.5 py-2 text-white/85">
+                                {syncTypeLabel(row.sync_type)}
                               </td>
-                              <td className="px-2 py-2 tabular-nums text-[#E8C84A]">
+                              <td className="px-2.5 py-2">
+                                <span
+                                  className={`inline-block max-w-full truncate rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${syncStatusBadgeClass(row.status)}`}
+                                  title={row.status}
+                                >
+                                  {row.status}
+                                </span>
+                              </td>
+                              <td className="px-2.5 py-2 text-right font-mono tabular-nums text-[#E8C84A]">
                                 {row.records_synced}
+                              </td>
+                              <td className="px-2.5 py-2 font-mono text-[10px] text-white/55">
+                                {formatShortWhen(row.completed_at)}
+                              </td>
+                              <td
+                                className="max-w-0 truncate px-2.5 py-2 text-red-200/85"
+                                title={row.error_message ?? undefined}
+                              >
+                                {row.error_message ?? "—"}
                               </td>
                             </tr>
                           ))}
@@ -784,18 +959,6 @@ export function IntegrationsSettingsClient() {
                       </table>
                     </div>
                   )}
-                  {syncLog.some((r) => r.error_message) ? (
-                    <ul className="mt-2 space-y-1 text-[11px] text-red-200/90">
-                      {syncLog
-                        .filter((r) => r.error_message)
-                        .slice(0, 3)
-                        .map((r) => (
-                          <li key={`err-${r.id}`}>
-                            {formatWhen(r.started_at)} — {r.error_message}
-                          </li>
-                        ))}
-                    </ul>
-                  ) : null}
                 </div>
               ) : null}
             </div>

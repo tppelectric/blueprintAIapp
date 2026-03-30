@@ -21,7 +21,7 @@ function entityLine(ctx: AIPageContext): string {
   return "";
 }
 
-function buildSystemPrompt(ctx: AIPageContext): string {
+function buildSystemPrompt(ctx: AIPageContext, liveSnapshot: string): string {
   const entityContext = entityLine(ctx);
   const userRole = ctx.userRole?.trim() || "unknown";
   return `You are an AI assistant inside Blueprint AI, a business management platform for TPP Electrical Contractors Inc., a full-service electrical and low-voltage contracting company based in New York.
@@ -68,7 +68,151 @@ Return JSON only in this exact shape:
 
 actions array is optional — only include when genuinely useful.
 action types: navigate, create, info
-Keep message under 200 words.`;
+Keep message under 200 words.
+
+${liveSnapshot}`;
+}
+
+const COMMAND_CENTER_LIMIT = 10;
+
+type CommandCenterSnapshot = {
+  teamOnSite: Array<{
+    displayName: string;
+    jobName: string | null;
+    punchInAt: string;
+    onLunch: boolean;
+  }>;
+  openRequests: Array<{
+    requestNumber: string;
+    title: string;
+    status: string;
+    requestType: string;
+    priority: string;
+  }>;
+  activeJobs: Array<{
+    jobNumber: string;
+    jobName: string;
+    status: string;
+    location: string;
+  }>;
+};
+
+function formatCommandCenterSnapshot(s: CommandCenterSnapshot): string {
+  return [
+    "Live app snapshot (read-only; reflects this user's permissions).",
+    "Use ONLY this for factual questions about clock-ins, requests, or jobs.",
+    "If a list is empty, say no data is available for that category — do not invent entries.",
+    "",
+    JSON.stringify(s),
+  ].join("\n");
+}
+
+async function loadCommandCenterSnapshot(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+): Promise<CommandCenterSnapshot> {
+  const empty: CommandCenterSnapshot = {
+    teamOnSite: [],
+    openRequests: [],
+    activeJobs: [],
+  };
+  try {
+    const [punchesRes, requestsRes, jobsRes] = await Promise.all([
+      supabase
+        .from("time_punches")
+        .select("employee_id, job_name, punch_in_at, on_lunch")
+        .is("punch_out_at", null)
+        .order("punch_in_at", { ascending: false })
+        .limit(COMMAND_CENTER_LIMIT),
+      supabase
+        .from("internal_requests")
+        .select(
+          "request_number, title, status, request_type, priority, created_at",
+        )
+        .not("status", "in", "(completed,declined,cancelled)")
+        .order("created_at", { ascending: false })
+        .limit(COMMAND_CENTER_LIMIT),
+      supabase
+        .from("jobs")
+        .select("job_number, job_name, status, city, state")
+        .eq("status", "Active")
+        .order("updated_at", { ascending: false })
+        .limit(COMMAND_CENTER_LIMIT),
+    ]);
+
+    const teamOnSite: CommandCenterSnapshot["teamOnSite"] = [];
+    const ids = [
+      ...new Set(
+        (punchesRes.data ?? [])
+          .map((r) => r.employee_id as string)
+          .filter(Boolean),
+      ),
+    ];
+    let nameById = new Map<string, string>();
+    if (ids.length && !punchesRes.error) {
+      const { data: profs } = await supabase
+        .from("user_profiles")
+        .select("id, full_name, first_name, last_name")
+        .in("id", ids);
+      for (const p of profs ?? []) {
+        const fn = String((p as { full_name?: string }).full_name ?? "").trim();
+        const a = String(
+          (p as { first_name?: string }).first_name ?? "",
+        ).trim();
+        const b = String(
+          (p as { last_name?: string }).last_name ?? "",
+        ).trim();
+        const label = fn || [a, b].filter(Boolean).join(" ") || "Team member";
+        nameById.set(String((p as { id: string }).id), label);
+      }
+    }
+    if (!punchesRes.error && punchesRes.data) {
+      for (const r of punchesRes.data) {
+        const eid = r.employee_id as string;
+        teamOnSite.push({
+          displayName: nameById.get(eid) ?? "Team member",
+          jobName: (r.job_name as string | null) ?? null,
+          punchInAt: String(r.punch_in_at ?? ""),
+          onLunch: Boolean(r.on_lunch),
+        });
+      }
+    }
+
+    const openRequests: CommandCenterSnapshot["openRequests"] = [];
+    if (!requestsRes.error && requestsRes.data) {
+      for (const r of requestsRes.data) {
+        openRequests.push({
+          requestNumber: String(
+            (r as { request_number?: string }).request_number ?? "",
+          ),
+          title: String((r as { title?: string }).title ?? ""),
+          status: String((r as { status?: string }).status ?? ""),
+          requestType: String(
+            (r as { request_type?: string }).request_type ?? "",
+          ),
+          priority: String((r as { priority?: string }).priority ?? ""),
+        });
+      }
+    }
+
+    const activeJobs: CommandCenterSnapshot["activeJobs"] = [];
+    if (!jobsRes.error && jobsRes.data) {
+      for (const r of jobsRes.data) {
+        const city = String((r as { city?: string }).city ?? "").trim();
+        const st = String((r as { state?: string }).state ?? "").trim();
+        const location = [city, st].filter(Boolean).join(", ");
+        activeJobs.push({
+          jobNumber: String((r as { job_number?: string }).job_number ?? ""),
+          jobName: String((r as { job_name?: string }).job_name ?? ""),
+          status: String((r as { status?: string }).status ?? ""),
+          location,
+        });
+      }
+    }
+
+    return { teamOnSite, openRequests, activeJobs };
+  } catch {
+    return empty;
+  }
 }
 
 function toAnthropicHistory(
@@ -197,14 +341,16 @@ export async function POST(request: Request) {
         : { page: "app", pageTitle: "Blueprint AI" };
 
     const history = Array.isArray(body.history) ? body.history : [];
-    const historySlice = history.slice(-10);
+    const historySlice = history.slice(-20);
     const anthropicMessages = [
       ...toAnthropicHistory(historySlice),
       { role: "user" as const, content: message },
     ];
 
     const anthropic = new Anthropic({ apiKey });
-    const system = buildSystemPrompt(context);
+    const snapshot = await loadCommandCenterSnapshot(supabase);
+    const liveSnapshot = formatCommandCenterSnapshot(snapshot);
+    const system = buildSystemPrompt(context, liveSnapshot);
 
     const claudeMsg = await anthropic.messages.create({
       model: MODEL,

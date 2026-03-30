@@ -375,9 +375,10 @@ export function ReceiptsClient() {
                 className="h-24 w-24 rounded-lg object-cover ring-1 ring-white/10"
               />
             ) : (
-              <div className="flex h-24 w-24 items-center justify-center rounded-lg bg-white/5 text-xs text-white/40">
-                —
-              </div>
+              <div
+                className="h-24 w-24 shrink-0 rounded-lg bg-white/10 ring-1 ring-white/10 animate-pulse"
+                aria-hidden
+              />
             )}
           </button>
         </div>

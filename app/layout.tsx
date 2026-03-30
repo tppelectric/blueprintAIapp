@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ClientProviders } from "@/components/client-providers";
@@ -13,12 +13,15 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+export const viewport: Viewport = {
+  themeColor: "#0a1628",
+};
+
 export const metadata: Metadata = {
   title: "Blueprint AI — Electrical Takeoff System",
   description:
     "Blueprint AI helps electrical contractors plan takeoffs from project drawings.",
   manifest: "/manifest.json",
-  themeColor: "#0a1628",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",

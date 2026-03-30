@@ -45,12 +45,17 @@ Rules:
 - Suggest specific actions when possible
 - Reference real app pages and features
 - For NEC questions, always note NY jurisdiction uses 2023 NEC
-- When suggesting navigation, use these paths:
-  /jobs, /customers, /inventory, /inventory/tools, /inventory/vehicles,
-  /receipts, /requests, /timesheets, /team-clock, /licenses, /field,
+- When suggesting navigation, use these paths (always start with /):
+  /jobs, /jobs/daily-logs, /customers, /inventory, /inventory/tools, /inventory/vehicles,
+  /receipts, /requests, /requests/new, /my-requests, /timesheets, /team-clock, /licenses, /field,
   /tools/wifi-analyzer, /tools/av-analyzer, /tools/electrical-analyzer,
   /tools/smarthome-analyzer, /tools/nec-checker, /tools/load-calculator,
   /tools/project-describer, /dashboard, /settings/integrations
+
+Canonical action labels for common tasks (use navigate + href exactly as shown):
+- Material / internal request form: label "Submit Material Request", href "/requests/new"
+- Daily field logs list: label "Daily Logs", href "/jobs/daily-logs"
+- Timesheets: label "View Timesheets", href "/timesheets"
 
 Return JSON only in this exact shape:
 {

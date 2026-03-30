@@ -13,11 +13,40 @@ import type {
 
 type ChatMessage = AIMessage & { actions?: AIAction[] };
 
+/** Map assistant button labels to routes when the model omits or mis-sets href. */
+const NAV_LABEL_ALIASES: Record<string, string> = {
+  "submit material request": "/requests/new",
+  "new material request": "/requests/new",
+  "material request": "/requests/new",
+  "open field log": "/jobs/daily-logs",
+  "field log": "/jobs/daily-logs",
+  "daily logs": "/jobs/daily-logs",
+  "view timesheet": "/timesheets",
+  "view timesheets": "/timesheets",
+  timesheets: "/timesheets",
+};
+
+function normalizeNavigateHref(href: string | undefined): string | null {
+  if (href == null) return null;
+  const t = href.trim();
+  if (!t) return null;
+  if (t.startsWith("/")) return t.split(/[?#]/)[0] ?? t;
+  if (/^https?:\/\//i.test(t)) return null;
+  const path = t.replace(/^\/+/, "");
+  return path ? `/${path}` : null;
+}
+
 function getPageContext(pathname: string): AIPageContext {
   const parts = pathname.split("/").filter(Boolean);
 
   if (pathname === "/") return { page: "home", pageTitle: "Home" };
   if (pathname === "/jobs") return { page: "jobs", pageTitle: "Jobs" };
+  if (
+    pathname === "/jobs/daily-logs" ||
+    pathname.startsWith("/jobs/daily-logs/")
+  ) {
+    return { page: "daily_logs", pageTitle: "Daily Logs" };
+  }
   if (pathname.startsWith("/jobs/")) {
     return {
       page: "job_detail",
@@ -120,6 +149,50 @@ function toHistoryPayload(messages: ChatMessage[]): AIMessage[] {
   }));
 }
 
+function toPersistPayload(messages: ChatMessage[]): unknown[] {
+  return messages.map(({ role, content, timestamp, actions }) => {
+    const row: Record<string, unknown> = { role, content, timestamp };
+    if (actions?.length) row.actions = actions;
+    return row;
+  });
+}
+
+function parseStoredActions(raw: unknown): AIAction[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const out: AIAction[] = [];
+  for (const a of raw) {
+    if (!a || typeof a !== "object") continue;
+    const o = a as Record<string, unknown>;
+    const type = typeof o.type === "string" ? o.type : "";
+    const label = typeof o.label === "string" ? o.label : "";
+    if (!type || !label) continue;
+    const href = typeof o.href === "string" ? o.href : undefined;
+    out.push({ type, label, href });
+  }
+  return out.length ? out : undefined;
+}
+
+function storedRowsToMessages(rows: unknown[]): ChatMessage[] {
+  const out: ChatMessage[] = [];
+  for (const r of rows) {
+    if (!r || typeof r !== "object") continue;
+    const o = r as Record<string, unknown>;
+    if (o.role !== "user" && o.role !== "assistant") continue;
+    const content = typeof o.content === "string" ? o.content : "";
+    const timestamp =
+      typeof o.timestamp === "string" ? o.timestamp : nowIso();
+    if (!content.trim()) continue;
+    const actions = parseStoredActions(o.actions);
+    out.push({
+      role: o.role,
+      content,
+      timestamp,
+      ...(actions ? { actions } : {}),
+    });
+  }
+  return out;
+}
+
 function SparkleIcon() {
   return (
     <svg
@@ -181,7 +254,17 @@ export function FloatingAIAssistant() {
   const clearChat = useCallback(() => {
     setMessages([]);
     setHasUnread(false);
-  }, []);
+    void (async () => {
+      try {
+        await fetch(
+          `/api/ai/conversation?page_context=${encodeURIComponent(pageCtx.page)}`,
+          { method: "DELETE", credentials: "include" },
+        );
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [pageCtx.page]);
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
@@ -235,7 +318,11 @@ export function FloatingAIAssistant() {
         actions: j.response.actions,
       };
 
-      setMessages((m) => [...m, assistantMsg]);
+      setMessages((m) => {
+        const next = [...m, assistantMsg];
+        void saveMessagesRemote(next);
+        return next;
+      });
 
       setOpen((isOpen) => {
         if (!isOpen) {
@@ -268,11 +355,35 @@ export function FloatingAIAssistant() {
     }
   };
 
+  const saveMessagesRemote = useCallback(
+    async (next: ChatMessage[]) => {
+      try {
+        await fetch("/api/ai/conversation", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pageContext: pageCtx.page,
+            messages: toPersistPayload(next),
+          }),
+        });
+      } catch {
+        /* offline or table missing */
+      }
+    },
+    [pageCtx.page],
+  );
+
   const onActionClick = (action: AIAction) => {
-    if (action.type === "navigate" && action.href?.startsWith("/")) {
-      router.push(action.href);
-      setOpen(false);
-      return;
+    if (action.type === "navigate") {
+      const href =
+        normalizeNavigateHref(action.href) ??
+        NAV_LABEL_ALIASES[action.label.trim().toLowerCase()];
+      if (href) {
+        router.push(href);
+        setOpen(false);
+        return;
+      }
     }
     if (action.type === "create" || action.type === "info") {
       showToast({ message: action.label, variant: "success" });

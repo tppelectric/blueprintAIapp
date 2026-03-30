@@ -13,6 +13,8 @@ create index if not exists customers_jobtread_id_idx
 
 alter table public.jobs add column if not exists jobtread_id text;
 
+-- Partial unique index (legacy). If upsert fails or you prefer a table constraint,
+-- run supabase/jobs_jobtread_id_unique.sql in the SQL editor.
 create unique index if not exists jobs_jobtread_id_key
   on public.jobs (jobtread_id)
   where jobtread_id is not null;

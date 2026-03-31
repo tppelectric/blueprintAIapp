@@ -89,6 +89,7 @@ export type JobCrewProfile = {
 };
 
 export type JobCrewAssignmentRow = {
+  user_id: string;
   assigned_at: string;
   notes: string | null;
   /** PostgREST may return one object or a single-element array depending on FK shape. */

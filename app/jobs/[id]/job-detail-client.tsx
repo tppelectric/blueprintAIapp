@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { JobDailyLogsTab } from "@/components/job-daily-logs-tab";
 import { JobReceiptsTab } from "@/components/job-receipts-tab";
@@ -39,6 +40,13 @@ function attachmentHref(
   }
 }
 
+type CrewAssignmentUserOption = {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: string | null;
+};
+
 const FINANCIAL_ATTACHMENT_TYPES = new Set([
   "project_breakdown",
   "wifi_calculation",
@@ -62,6 +70,23 @@ export function JobDetailClient({
   const [tab, setTab] = useState<"overview" | "daily" | "receipts">(
     "overview",
   );
+
+  const [crewAssignments, setCrewAssignments] = useState<JobCrewAssignmentRow[]>(
+    () => [...initialCrewAssignments],
+  );
+  const [showCrewAssignForm, setShowCrewAssignForm] = useState(false);
+  const [crewAssignmentUsers, setCrewAssignmentUsers] = useState<
+    CrewAssignmentUserOption[]
+  >([]);
+  const [crewAssignmentUsersLoading, setCrewAssignmentUsersLoading] =
+    useState(false);
+  const [selectedCrewUserId, setSelectedCrewUserId] = useState("");
+  const [crewAssigning, setCrewAssigning] = useState(false);
+  const [crewAssignError, setCrewAssignError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCrewAssignments([...initialCrewAssignments]);
+  }, [jobId, initialCrewAssignments]);
 
   const projectBreakdownHref = useMemo(() => {
     const a = attachments.find(
@@ -118,6 +143,95 @@ export function JobDetailClient({
       void load();
     } catch {
       window.alert("Could not remove.");
+    }
+  };
+
+  const openCrewAssignForm = useCallback(async () => {
+    setShowCrewAssignForm(true);
+    setCrewAssignError(null);
+    if (crewAssignmentUsers.length > 0) return;
+    setCrewAssignmentUsersLoading(true);
+    try {
+      const res = await fetch("/api/users/for-assignment", {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        setCrewAssignError(
+          res.status === 403
+            ? "You cannot assign crew."
+            : "Could not load users.",
+        );
+        return;
+      }
+      const j = (await res.json()) as { users?: CrewAssignmentUserOption[] };
+      setCrewAssignmentUsers(j.users ?? []);
+    } catch {
+      setCrewAssignError("Could not load users.");
+    } finally {
+      setCrewAssignmentUsersLoading(false);
+    }
+  }, [crewAssignmentUsers.length]);
+
+  const submitCrewAssignment = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!selectedCrewUserId) return;
+    setCrewAssigning(true);
+    setCrewAssignError(null);
+    try {
+      const sb = createBrowserClient();
+      const {
+        data: { user },
+      } = await sb.auth.getUser();
+      if (!user?.id) {
+        setCrewAssignError("Not signed in.");
+        return;
+      }
+      const { error: insErr } = await sb.from("job_assignments").insert({
+        job_id: jobId,
+        user_id: selectedCrewUserId,
+        role: "technician",
+        assigned_by: user.id,
+      });
+      if (insErr) {
+        setCrewAssignError(insErr.message);
+        return;
+      }
+      const u = crewAssignmentUsers.find((x) => x.id === selectedCrewUserId);
+      setCrewAssignments((prev) => [
+        ...prev,
+        {
+          user_id: selectedCrewUserId,
+          assigned_at: new Date().toISOString(),
+          notes: null,
+          user_profiles: {
+            full_name: u?.full_name ?? null,
+            role: u?.role ?? null,
+          },
+        },
+      ]);
+      setShowCrewAssignForm(false);
+      setSelectedCrewUserId("");
+    } finally {
+      setCrewAssigning(false);
+    }
+  };
+
+  const removeCrewMember = async (userId: string) => {
+    if (!window.confirm("Remove this crew member from the job?")) return;
+    try {
+      const sb = createBrowserClient();
+      const { error: delErr } = await sb
+        .from("job_assignments")
+        .delete()
+        .eq("job_id", jobId)
+        .eq("user_id", userId);
+      if (delErr) {
+        window.alert(delErr.message);
+        return;
+      }
+      setCrewAssignments((prev) => prev.filter((r) => r.user_id !== userId));
+    } catch {
+      window.alert("Could not remove crew member.");
     }
   };
 
@@ -333,13 +447,13 @@ export function JobDetailClient({
           <h2 className="text-sm font-bold uppercase tracking-wide text-white/60">
             Assigned crew
           </h2>
-          {initialCrewAssignments.length === 0 ? (
+          {crewAssignments.length === 0 ? (
             <p className="mt-3 text-sm text-white/45">
               No crew assigned yet.
             </p>
           ) : (
             <ul className="mt-4 space-y-3">
-              {initialCrewAssignments.map((row, idx) => {
+              {crewAssignments.map((row) => {
                 const prof = Array.isArray(row.user_profiles)
                   ? row.user_profiles[0]
                   : row.user_profiles;
@@ -348,16 +462,101 @@ export function JobDetailClient({
                 const role = prof?.role?.trim() || "—";
                 return (
                   <li
-                    key={`${row.assigned_at}-${idx}`}
-                    className="rounded-lg border border-white/8 bg-[#0a1628]/60 px-3 py-3"
+                    key={row.user_id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/8 bg-[#0a1628]/60 px-3 py-3"
                   >
-                    <p className="text-sm font-medium text-white">{name}</p>
-                    <p className="text-xs text-white/55">{role}</p>
+                    <div>
+                      <p className="text-sm font-medium text-white">{name}</p>
+                      <p className="text-xs text-white/55">{role}</p>
+                    </div>
+                    {canAccessFinancialTools ? (
+                      <button
+                        type="button"
+                        onClick={() => void removeCrewMember(row.user_id)}
+                        className="rounded-lg border border-red-500/35 px-3 py-1.5 text-sm text-red-200 hover:bg-red-950/40"
+                      >
+                        Remove
+                      </button>
+                    ) : null}
                   </li>
                 );
               })}
             </ul>
           )}
+          {canAccessFinancialTools ? (
+            <>
+              {!showCrewAssignForm ? (
+                <button
+                  type="button"
+                  onClick={() => void openCrewAssignForm()}
+                  className="mt-4 rounded-lg border border-white/10 bg-[#0a1628]/60 px-3 py-2 text-sm text-white hover:bg-white/[0.06]"
+                >
+                  Assign crew member
+                </button>
+              ) : (
+                <form
+                  onSubmit={(e) => void submitCrewAssignment(e)}
+                  className="mt-4 space-y-3 rounded-lg border border-white/8 bg-[#0a1628]/60 p-3"
+                >
+                  <label className="block text-sm text-white/80">
+                    <span className="text-white/55">Team member</span>
+                    <select
+                      required
+                      value={selectedCrewUserId}
+                      disabled={crewAssignmentUsersLoading || crewAssigning}
+                      onChange={(e) => setSelectedCrewUserId(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-white/[0.05] px-3 py-2 text-sm text-white focus:border-[#E8C84A]/40 focus:outline-none disabled:opacity-50"
+                    >
+                      <option value="">
+                        {crewAssignmentUsersLoading
+                          ? "Loading…"
+                          : "Select a user…"}
+                      </option>
+                      {crewAssignmentUsers
+                        .filter(
+                          (u) =>
+                            !crewAssignments.some((c) => c.user_id === u.id),
+                        )
+                        .map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {(u.full_name?.trim() || u.email) +
+                              (u.role ? ` (${u.role})` : "")}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  {crewAssignError ? (
+                    <p className="text-sm text-red-300">{crewAssignError}</p>
+                  ) : null}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="submit"
+                      disabled={
+                        crewAssigning ||
+                        crewAssignmentUsersLoading ||
+                        !selectedCrewUserId
+                      }
+                      className="rounded-lg border border-[#E8C84A]/45 px-3 py-2 text-sm font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10 disabled:opacity-40"
+                    >
+                      {crewAssigning ? "Saving…" : "Add to job"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={crewAssigning}
+                      onClick={() => {
+                        setShowCrewAssignForm(false);
+                        setSelectedCrewUserId("");
+                        setCrewAssignError(null);
+                      }}
+                      className="rounded-lg border border-white/10 px-3 py-2 text-sm text-white/80 hover:bg-white/[0.06] disabled:opacity-40"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+            </>
+          ) : null}
         </section>
           </>
         ) : null}

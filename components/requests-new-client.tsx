@@ -77,6 +77,7 @@ export function RequestsNewClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const prefillAppliedRef = useRef(false);
+  const typeFromQueryAppliedRef = useRef(false);
   const { profile, loading: roleLoading } = useUserRole();
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -124,6 +125,15 @@ export function RequestsNewClient() {
   useEffect(() => {
     void loadMeta();
   }, [loadMeta]);
+
+  useEffect(() => {
+    if (typeFromQueryAppliedRef.current) return;
+    const raw = searchParams.get("type")?.trim();
+    if (!raw || !VALID_REQUEST_TYPES.has(raw)) return;
+    typeFromQueryAppliedRef.current = true;
+    setReqType(raw as InternalRequestType);
+    setStep(2);
+  }, [searchParams]);
 
   useEffect(() => {
     if (prefillAppliedRef.current) return;

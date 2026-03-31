@@ -25,7 +25,7 @@ function normalizeNavigateHref(href: string | undefined): string | null {
 
 /** Semantic targets from action.data.target (model may send these). */
 const DATA_TARGET_ROUTES: Record<string, string> = {
-  material_order: "/requests/new",
+  material_order: "/requests/new?type=material_order",
   daily_log: "/jobs/daily-logs/new",
   request: "/requests/new",
   timesheets: "/timesheets",
@@ -46,7 +46,7 @@ function pathFromDataTarget(data: Record<string, unknown> | undefined): string |
 function pathFromLabelFallback(label: string): string | null {
   const l = label.trim().toLowerCase();
   if (!l) return null;
-  if (l.includes("material") || l.includes("supply")) return "/requests/new";
+  if (l.includes("material") || l.includes("supply")) return "/requests/new?type=material_order";
   if (l.includes("field log") || l.includes("daily log")) return "/jobs/daily-logs";
   if (l.includes("timesheet")) return "/timesheets";
   if (l.includes("team clock")) return "/team-clock";

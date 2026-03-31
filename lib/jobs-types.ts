@@ -40,6 +40,8 @@ export type CustomerRow = {
   zip: string | null;
   notes: string | null;
   created_at: string;
+  /** Present when customer row is linked from JobTread sync. */
+  jobtread_id?: string | null;
 };
 
 export type JobRow = {

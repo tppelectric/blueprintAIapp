@@ -55,6 +55,19 @@ const FINANCIAL_ATTACHMENT_TYPES = new Set([
   "electrical_calculation",
 ]);
 
+function formatRole(role: string | null): string {
+  if (role == null || !String(role).trim()) return "—";
+  const k = role.trim().toLowerCase().replace(/\s+/g, "_");
+  const map: Record<string, string> = {
+    super_admin: "Super Admin",
+    admin: "Admin",
+    field_tech: "Technician",
+    estimator: "Estimator",
+    office_manager: "Office Manager",
+  };
+  return map[k] ?? role.trim();
+}
+
 export function JobDetailClient({
   jobId,
   initialCrewAssignments = [],
@@ -247,7 +260,7 @@ export function JobDetailClient({
   return (
     <div className="flex min-h-screen flex-col">
       <WideAppHeader active="jobs" showTppSubtitle />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-10">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
         <Link
           href="/jobs"
           className="text-sm text-[#E8C84A] hover:underline"
@@ -264,6 +277,23 @@ export function JobDetailClient({
           <span className="rounded-full bg-[#E8C84A]/15 px-3 py-0.5 text-[#E8C84A]">
             {job.status}
           </span>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link
+            href={`/jobs/daily-logs/new?job_id=${encodeURIComponent(jobId)}`}
+            className="inline-flex items-center rounded-lg border border-[#E8C84A]/50 px-3 py-1.5 text-xs font-medium text-[#E8C84A] hover:bg-[#E8C84A]/10"
+          >
+            + Add Daily Log →
+          </Link>
+          {customer ? (
+            <Link
+              href={`/customers/${customer.id}`}
+              className="inline-flex items-center rounded-lg border border-[#E8C84A]/50 px-3 py-1.5 text-xs font-medium text-[#E8C84A] hover:bg-[#E8C84A]/10"
+            >
+              View Customer →
+            </Link>
+          ) : null}
         </div>
 
         <div
@@ -329,242 +359,284 @@ export function JobDetailClient({
 
         {tab === "overview" ? (
           <>
-        <section className="mt-8 rounded-xl border border-white/10 bg-white/[0.04] p-5">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-white/60">
-            Job details
-          </h2>
-          <dl className="mt-3 space-y-2 text-sm text-white/80">
-            {[job.address, job.city, job.state, job.zip].some(Boolean) ? (
-              <div>
-                <dt className="text-white/45">Address</dt>
-                <dd>
-                  {[job.address, job.city, job.state, job.zip]
-                    .filter(Boolean)
-                    .join(", ")}
-                </dd>
-              </div>
-            ) : null}
-            {job.description ? (
-              <div>
-                <dt className="text-white/45">Description</dt>
-                <dd>{job.description}</dd>
-              </div>
-            ) : null}
-            {job.notes ? (
-              <div>
-                <dt className="text-white/45">Notes</dt>
-                <dd>{job.notes}</dd>
-              </div>
-            ) : null}
-          </dl>
-        </section>
+            <div className="mt-8 lg:grid lg:grid-cols-5 lg:gap-6">
+              <div className="flex flex-col gap-6 lg:col-span-3">
+                <section className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
+                  <h2 className="text-sm font-bold uppercase tracking-wide text-white/60">
+                    Job details
+                  </h2>
+                  <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-3 text-sm lg:grid-cols-2">
+                    {job.job_number?.trim() ? (
+                      <div className="grid grid-cols-[minmax(0,7rem)_1fr] items-baseline gap-x-2 gap-y-0.5">
+                        <dt className="text-white/45">Job number</dt>
+                        <dd className="text-white">{job.job_number}</dd>
+                      </div>
+                    ) : null}
+                    {job.job_type?.trim() ? (
+                      <div className="grid grid-cols-[minmax(0,7rem)_1fr] items-baseline gap-x-2 gap-y-0.5">
+                        <dt className="text-white/45">Job type</dt>
+                        <dd className="text-white">{job.job_type}</dd>
+                      </div>
+                    ) : null}
+                    {job.status?.trim() ? (
+                      <div className="grid grid-cols-[minmax(0,7rem)_1fr] items-baseline gap-x-2 gap-y-0.5">
+                        <dt className="text-white/45">Status</dt>
+                        <dd className="text-white">{job.status}</dd>
+                      </div>
+                    ) : null}
+                    {[job.address, job.city, job.state, job.zip].some(Boolean) ? (
+                      <div className="grid grid-cols-[minmax(0,7rem)_1fr] items-baseline gap-x-2 gap-y-0.5 lg:col-span-2">
+                        <dt className="text-white/45">Address</dt>
+                        <dd className="text-white">
+                          {[job.address, job.city, job.state, job.zip]
+                            .filter(Boolean)
+                            .join(", ")}
+                        </dd>
+                      </div>
+                    ) : null}
+                    {job.description?.trim() ? (
+                      <div className="grid grid-cols-[minmax(0,7rem)_1fr] items-baseline gap-x-2 gap-y-0.5 lg:col-span-2">
+                        <dt className="text-white/45">Description</dt>
+                        <dd className="text-white">{job.description}</dd>
+                      </div>
+                    ) : null}
+                    {job.notes?.trim() ? (
+                      <div className="grid grid-cols-[minmax(0,7rem)_1fr] items-baseline gap-x-2 gap-y-0.5 lg:col-span-2">
+                        <dt className="text-white/45">Notes</dt>
+                        <dd className="text-white">{job.notes}</dd>
+                      </div>
+                    ) : null}
+                  </dl>
+                </section>
 
-        <section className="mt-6 rounded-xl border border-white/10 bg-white/[0.04] p-5">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-white/60">
-            Customer
-          </h2>
-          {customer ? (
-            <div className="mt-3 text-sm text-white/85">
-              <p className="font-medium">{customer.company_name || "—"}</p>
-              <p>{customer.contact_name}</p>
-              <p className="text-white/55">{customer.email}</p>
-              <p className="text-white/55">{customer.phone}</p>
-              <Link
-                href={`/customers/${customer.id}`}
-                className="mt-2 inline-block text-[#E8C84A] hover:underline"
-              >
-                View customer
-              </Link>
-            </div>
-          ) : (
-            <p className="mt-3 text-sm text-white/45">No customer linked.</p>
-          )}
-        </section>
+                <section className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
+                  <h2 className="text-sm font-bold uppercase tracking-wide text-white/60">
+                    Attached items
+                  </h2>
+                  {attachments.length === 0 ? (
+                    <p className="mt-3 text-sm text-white/45">
+                      No attachments yet.
+                    </p>
+                  ) : (
+                    <ul className="mt-4 space-y-3">
+                      {attachments.map((a) => {
+                        if (
+                          !canAccessFinancialTools &&
+                          FINANCIAL_ATTACHMENT_TYPES.has(a.attachment_type)
+                        ) {
+                          return null;
+                        }
+                        const { href, label } = attachmentHref(
+                          a.attachment_type,
+                          a.attachment_id,
+                        );
+                        return (
+                          <li
+                            key={a.id}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/8 bg-[#0a1628]/60 px-3 py-3"
+                          >
+                            <div>
+                              <p className="text-sm font-medium text-white">
+                                {a.label || a.attachment_type.replace(/_/g, " ")}
+                              </p>
+                              <p className="text-xs text-white/45">
+                                {a.attachment_type} ·{" "}
+                                {new Date(a.created_at).toLocaleString()}
+                              </p>
+                              <p className="font-mono text-[10px] text-white/35">
+                                {a.attachment_id}
+                              </p>
+                            </div>
+                            <div className="flex gap-2">
+                              {href !== "#" ? (
+                                <Link
+                                  href={href}
+                                  className="rounded-lg border border-[#E8C84A]/45 px-3 py-1.5 text-xs font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10"
+                                >
+                                  {label}
+                                </Link>
+                              ) : null}
+                              {canRemoveJobAttachments ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void removeAttachment(a.id)}
+                                  className="rounded-lg border border-red-500/35 px-3 py-1.5 text-xs text-red-200 hover:bg-red-950/40"
+                                >
+                                  Remove
+                                </button>
+                              ) : null}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </section>
+              </div>
 
-        <section className="mt-6 rounded-xl border border-white/10 bg-white/[0.04] p-5">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-white/60">
-            Attached items
-          </h2>
-          {attachments.length === 0 ? (
-            <p className="mt-3 text-sm text-white/45">No attachments yet.</p>
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {attachments.map((a) => {
-                if (
-                  !canAccessFinancialTools &&
-                  FINANCIAL_ATTACHMENT_TYPES.has(a.attachment_type)
-                ) {
-                  return null;
-                }
-                const { href, label } = attachmentHref(
-                  a.attachment_type,
-                  a.attachment_id,
-                );
-                return (
-                  <li
-                    key={a.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/8 bg-[#0a1628]/60 px-3 py-3"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-white">
-                        {a.label || a.attachment_type.replace(/_/g, " ")}
-                      </p>
-                      <p className="text-xs text-white/45">
-                        {a.attachment_type} ·{" "}
-                        {new Date(a.created_at).toLocaleString()}
-                      </p>
-                      <p className="font-mono text-[10px] text-white/35">
-                        {a.attachment_id}
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      {href !== "#" ? (
-                        <Link
-                          href={href}
-                          className="rounded-lg border border-[#E8C84A]/45 px-3 py-1.5 text-xs font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10"
-                        >
-                          {label}
-                        </Link>
-                      ) : null}
-                      {canRemoveJobAttachments ? (
+              <div className="mt-6 flex flex-col gap-6 lg:col-span-2 lg:mt-0">
+                <section className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
+                  <h2 className="text-sm font-bold uppercase tracking-wide text-white/60">
+                    Assigned crew
+                  </h2>
+                  {crewAssignments.length === 0 ? (
+                    <p className="mt-3 text-sm text-white/45">
+                      No crew assigned yet.
+                    </p>
+                  ) : (
+                    <ul className="mt-4 space-y-3">
+                      {crewAssignments.map((row) => {
+                        const prof = Array.isArray(row.user_profiles)
+                          ? row.user_profiles[0]
+                          : row.user_profiles;
+                        const name =
+                          prof?.full_name?.trim() || "Crew member";
+                        const roleLabel = formatRole(prof?.role ?? null);
+                        return (
+                          <li
+                            key={row.user_id}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/8 bg-[#0a1628]/60 px-3 py-3"
+                          >
+                            <div>
+                              <p className="text-sm font-medium text-white">
+                                {name}
+                              </p>
+                              <p className="text-xs text-white/55">
+                                {roleLabel}
+                              </p>
+                            </div>
+                            {canAccessFinancialTools ? (
+                              <button
+                                type="button"
+                                onClick={() => void removeCrewMember(row.user_id)}
+                                className="rounded-lg border border-red-500/35 px-3 py-1.5 text-sm text-red-200 hover:bg-red-950/40"
+                              >
+                                Remove
+                              </button>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                  {canAccessFinancialTools ? (
+                    <>
+                      {!showCrewAssignForm ? (
                         <button
                           type="button"
-                          onClick={() => void removeAttachment(a.id)}
-                          className="rounded-lg border border-red-500/35 px-3 py-1.5 text-xs text-red-200 hover:bg-red-950/40"
+                          onClick={() => void openCrewAssignForm()}
+                          className="mt-4 rounded-lg border border-white/10 bg-[#0a1628]/60 px-3 py-2 text-sm text-white hover:bg-white/[0.06]"
                         >
-                          Remove
+                          Assign crew member
                         </button>
-                      ) : null}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
-
-        <section className="mt-6 rounded-xl border border-white/10 bg-white/[0.04] p-5">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-white/60">
-            Assigned crew
-          </h2>
-          {crewAssignments.length === 0 ? (
-            <p className="mt-3 text-sm text-white/45">
-              No crew assigned yet.
-            </p>
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {crewAssignments.map((row) => {
-                const prof = Array.isArray(row.user_profiles)
-                  ? row.user_profiles[0]
-                  : row.user_profiles;
-                const name =
-                  prof?.full_name?.trim() || "Crew member";
-                const role = prof?.role?.trim() || "—";
-                return (
-                  <li
-                    key={row.user_id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/8 bg-[#0a1628]/60 px-3 py-3"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-white">{name}</p>
-                      <p className="text-xs text-white/55">{role}</p>
-                    </div>
-                    {canAccessFinancialTools ? (
-                      <button
-                        type="button"
-                        onClick={() => void removeCrewMember(row.user_id)}
-                        className="rounded-lg border border-red-500/35 px-3 py-1.5 text-sm text-red-200 hover:bg-red-950/40"
-                      >
-                        Remove
-                      </button>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {canAccessFinancialTools ? (
-            <>
-              {!showCrewAssignForm ? (
-                <button
-                  type="button"
-                  onClick={() => void openCrewAssignForm()}
-                  className="mt-4 rounded-lg border border-white/10 bg-[#0a1628]/60 px-3 py-2 text-sm text-white hover:bg-white/[0.06]"
-                >
-                  Assign crew member
-                </button>
-              ) : (
-                <form
-                  onSubmit={(e) => void submitCrewAssignment(e)}
-                  className="mt-4 space-y-3 rounded-lg border border-white/8 bg-[#0a1628]/60 p-3"
-                >
-                  <label className="block text-sm text-white/80">
-                    <span className="text-white/55">Employee</span>
-                    <select
-                      required
-                      value={selectedCrewUserId}
-                      disabled={crewAssignmentUsersLoading || crewAssigning}
-                      onChange={(e) => setSelectedCrewUserId(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-white/10 bg-[#0a1628] px-3 py-2 text-sm text-white focus:border-[#E8C84A]/40 focus:outline-none disabled:opacity-50"
-                    >
-                      <option
-                        value=""
-                        className="bg-[#0a1628] text-white"
-                      >
-                        {crewAssignmentUsersLoading
-                          ? "Loading…"
-                          : "Select an employee…"}
-                      </option>
-                      {crewAssignmentUsers
-                        .filter(
-                          (u) =>
-                            !crewAssignments.some((c) => c.user_id === u.id),
-                        )
-                        .map((u) => (
-                          <option
-                            key={u.id}
-                            value={u.id}
-                            className="bg-[#0a1628] text-white"
-                          >
-                            {(u.full_name?.trim() || u.email) +
-                              (u.role ? ` (${u.role})` : "")}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                  {crewAssignError ? (
-                    <p className="text-sm text-red-300">{crewAssignError}</p>
+                      ) : (
+                        <form
+                          onSubmit={(e) => void submitCrewAssignment(e)}
+                          className="mt-4 space-y-3 rounded-lg border border-white/8 bg-[#0a1628]/60 p-3"
+                        >
+                          <label className="block text-sm text-white/80">
+                            <span className="text-white/55">Employee</span>
+                            <select
+                              required
+                              value={selectedCrewUserId}
+                              disabled={
+                                crewAssignmentUsersLoading || crewAssigning
+                              }
+                              onChange={(e) =>
+                                setSelectedCrewUserId(e.target.value)
+                              }
+                              className="mt-1 w-full rounded-lg border border-white/10 bg-[#0a1628] px-3 py-2 text-sm text-white focus:border-[#E8C84A]/40 focus:outline-none disabled:opacity-50"
+                            >
+                              <option
+                                value=""
+                                className="bg-[#0a1628] text-white"
+                              >
+                                {crewAssignmentUsersLoading
+                                  ? "Loading…"
+                                  : "Select an employee…"}
+                              </option>
+                              {crewAssignmentUsers
+                                .filter(
+                                  (u) =>
+                                    !crewAssignments.some(
+                                      (c) => c.user_id === u.id,
+                                    ),
+                                )
+                                .map((u) => (
+                                  <option
+                                    key={u.id}
+                                    value={u.id}
+                                    className="bg-[#0a1628] text-white"
+                                  >
+                                    {(u.full_name?.trim() || u.email) +
+                                      (u.role ? ` (${u.role})` : "")}
+                                  </option>
+                                ))}
+                            </select>
+                          </label>
+                          {crewAssignError ? (
+                            <p className="text-sm text-red-300">
+                              {crewAssignError}
+                            </p>
+                          ) : null}
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="submit"
+                              disabled={
+                                crewAssigning ||
+                                crewAssignmentUsersLoading ||
+                                !selectedCrewUserId
+                              }
+                              className="rounded-lg border border-[#E8C84A]/45 px-3 py-2 text-sm font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10 disabled:opacity-40"
+                            >
+                              {crewAssigning ? "Saving…" : "Add to job"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={crewAssigning}
+                              onClick={() => {
+                                setShowCrewAssignForm(false);
+                                setSelectedCrewUserId("");
+                                setCrewAssignError(null);
+                              }}
+                              className="rounded-lg border border-white/10 px-3 py-2 text-sm text-white/80 hover:bg-white/[0.06] disabled:opacity-40"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </form>
+                      )}
+                    </>
                   ) : null}
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="submit"
-                      disabled={
-                        crewAssigning ||
-                        crewAssignmentUsersLoading ||
-                        !selectedCrewUserId
-                      }
-                      className="rounded-lg border border-[#E8C84A]/45 px-3 py-2 text-sm font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10 disabled:opacity-40"
-                    >
-                      {crewAssigning ? "Saving…" : "Add to job"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={crewAssigning}
-                      onClick={() => {
-                        setShowCrewAssignForm(false);
-                        setSelectedCrewUserId("");
-                        setCrewAssignError(null);
-                      }}
-                      className="rounded-lg border border-white/10 px-3 py-2 text-sm text-white/80 hover:bg-white/[0.06] disabled:opacity-40"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              )}
-            </>
-          ) : null}
-        </section>
+                </section>
+
+                <section className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
+                  <h2 className="text-sm font-bold uppercase tracking-wide text-white/60">
+                    Customer
+                  </h2>
+                  {customer ? (
+                    <div className="mt-3 text-sm text-white/85">
+                      <p className="font-medium">
+                        {customer.company_name || "—"}
+                      </p>
+                      <p>{customer.contact_name}</p>
+                      <p className="text-white/55">{customer.email}</p>
+                      <p className="text-white/55">{customer.phone}</p>
+                      <Link
+                        href={`/customers/${customer.id}`}
+                        className="mt-2 inline-block text-[#E8C84A] hover:underline"
+                      >
+                        View customer
+                      </Link>
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-sm text-white/45">
+                      No customer linked.
+                    </p>
+                  )}
+                </section>
+              </div>
+            </div>
           </>
         ) : null}
       </main>

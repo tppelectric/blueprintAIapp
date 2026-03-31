@@ -7,20 +7,19 @@ import {
   overdueOpenCount,
   urgentOpenCount,
 } from "@/lib/internal-request-utils";
+import type { InternalRequestRow } from "@/lib/internal-request-types";
+import { useDashboardSwrAuthUserId } from "@/lib/hooks/dashboard-swr-auth";
 import { useRequests } from "@/lib/hooks/useRequests";
 
-export function DashboardInternalRequestsAdminCard({
-  userId,
-}: {
-  userId: string | null;
-}) {
+export function DashboardInternalRequestsAdminCard() {
+  const userId = useDashboardSwrAuthUserId();
   const { data, error, isLoading } = useRequests(userId);
 
   const metrics = useMemo(() => {
     if (!data) return null;
-    const open = data.filter((r) => !isTerminalStatus(r.status));
+    const open = data.filter((r: InternalRequestRow) => !isTerminalStatus(r.status));
     return {
-      newN: open.filter((r) => r.status === "new").length,
+      newN: open.filter((r: InternalRequestRow) => r.status === "new").length,
       urgentN: urgentOpenCount(data),
       overdueN: overdueOpenCount(data),
     };

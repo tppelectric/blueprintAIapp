@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { createSupabaseRouteClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -43,8 +43,8 @@ function sanitizeMessages(input: unknown): StoredMsg[] {
 /**
  * GET ?page_context= — load messages for current user + page.
  */
-export async function GET(request: Request) {
-  const supabase = await createSupabaseServerClient();
+export async function GET(request: NextRequest) {
+  const supabase = createSupabaseRouteClient(request);
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -104,8 +104,8 @@ export async function GET(request: Request) {
 /**
  * POST { pageContext, messages, title? } — upsert conversation.
  */
-export async function POST(request: Request) {
-  const supabase = await createSupabaseServerClient();
+export async function POST(request: NextRequest) {
+  const supabase = createSupabaseRouteClient(request);
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -169,8 +169,8 @@ export async function POST(request: Request) {
 /**
  * DELETE ?page_context= — clear stored thread for page.
  */
-export async function DELETE(request: Request) {
-  const supabase = await createSupabaseServerClient();
+export async function DELETE(request: NextRequest) {
+  const supabase = createSupabaseRouteClient(request);
   const {
     data: { user },
   } = await supabase.auth.getUser();

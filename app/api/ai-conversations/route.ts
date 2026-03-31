@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 
 const PAGE_CTX_MAX = 120;
 const TITLE_MAX = 60;
+const INSERT_TITLE_FALLBACK = "Chat";
 
 function sanitizePageContext(raw: string): string | null {
   const t = raw.trim().slice(0, PAGE_CTX_MAX);
@@ -41,9 +42,10 @@ function sanitizeMessages(input: unknown): StoredMsg[] {
   return out;
 }
 
-function deriveInsertTitle(messages: StoredMsg[]): string | null {
+/** First user message, trimmed, max 60 chars; never null (server-only, ignores any client title). */
+function deriveInsertTitle(messages: StoredMsg[]): string {
   const first = messages.find((m) => m.role === "user" && m.content.trim());
-  if (!first) return null;
+  if (!first) return INSERT_TITLE_FALLBACK;
   const t = first.content.trim().replace(/\s+/g, " ");
   return t.slice(0, TITLE_MAX);
 }

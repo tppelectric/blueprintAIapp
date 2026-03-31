@@ -82,6 +82,19 @@ export type JobListRow = {
   customers?: Pick<CustomerRow, "company_name" | "contact_name"> | null;
 };
 
+/** Server-loaded shape: `job_assignments` joined to `user_profiles`. */
+export type JobCrewProfile = {
+  full_name: string | null;
+  role: string | null;
+};
+
+export type JobCrewAssignmentRow = {
+  assigned_at: string;
+  notes: string | null;
+  /** PostgREST may return one object or a single-element array depending on FK shape. */
+  user_profiles: JobCrewProfile | JobCrewProfile[] | null;
+};
+
 export type JobAttachmentRow = {
   id: string;
   job_id: string | null;

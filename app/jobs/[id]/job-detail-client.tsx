@@ -10,6 +10,7 @@ import { createBrowserClient } from "@/lib/supabase/client";
 import type {
   CustomerRow,
   JobAttachmentRow,
+  JobCrewAssignmentRow,
   JobRow,
 } from "@/lib/jobs-types";
 
@@ -46,7 +47,13 @@ const FINANCIAL_ATTACHMENT_TYPES = new Set([
   "electrical_calculation",
 ]);
 
-export function JobDetailClient({ jobId }: { jobId: string }) {
+export function JobDetailClient({
+  jobId,
+  initialCrewAssignments = [],
+}: {
+  jobId: string;
+  initialCrewAssignments?: JobCrewAssignmentRow[];
+}) {
   const { canAccessFinancialTools, canRemoveJobAttachments } = useUserRole();
   const [job, setJob] = useState<JobRow | null>(null);
   const [customer, setCustomer] = useState<CustomerRow | null>(null);
@@ -315,6 +322,37 @@ export function JobDetailClient({ jobId }: { jobId: string }) {
                         </button>
                       ) : null}
                     </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        <section className="mt-6 rounded-xl border border-white/10 bg-white/[0.04] p-5">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-white/60">
+            Assigned crew
+          </h2>
+          {initialCrewAssignments.length === 0 ? (
+            <p className="mt-3 text-sm text-white/45">
+              No crew assigned yet.
+            </p>
+          ) : (
+            <ul className="mt-4 space-y-3">
+              {initialCrewAssignments.map((row, idx) => {
+                const prof = Array.isArray(row.user_profiles)
+                  ? row.user_profiles[0]
+                  : row.user_profiles;
+                const name =
+                  prof?.full_name?.trim() || "Crew member";
+                const role = prof?.role?.trim() || "—";
+                return (
+                  <li
+                    key={`${row.assigned_at}-${idx}`}
+                    className="rounded-lg border border-white/8 bg-[#0a1628]/60 px-3 py-3"
+                  >
+                    <p className="text-sm font-medium text-white">{name}</p>
+                    <p className="text-xs text-white/55">{role}</p>
                   </li>
                 );
               })}

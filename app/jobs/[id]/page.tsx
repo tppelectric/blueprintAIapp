@@ -1,4 +1,24 @@
 import { JobDetailClient } from "./job-detail-client";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { JobCrewAssignmentRow } from "@/lib/jobs-types";
+
+async function loadJobCrewAssignments(
+  jobId: string,
+): Promise<JobCrewAssignmentRow[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("job_assignments")
+    .select("assigned_at, notes, user_profiles ( full_name, role )")
+    .eq("job_id", jobId)
+    .order("assigned_at", { ascending: true });
+
+  if (error) {
+    console.error("[job detail] job_assignments", error.message);
+    return [];
+  }
+
+  return (data ?? []) as JobCrewAssignmentRow[];
+}
 
 export default async function JobDetailPage({
   params,
@@ -6,5 +26,8 @@ export default async function JobDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <JobDetailClient jobId={id} />;
+  const crewAssignments = await loadJobCrewAssignments(id);
+  return (
+    <JobDetailClient jobId={id} initialCrewAssignments={crewAssignments} />
+  );
 }

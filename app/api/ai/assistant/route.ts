@@ -1,11 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import type {
   AIMessage,
   AIResponse,
   AIPageContext,
 } from "@/lib/ai-assistant-context";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseRouteClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -116,7 +116,7 @@ function formatCommandCenterSnapshot(s: CommandCenterSnapshot): string {
 }
 
 async function loadCommandCenterSnapshot(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  supabase: ReturnType<typeof createSupabaseRouteClient>,
 ): Promise<CommandCenterSnapshot> {
   const empty: CommandCenterSnapshot = {
     teamOnSite: [],
@@ -155,7 +155,7 @@ async function loadCommandCenterSnapshot(
           .filter(Boolean),
       ),
     ];
-    let nameById = new Map<string, string>();
+    const nameById = new Map<string, string>();
     if (ids.length && !punchesRes.error) {
       const { data: profs } = await supabase
         .from("user_profiles")
@@ -276,9 +276,9 @@ function parseAssistantJson(raw: string): AIResponse {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const supabase = await createSupabaseServerClient();
+    const supabase = createSupabaseRouteClient(request);
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -375,8 +375,10 @@ export async function POST(request: Request) {
     const response = parseAssistantJson(rawText || "No response.");
 
     return NextResponse.json({ ok: true, response });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Assistant request failed.";
+  } catch (error) {
+    console.error("[ai/assistant] FATAL:", error);
+    const msg =
+      error instanceof Error ? error.message : String(error);
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }

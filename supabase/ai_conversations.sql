@@ -16,7 +16,7 @@ create index if not exists ai_conversations_user_page_idx
   on public.ai_conversations (user_id, page_context);
 
 comment on table public.ai_conversations is
-  'Per-page AI assistant threads; read/written via /api/ai/conversation.';
+  'Per-page AI assistant threads; read/written via /api/ai-conversations.';
 
 alter table public.ai_conversations enable row level security;
 

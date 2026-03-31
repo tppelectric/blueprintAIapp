@@ -307,10 +307,17 @@ export function FloatingAIAssistant() {
     setHasUnread(false);
     void (async () => {
       try {
-        await fetch(
-          `/api/ai/conversation?page_context=${encodeURIComponent(pageCtx.page)}`,
+        const res = await fetch(
+          `/api/ai-conversations?page_context=${encodeURIComponent(pageCtx.page)}`,
           { method: "DELETE", credentials: "include" },
         );
+        if (!res.ok) {
+          const body = await res.text();
+          console.error("[ai-conversations] DELETE failed", {
+            status: res.status,
+            body,
+          });
+        }
       } catch {
         /* ignore */
       }
@@ -322,16 +329,22 @@ export function FloatingAIAssistant() {
       const derived = deriveConversationTitleFromMessages(next);
       const titleForSave = conversationTitle ?? derived ?? "Chat";
       try {
-        const res = await fetch("/api/ai/conversation", {
+        const res = await fetch("/api/ai-conversations", {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             pageContext: pageCtx.page,
             messages: toPersistPayload(next),
-            title: titleForSave,
           }),
         });
+        if (!res.ok) {
+          const body = await res.text();
+          console.error("[ai-conversations] POST failed", {
+            status: res.status,
+            body,
+          });
+        }
         if (res.ok) {
           setConversationTitle((prev) => prev ?? titleForSave);
         }
@@ -436,14 +449,25 @@ export function FloatingAIAssistant() {
     void (async () => {
       try {
         const r = await fetch(
-          `/api/ai/conversation?page_context=${encodeURIComponent(pageKey)}`,
+          `/api/ai-conversations?page_context=${encodeURIComponent(pageKey)}`,
           { credentials: "include" },
         );
-        if (!r.ok || cancelled) return;
-        const j = (await r.json()) as {
-          messages?: unknown[];
-          title?: string | null;
-        };
+        const raw = await r.text();
+        if (!r.ok) {
+          console.error("[ai-conversations] GET failed", {
+            status: r.status,
+            body: raw,
+          });
+          return;
+        }
+        if (cancelled) return;
+        let j: { messages?: unknown[]; title?: string | null };
+        try {
+          j = JSON.parse(raw) as { messages?: unknown[]; title?: string | null };
+        } catch {
+          console.error("[ai-conversations] GET invalid JSON", raw);
+          return;
+        }
         const rows = Array.isArray(j.messages) ? j.messages : [];
         if (cancelled) return;
         setMessages(storedRowsToMessages(rows));

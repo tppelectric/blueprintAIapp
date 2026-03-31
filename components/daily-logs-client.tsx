@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DarkListSkeleton, EmptyState } from "@/components/app-polish";
 import { DailyLogPdfActions } from "@/components/daily-log-pdf-actions";
 import { WideAppHeader } from "@/components/wide-app-header";
@@ -64,10 +65,87 @@ function timeInputValue(t: string | null | undefined): string {
   return s.length >= 5 ? s.slice(0, 5) : s;
 }
 
+function formatLogTableDate(logDate: string): string {
+  const raw = logDate.trim();
+  const d = raw.includes("T")
+    ? new Date(raw)
+    : new Date(`${raw}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatTableClock(t: string | null | undefined): string | null {
+  if (!t?.trim()) return null;
+  const s = t.trim();
+  if (/AM|PM/i.test(s)) return s;
+  const m = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!m) return s;
+  const h = parseInt(m[1]!, 10);
+  const min = parseInt(m[2]!, 10);
+  if (h > 23 || min > 59) return s;
+  const d = new Date(2000, 0, 1, h, min, 0);
+  return d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function jobStatusBadgeClass(status: string | null | undefined): string {
+  const s = (status ?? "").trim().toLowerCase();
+  if (s === "complete")
+    return "bg-emerald-500/20 text-emerald-200 ring-1 ring-emerald-500/30";
+  if (s === "in progress")
+    return "bg-amber-500/20 text-amber-200 ring-1 ring-amber-500/30";
+  return "bg-white/10 text-white/60 ring-1 ring-white/15";
+}
+
+const SINGLE_LOG_CSV_KEYS: (keyof DailyLogRow)[] = [
+  "id",
+  "log_date",
+  "job_name",
+  "job_id",
+  "crew_user",
+  "employees_onsite",
+  "check_in",
+  "check_out",
+  "job_status",
+  "notes",
+  "materials_used",
+  "materials_needed",
+  "work_completed",
+  "weather",
+  "pdf_storage_path",
+];
+
+function escapeCsvCell(v: unknown): string {
+  const s = v == null ? "" : String(v);
+  if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function downloadSingleDailyLogCsv(l: DailyLogRow) {
+  const header = SINGLE_LOG_CSV_KEYS.join(",");
+  const row = SINGLE_LOG_CSV_KEYS.map((k) => escapeCsvCell(l[k])).join(",");
+  const blob = new Blob([`${header}\n${row}`], {
+    type: "text/csv;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `daily-log-${l.log_date}-${l.id}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 const CHUNK = 80;
 
 export function DailyLogsClient() {
   const { showToast } = useAppToast();
+  const router = useRouter();
   const [logs, setLogs] = useState<DailyLogRow[]>([]);
   const [jobs, setJobs] = useState<JobMatch[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,6 +165,8 @@ export function DailyLogsClient() {
   const [importing, setImporting] = useState(false);
   const [linkingLogId, setLinkingLogId] = useState<string | null>(null);
   const [linkJobId, setLinkJobId] = useState("");
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const actionsMenuRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -164,6 +244,51 @@ export function DailyLogsClient() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (openMenuId == null) return;
+    const onDocMouseDown = (e: MouseEvent) => {
+      const node = actionsMenuRef.current;
+      if (node && !node.contains(e.target as Node)) {
+        setOpenMenuId(null);
+      }
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [openMenuId]);
+
+  const triggerLogPdfExport = useCallback(
+    async (l: DailyLogRow) => {
+      setOpenMenuId(null);
+      const inlineUrl = `/api/daily-logs/${encodeURIComponent(l.id)}/pdf`;
+      const hasPdf = Boolean(l.pdf_storage_path?.trim());
+      try {
+        if (!hasPdf) {
+          const res = await fetch(inlineUrl, {
+            method: "POST",
+            credentials: "include",
+          });
+          const j = (await res.json().catch(() => ({}))) as { error?: string };
+          if (!res.ok) {
+            throw new Error(j.error || `Could not generate PDF (${res.status})`);
+          }
+          void load();
+          showToast({
+            message: "PDF generated and saved.",
+            variant: "success",
+          });
+        }
+        window.open(inlineUrl, "_blank", "noopener,noreferrer");
+      } catch (e) {
+        showToast({
+          message:
+            e instanceof Error ? e.message : "PDF generation failed.",
+          variant: "error",
+        });
+      }
+    },
+    [load, showToast],
+  );
 
   useEffect(() => {
     if (!csvText) return;
@@ -564,17 +689,16 @@ export function DailyLogsClient() {
                 </div>
               ) : null}
               {logs.length > 0 ? (
-              <div className="mt-4 hidden lg:block overflow-x-auto rounded-xl border border-white/10">
+              <div className="mt-4 hidden lg:block overflow-x-auto rounded-xl border border-white/10 bg-[#0a1628]">
                 <table className="min-w-full text-left text-sm text-white/85">
                   <thead>
                     <tr className="border-b border-white/10 bg-white/[0.04]">
-                      <th className="p-3">Date / log</th>
+                      <th className="p-3">Date</th>
                       <th className="p-3">Job</th>
                       <th className="p-3">Crew</th>
                       <th className="p-3">Hours</th>
-                      <th className="p-3">Status</th>
                       <th className="p-3">Materials</th>
-                      <th className="p-3 min-w-[140px]">Link</th>
+                      <th className="p-3 min-w-[3rem]">Actions</th>
                       <th className="p-3 min-w-[200px]">PDF / export</th>
                     </tr>
                   </thead>
@@ -582,7 +706,7 @@ export function DailyLogsClient() {
                     {logs.length > 0 && filteredLogs.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={8}
+                          colSpan={7}
                           className="p-8 text-center text-sm text-white/45"
                         >
                           No logs match the current filters.
@@ -592,95 +716,200 @@ export function DailyLogsClient() {
                     {filteredLogs.map((l) => {
                       const h = hoursWorked(l.check_in, l.check_out);
                       const mu = extractMaterialLines(l.materials_used);
+                      const inT = formatTableClock(l.check_in);
+                      const outT = formatTableClock(l.check_out);
+                      const clockSegs: string[] = [];
+                      if (inT) clockSegs.push(`In: ${inT}`);
+                      if (outT) clockSegs.push(`Out: ${outT}`);
+                      const crewDisplay = l.crew_user?.trim()
+                        ? l.crew_user
+                        : l.employees_onsite?.trim()
+                          ? l.employees_onsite.length > 30
+                            ? `${l.employees_onsite.slice(0, 30)}…`
+                            : l.employees_onsite
+                          : "—";
                       return (
                         <tr
                           key={l.id}
-                          className="border-b border-white/5 hover:bg-white/[0.03]"
+                          className="border-b border-white/10 hover:bg-white/[0.03]"
                         >
-                          <td className="p-3 font-mono text-white/70">
-                            <Link
-                              href={`/jobs/daily-logs/${l.id}`}
-                              className="text-[#E8C84A] hover:underline"
-                            >
-                              {l.log_date}
-                            </Link>
+                          <td className="p-3 align-top text-white/90">
+                            <p className="text-sm text-white">
+                              {formatLogTableDate(l.log_date)}
+                            </p>
+                            {clockSegs.length > 0 ? (
+                              <p className="mt-1 text-xs text-white/45">
+                                {clockSegs.join(" · ")}
+                              </p>
+                            ) : null}
                           </td>
-                          <td className="p-3">
-                            {l.job_id ? (
-                              <Link
-                                href={`/jobs/${l.job_id}`}
-                                className="text-[#E8C84A] hover:underline"
-                              >
-                                {l.job_name ?? "View job"}
-                              </Link>
-                            ) : (
-                              l.job_name ?? "—"
-                            )}
+                          <td className="p-3 align-top">
+                            <div className="flex flex-col gap-1.5">
+                              {l.job_id ? (
+                                <Link
+                                  href={`/jobs/${l.job_id}`}
+                                  className="font-semibold text-white hover:text-[#E8C84A] hover:underline"
+                                >
+                                  {l.job_name ?? "View job"}
+                                </Link>
+                              ) : (
+                                <span className="font-semibold text-white">
+                                  {l.job_name ?? "—"}
+                                </span>
+                              )}
+                              {l.job_status?.trim() ? (
+                                <span
+                                  className={`inline-flex w-fit rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${jobStatusBadgeClass(l.job_status)}`}
+                                >
+                                  {l.job_status}
+                                </span>
+                              ) : null}
+                            </div>
                           </td>
-                          <td className="p-3">{l.crew_user ?? "—"}</td>
-                          <td className="p-3 font-mono text-[#E8C84A]">
-                            {h != null ? `${h}h` : "—"}
+                          <td className="p-3 align-top text-sm text-white/85">
+                            {crewDisplay}
                           </td>
-                          <td className="p-3 text-white/60">
-                            {l.job_status ?? "—"}
+                          <td className="p-3 align-top">
+                            <span className="font-bold text-[#E8C84A]">
+                              {h != null ? `${h}h` : "—"}
+                            </span>
                           </td>
-                          <td className="max-w-xs truncate p-3 text-xs text-white/50">
-                            {mu.slice(0, 3).join(" · ")}
-                            {mu.length > 3 ? "…" : ""}
+                          <td className="max-w-[14rem] p-3 align-top">
+                            <div className="flex flex-col gap-1">
+                              <span className="inline-flex w-fit rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-xs font-medium text-white/85">
+                                {mu.length}{" "}
+                                {mu.length === 1 ? "item" : "items"}
+                              </span>
+                              {mu.slice(0, 2).length > 0 ? (
+                                <p className="whitespace-pre-wrap text-xs text-white/45">
+                                  {mu.slice(0, 2).join("\n")}
+                                </p>
+                              ) : null}
+                            </div>
                           </td>
                           <td className="p-2 align-top">
-                            {!l.job_id ? (
-                              linkingLogId === l.id ? (
-                                <div className="flex flex-col gap-2">
-                                  <select
-                                    className="app-input w-full max-w-[10rem] text-xs"
-                                    value={linkJobId}
-                                    onChange={(e) =>
-                                      setLinkJobId(e.target.value)
-                                    }
+                            <div
+                              ref={
+                                openMenuId === l.id ? actionsMenuRef : undefined
+                              }
+                              className="relative"
+                            >
+                              <button
+                                type="button"
+                                className="rounded-lg border border-white/10 bg-[#0a1628] px-2 py-1 text-sm text-white/90 hover:bg-white/10"
+                                aria-expanded={openMenuId === l.id}
+                                aria-haspopup="menu"
+                                aria-label="Row actions"
+                                onClick={() =>
+                                  setOpenMenuId(
+                                    openMenuId === l.id ? null : l.id,
+                                  )
+                                }
+                              >
+                                ⋯
+                              </button>
+                              {openMenuId === l.id ? (
+                                <div
+                                  className="absolute right-0 z-30 mt-1 min-w-[11rem] rounded-lg border border-white/10 bg-[#0a1628] py-1 text-sm shadow-lg"
+                                  role="menu"
+                                >
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="block w-full px-3 py-2 text-left text-white/90 hover:bg-white/10"
+                                    onClick={() => {
+                                      setOpenMenuId(null);
+                                      router.push(`/jobs/daily-logs/${l.id}`);
+                                    }}
                                   >
-                                    <option value="">Select job…</option>
-                                    {jobs.map((j) => (
-                                      <option key={j.id} value={j.id}>
-                                        {j.job_number} · {j.job_name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <div className="flex flex-wrap gap-1">
+                                    View
+                                  </button>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="block w-full px-3 py-2 text-left text-white/90 hover:bg-white/10"
+                                    onClick={() => {
+                                      setOpenMenuId(null);
+                                      router.push(
+                                        `/jobs/daily-logs/${l.id}?edit=true`,
+                                      );
+                                    }}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="block w-full px-3 py-2 text-left text-white/90 hover:bg-white/10"
+                                    onClick={() => void triggerLogPdfExport(l)}
+                                  >
+                                    Export PDF
+                                  </button>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="block w-full px-3 py-2 text-left text-white/90 hover:bg-white/10"
+                                    onClick={() => {
+                                      setOpenMenuId(null);
+                                      downloadSingleDailyLogCsv(l);
+                                    }}
+                                  >
+                                    Export CSV
+                                  </button>
+                                  {!l.job_id ? (
                                     <button
                                       type="button"
-                                      className="rounded bg-[#E8C84A] px-2 py-1 text-[10px] font-bold text-[#0a1628]"
-                                      onClick={() => void linkLogToJob(l.id)}
-                                    >
-                                      Save
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="rounded border border-white/20 px-2 py-1 text-[10px] text-white/80"
+                                      role="menuitem"
+                                      className="block w-full px-3 py-2 text-left text-[#E8C84A] hover:bg-white/10"
                                       onClick={() => {
-                                        setLinkingLogId(null);
-                                        setLinkJobId("");
+                                        setOpenMenuId(null);
+                                        setLinkingLogId(l.id);
+                                        setLinkJobId(jobs[0]?.id ?? "");
                                       }}
                                     >
-                                      Cancel
+                                      Link to job
                                     </button>
-                                  </div>
+                                  ) : null}
                                 </div>
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="text-xs font-semibold text-[#E8C84A] hover:underline"
-                                  onClick={() => {
-                                    setLinkingLogId(l.id);
-                                    setLinkJobId(jobs[0]?.id ?? "");
-                                  }}
+                              ) : null}
+                            </div>
+                            {!l.job_id && linkingLogId === l.id ? (
+                              <div className="mt-2 flex flex-col gap-2">
+                                <select
+                                  className="app-input w-full max-w-[12rem] text-xs"
+                                  value={linkJobId}
+                                  onChange={(e) =>
+                                    setLinkJobId(e.target.value)
+                                  }
                                 >
-                                  Link to Job
-                                </button>
-                              )
-                            ) : (
-                              <span className="text-xs text-white/35">—</span>
-                            )}
+                                  <option value="">Select job…</option>
+                                  {jobs.map((j) => (
+                                    <option key={j.id} value={j.id}>
+                                      {j.job_number} · {j.job_name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <div className="flex flex-wrap gap-1">
+                                  <button
+                                    type="button"
+                                    className="rounded bg-[#E8C84A] px-2 py-1 text-[10px] font-bold text-[#0a1628]"
+                                    onClick={() => void linkLogToJob(l.id)}
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="rounded border border-white/20 px-2 py-1 text-[10px] text-white/80"
+                                    onClick={() => {
+                                      setLinkingLogId(null);
+                                      setLinkJobId("");
+                                    }}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : null}
                           </td>
                           <td className="p-2 align-top">
                             <DailyLogPdfActions

@@ -25,10 +25,6 @@ export type JobtreadJob = {
     name: string;
     address?: string;
   } | null;
-  account?: {
-    id: string;
-    name: string;
-  } | null;
 };
 
 function unwrapPaveRoot(data: Record<string, unknown>): Record<string, unknown> {
@@ -201,7 +197,6 @@ export async function fetchJobtreadCustomers(
 
 function parseJobNode(n: Record<string, unknown>): JobtreadJob {
   const loc = asRecord(n.location);
-  const acct = asRecord(n.account);
   return {
     id: str(n.id),
     name: str(n.name),
@@ -212,12 +207,6 @@ function parseJobNode(n: Record<string, unknown>): JobtreadJob {
           id: str(loc.id),
           name: str(loc.name),
           address: loc.address != null ? str(loc.address) : undefined,
-        }
-      : null,
-    account: acct
-      ? {
-          id: str(acct.id),
-          name: str(acct.name),
         }
       : null,
   };
@@ -253,10 +242,6 @@ export async function fetchJobtreadJobs(
               id: {},
               name: {},
               address: {},
-            },
-            account: {
-              id: {},
-              name: {},
             },
           },
         },

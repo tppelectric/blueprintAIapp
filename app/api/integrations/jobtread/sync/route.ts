@@ -142,22 +142,6 @@ async function syncCustomersImport(
   return { count: total };
 }
 
-async function loadJobtreadCustomerIdMap(
-  admin: ServiceAdmin,
-): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
-  const { data, error } = await admin
-    .from("customers")
-    .select("id,jobtread_id")
-    .not("jobtread_id", "is", null);
-  if (error) return map;
-  for (const r of data ?? []) {
-    const rec = r as { id: string; jobtread_id: string | null };
-    if (rec.jobtread_id) map.set(rec.jobtread_id, rec.id);
-  }
-  return map;
-}
-
 async function upsertJobChunk(
   admin: ServiceAdmin,
   slice: Record<string, unknown>[],
@@ -199,25 +183,17 @@ async function fallbackUpsertJobs(
 async function syncJobsImport(
   admin: ServiceAdmin,
   jobs: JobtreadJob[],
-  accountToCustomerId: Map<string, string>,
 ): Promise<{ count: number; error?: string }> {
   const now = new Date().toISOString();
-  const rows = jobs.map((j) => {
-    const accountId = j.account?.id;
-    const customerId =
-      accountId && accountToCustomerId.has(accountId)
-        ? accountToCustomerId.get(accountId)!
-        : null;
-    return {
-      job_name: j.name?.trim() || "Job",
-      job_number: j.number?.trim() || "",
-      jobtread_id: j.id,
-      status: "Active",
-      address: j.location?.address?.trim() || null,
-      customer_id: customerId,
-      updated_at: now,
-    };
-  });
+  const rows = jobs.map((j) => ({
+    job_name: j.name?.trim() || "Job",
+    job_number: j.number?.trim() || "",
+    jobtread_id: j.id,
+    status: "Active",
+    address: j.location?.address?.trim() || null,
+    customer_id: null,
+    updated_at: now,
+  }));
 
   let total = 0;
   const chunkSize = 80;
@@ -392,12 +368,7 @@ export async function GET(request: Request) {
         page = nextPage ?? undefined;
       }
 
-      const accountToCustomerId = await loadJobtreadCustomerIdMap(admin);
-      const { count, error: importErr } = await syncJobsImport(
-        admin,
-        all,
-        accountToCustomerId,
-      );
+      const { count, error: importErr } = await syncJobsImport(admin, all);
       if (importErr) {
         await finishSyncLog(admin, logId, "failed", count, importErr);
         return NextResponse.json({

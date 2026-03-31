@@ -499,18 +499,21 @@ export function JobDetailClient({
                   className="mt-4 space-y-3 rounded-lg border border-white/8 bg-[#0a1628]/60 p-3"
                 >
                   <label className="block text-sm text-white/80">
-                    <span className="text-white/55">Team member</span>
+                    <span className="text-white/55">Employee</span>
                     <select
                       required
                       value={selectedCrewUserId}
                       disabled={crewAssignmentUsersLoading || crewAssigning}
                       onChange={(e) => setSelectedCrewUserId(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-white/10 bg-white/[0.05] px-3 py-2 text-sm text-white focus:border-[#E8C84A]/40 focus:outline-none disabled:opacity-50"
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-[#0a1628] px-3 py-2 text-sm text-white focus:border-[#E8C84A]/40 focus:outline-none disabled:opacity-50"
                     >
-                      <option value="">
+                      <option
+                        value=""
+                        className="bg-[#0a1628] text-white"
+                      >
                         {crewAssignmentUsersLoading
                           ? "Loading…"
-                          : "Select a user…"}
+                          : "Select an employee…"}
                       </option>
                       {crewAssignmentUsers
                         .filter(
@@ -518,7 +521,11 @@ export function JobDetailClient({
                             !crewAssignments.some((c) => c.user_id === u.id),
                         )
                         .map((u) => (
-                          <option key={u.id} value={u.id}>
+                          <option
+                            key={u.id}
+                            value={u.id}
+                            className="bg-[#0a1628] text-white"
+                          >
                             {(u.full_name?.trim() || u.email) +
                               (u.role ? ` (${u.role})` : "")}
                           </option>

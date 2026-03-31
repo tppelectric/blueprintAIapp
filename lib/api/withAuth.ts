@@ -1,11 +1,11 @@
-import { NextResponse } from "next/server";
 import type { User } from "@supabase/supabase-js";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { createSupabaseRouteClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 
 export type AuthHandlerContext = {
   user: User;
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
+  supabase: ReturnType<typeof createSupabaseRouteClient>;
 };
 
 export type WithAuthOptions = {
@@ -22,13 +22,13 @@ export type WithAuthOptions = {
  */
 export function withAuth(
   handler: (
-    request: Request,
+    request: NextRequest,
     ctx: AuthHandlerContext,
   ) => Promise<Response> | Response,
   options?: WithAuthOptions,
-): (request: Request) => Promise<Response> {
-  return async (request: Request) => {
-    const supabase = await createSupabaseServerClient();
+): (request: NextRequest) => Promise<Response> {
+  return async (request: NextRequest) => {
+    const supabase = createSupabaseRouteClient(request);
     const {
       data: { user },
       error: authError,
@@ -60,7 +60,10 @@ export function withAuth(
         .eq("id", user.id)
         .maybeSingle();
 
-      if (!row?.is_active || row.role !== "admin") {
+      if (
+        !row?.is_active ||
+        !["admin", "super_admin"].includes(row.role ?? "")
+      ) {
         return NextResponse.json({ error: "Forbidden." }, { status: 403 });
       }
     }

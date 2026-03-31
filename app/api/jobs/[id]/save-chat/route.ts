@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { withAuth } from "@/lib/api/withAuth";
 
 const UUID_RE =
@@ -19,7 +19,7 @@ function isChatMessageArray(value: unknown): value is unknown[] {
 }
 
 export async function POST(
-  request: Request,
+  request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
   const { id: jobId } = await context.params;

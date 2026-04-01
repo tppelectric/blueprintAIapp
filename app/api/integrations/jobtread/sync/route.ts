@@ -162,11 +162,67 @@ async function upsertJobChunk(
   admin: ServiceAdmin,
   slice: Record<string, unknown>[],
 ): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await admin.from("jobs").upsert(slice, {
-    onConflict: "jobtread_id",
-  });
-  if (!error) return { ok: true };
-  return { ok: false, error: error.message };
+  if (slice.length === 0) return { ok: true };
+
+  const jtIds = [
+    ...new Set(
+      slice
+        .map((r) => r.jobtread_id as string | undefined)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+
+  const existingByJt = new Map<string, string>();
+  if (jtIds.length > 0) {
+    const { data: existingRows, error: selectError } = await admin
+      .from("jobs")
+      .select("id, jobtread_id")
+      .in("jobtread_id", jtIds);
+    if (selectError) {
+      return { ok: false, error: selectError.message };
+    }
+    for (const er of existingRows ?? []) {
+      if (er.jobtread_id && er.id) {
+        existingByJt.set(String(er.jobtread_id), String(er.id));
+      }
+    }
+  }
+
+  const toInsert: Record<string, unknown>[] = [];
+
+  for (const row of slice) {
+    const jt = row.jobtread_id as string | undefined;
+    if (!jt) continue;
+
+    const id = existingByJt.get(jt);
+    if (id) {
+      const { error } = await admin
+        .from("jobs")
+        .update({
+          job_name: row.job_name,
+          job_number: row.job_number,
+          status: row.status,
+          address: row.address,
+          customer_id: row.customer_id,
+          updated_at: row.updated_at,
+        })
+        .eq("id", id);
+      if (error) {
+        return { ok: false, error: error.message };
+      }
+    } else {
+      toInsert.push(row);
+    }
+  }
+
+  if (toInsert.length > 0) {
+    const { error } = await admin.from("jobs").insert(toInsert);
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+  }
+
+  return { ok: true };
 }
 
 async function fallbackUpsertJobs(

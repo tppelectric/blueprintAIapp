@@ -278,6 +278,101 @@ export async function fetchJobtreadJobs(
   }
 }
 
+/** Wide job-node selection for `?debug=fields` — not used by sync. */
+const JOB_DEBUG_NODE_FIELDS: Record<string, unknown> = {
+  id: {},
+  name: {},
+  number: {},
+  createdAt: {},
+  status: {},
+  statusLabel: {},
+  label: {},
+  labels: {
+    nextPage: {},
+    nodes: {
+      id: {},
+      name: {},
+      key: {},
+      value: {},
+      label: {},
+    },
+  },
+  invoiceStatus: {},
+  readyToInvoice: {},
+  needsInvoice: {},
+  customFields: {
+    nextPage: {},
+    nodes: {
+      id: {},
+      name: {},
+      key: {},
+      value: {},
+      label: {},
+      type: {},
+    },
+  },
+  fields: {
+    nextPage: {},
+    nodes: {
+      id: {},
+      name: {},
+      key: {},
+      value: {},
+      label: {},
+      type: {},
+    },
+  },
+  tags: {
+    nextPage: {},
+    nodes: {
+      id: {},
+      name: {},
+      key: {},
+      value: {},
+    },
+  },
+  location: {
+    id: {},
+    name: {},
+    address: {},
+  },
+};
+
+/**
+ * Debug: first page with size 1, wide field selection. Returns the raw first job node from Pave (unparsed), or null if none.
+ */
+export async function fetchJobtreadFirstJobRawDebugNode(
+  grantKey: string,
+  orgId: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const raw = await jobtreadQuery(grantKey, {
+      organization: {
+        $: { id: orgId },
+        id: {},
+        jobs: {
+          $: { size: 1 },
+          nextPage: {},
+          nodes: JOB_DEBUG_NODE_FIELDS,
+        },
+      },
+    });
+    const root = unwrapPaveRoot(raw);
+    const org = asRecord(root.organization);
+    const jobs = org ? asRecord(org.jobs) : null;
+    const nodesRaw = jobs?.nodes;
+    if (!Array.isArray(nodesRaw) || nodesRaw.length === 0) {
+      return null;
+    }
+    const first = nodesRaw[0];
+    const rec = asRecord(first);
+    return rec;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`fetchJobtreadFirstJobRawDebugNode failed: ${msg}`);
+  }
+}
+
 export type JobtreadLocationNode = {
   id: string;
   accountId: string | null;

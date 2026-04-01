@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import type { JobtreadCustomer, JobtreadJob } from "@/lib/jobtread-client";
 import {
-  debugJobTreadStatus,
   fetchJobtreadCustomers,
+  fetchJobtreadFirstJobRawDebugNode,
   fetchJobtreadJobs,
   fetchJobtreadLocationAccountMap,
 } from "@/lib/jobtread-client";
@@ -359,7 +359,7 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  if (url.searchParams.get("debug") === "status") {
+  if (url.searchParams.get("debug") === "fields") {
     let apiKey: string | null;
     try {
       apiKey = await getStoredJobtreadApiKey();
@@ -386,8 +386,8 @@ export async function GET(request: Request) {
       );
     }
     try {
-      const jobs = await debugJobTreadStatus(apiKey, companyId);
-      return NextResponse.json({ ok: true, debug: "status", jobs });
+      const node = await fetchJobtreadFirstJobRawDebugNode(apiKey, companyId);
+      return NextResponse.json({ ok: true, debug: "fields", node });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Debug fetch failed.";
       return NextResponse.json({ ok: false, error: msg }, { status: 500 });

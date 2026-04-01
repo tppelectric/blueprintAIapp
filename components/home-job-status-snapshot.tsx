@@ -14,37 +14,37 @@ const STATUS_CONFIG: {
   border: string;
 }[] = [
   {
-    status: "Active",
+    status: "active",
     label: "Active",
     color: "text-emerald-200",
     border: "border-emerald-500/30",
   },
   {
-    status: "Lead",
+    status: "lead",
     label: "Lead",
     color: "text-sky-200",
     border: "border-sky-500/30",
   },
   {
-    status: "Quoted",
+    status: "quoted",
     label: "Quoted",
     color: "text-[#E8C84A]",
     border: "border-[#E8C84A]/30",
   },
   {
-    status: "On Hold",
+    status: "on_hold",
     label: "On Hold",
     color: "text-amber-200",
     border: "border-amber-500/30",
   },
   {
-    status: "Complete",
+    status: "completed",
     label: "Complete",
     color: "text-white/60",
     border: "border-white/15",
   },
   {
-    status: "Cancelled",
+    status: "cancelled",
     label: "Cancelled",
     color: "text-red-300/70",
     border: "border-red-500/20",

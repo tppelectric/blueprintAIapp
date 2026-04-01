@@ -18,22 +18,16 @@ export const dynamic = "force-dynamic";
 const TARGETS = new Set(["customers", "jobs", "daily_logs"]);
 
 function mapJobTreadStatus(jobTreadStatus: string | null | undefined): string {
-  const s = (jobTreadStatus ?? "").trim();
+  const s = (jobTreadStatus ?? "").trim().toLowerCase();
   switch (s) {
-    case "Lead":
+    case "created":
       return "lead";
-    case "Quoted":
-      return "quoted";
-    case "In Progress":
+    case "approved":
       return "active";
-    case "On Hold":
-      return "on_hold";
-    case "Complete":
+    case "closed":
       return "completed";
-    case "Cancelled":
-      return "cancelled";
     default:
-      return "active";
+      return "lead";
   }
 }
 

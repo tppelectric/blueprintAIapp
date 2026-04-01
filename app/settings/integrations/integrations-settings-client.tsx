@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { WideAppHeader } from "@/components/wide-app-header";
 import { useAppToast } from "@/components/toast-provider";
@@ -19,6 +19,9 @@ type JobtreadSyncLogEntry = {
   started_at: string;
   completed_at: string | null;
   records_synced: number;
+  records_created: number;
+  records_updated: number;
+  record_details: Array<{ name: string; job_number?: string }> | null;
   error_message: string | null;
 };
 
@@ -159,6 +162,9 @@ export function IntegrationsSettingsClient() {
   const [syncLog, setSyncLog] = useState<JobtreadSyncLogEntry[]>([]);
   const [syncLogLoading, setSyncLogLoading] = useState(false);
   const [syncLogOpen, setSyncLogOpen] = useState(false);
+  const [syncLogExpandedIds, setSyncLogExpandedIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [connectionTest, setConnectionTest] = useState<{
     ok: boolean;
     fading: boolean;
@@ -296,7 +302,17 @@ export function IntegrationsSettingsClient() {
         error?: string;
       };
       if (!r.ok || !j.ok) return;
-      setSyncLog(j.entries ?? []);
+      const raw = j.entries ?? [];
+      setSyncLog(
+        raw.map((e) => ({
+          ...e,
+          records_created: e.records_created ?? 0,
+          records_updated: e.records_updated ?? 0,
+          record_details: Array.isArray(e.record_details)
+            ? (e.record_details as JobtreadSyncLogEntry["record_details"])
+            : null,
+        })),
+      );
     } catch {
       /* ignore */
     } finally {
@@ -939,8 +955,11 @@ export function IntegrationsSettingsClient() {
                             <th className="w-[16%] px-2.5 py-2 font-medium">
                               Status
                             </th>
-                            <th className="w-[10%] px-2.5 py-2 font-medium text-right">
-                              #
+                            <th className="w-[5%] px-2.5 py-2 font-medium text-right">
+                              New
+                            </th>
+                            <th className="w-[5%] px-2.5 py-2 font-medium text-right">
+                              Updated
                             </th>
                             <th className="w-[18%] px-2.5 py-2 font-medium">
                               Finished
@@ -951,39 +970,85 @@ export function IntegrationsSettingsClient() {
                           </tr>
                         </thead>
                         <tbody>
-                          {syncLog.map((row) => (
-                            <tr
-                              key={row.id}
-                              className="border-t border-white/[0.08] align-top hover:bg-white/[0.03]"
-                            >
-                              <td className="px-2.5 py-2 font-mono text-[10px] text-white/60">
-                                {formatShortWhen(row.started_at)}
-                              </td>
-                              <td className="px-2.5 py-2 text-white/85">
-                                {syncTypeLabel(row.sync_type)}
-                              </td>
-                              <td className="px-2.5 py-2">
-                                <span
-                                  className={`inline-block max-w-full truncate rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${syncStatusBadgeClass(row.status)}`}
-                                  title={row.status}
-                                >
-                                  {row.status}
-                                </span>
-                              </td>
-                              <td className="px-2.5 py-2 text-right font-mono tabular-nums text-[#E8C84A]">
-                                {row.records_synced}
-                              </td>
-                              <td className="px-2.5 py-2 font-mono text-[10px] text-white/55">
-                                {formatShortWhen(row.completed_at)}
-                              </td>
-                              <td
-                                className="max-w-0 truncate px-2.5 py-2 text-red-200/85"
-                                title={row.error_message ?? undefined}
-                              >
-                                {row.error_message ?? "—"}
-                              </td>
-                            </tr>
-                          ))}
+                          {syncLog.map((row) => {
+                            const created = row.records_created ?? 0;
+                            const expanded = syncLogExpandedIds.has(row.id);
+                            const details = row.record_details ?? [];
+                            return (
+                              <Fragment key={row.id}>
+                                <tr className="border-t border-white/[0.08] align-top hover:bg-white/[0.03]">
+                                  <td className="px-2.5 py-2 font-mono text-[10px] text-white/60">
+                                    {formatShortWhen(row.started_at)}
+                                  </td>
+                                  <td className="px-2.5 py-2 text-white/85">
+                                    {syncTypeLabel(row.sync_type)}
+                                  </td>
+                                  <td className="px-2.5 py-2">
+                                    <span
+                                      className={`inline-block max-w-full truncate rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${syncStatusBadgeClass(row.status)}`}
+                                      title={row.status}
+                                    >
+                                      {row.status}
+                                    </span>
+                                  </td>
+                                  <td className="px-2.5 py-2 text-right align-top font-mono tabular-nums text-[#E8C84A]">
+                                    <div>{created}</div>
+                                    {created > 0 ? (
+                                      <button
+                                        type="button"
+                                        className="mt-1 block w-full text-left text-[10px] font-normal normal-case text-[#E8C84A] underline-offset-2 hover:underline"
+                                        onClick={() =>
+                                          setSyncLogExpandedIds((prev) => {
+                                            const next = new Set(prev);
+                                            if (next.has(row.id)) {
+                                              next.delete(row.id);
+                                            } else {
+                                              next.add(row.id);
+                                            }
+                                            return next;
+                                          })
+                                        }
+                                      >
+                                        {expanded ? "Hide" : "Show new records"}
+                                      </button>
+                                    ) : null}
+                                  </td>
+                                  <td className="px-2.5 py-2 text-right font-mono tabular-nums text-[#E8C84A]">
+                                    {row.records_updated ?? 0}
+                                  </td>
+                                  <td className="px-2.5 py-2 font-mono text-[10px] text-white/55">
+                                    {formatShortWhen(row.completed_at)}
+                                  </td>
+                                  <td
+                                    className="max-w-0 truncate px-2.5 py-2 text-red-200/85"
+                                    title={row.error_message ?? undefined}
+                                  >
+                                    {row.error_message ?? "—"}
+                                  </td>
+                                </tr>
+                                {created > 0 && expanded ? (
+                                  <tr className="border-t border-white/[0.06] bg-white/[0.02]">
+                                    <td
+                                      colSpan={7}
+                                      className="px-2.5 py-2 text-xs text-white/75"
+                                    >
+                                      <ul className="list-inside list-disc space-y-0.5">
+                                        {details.map((d, i) => (
+                                          <li key={i}>
+                                            {d.name}
+                                            {d.job_number != null &&
+                                            d.job_number !== ""
+                                              ? ` · ${d.job_number}`
+                                              : null}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </td>
+                                  </tr>
+                                ) : null}
+                              </Fragment>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>

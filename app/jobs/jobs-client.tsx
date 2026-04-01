@@ -117,6 +117,8 @@ export function JobsClient() {
   const [view, setView] = useState<"kanban" | "list" | "board">("kanban");
   const [boardActiveOnly, setBoardActiveOnly] = useState(true);
   const [assignedToMeOnly, setAssignedToMeOnly] = useState(false);
+  const [jobSearch, setJobSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<JobFormState>(emptyJobForm);
@@ -216,10 +218,34 @@ export function JobsClient() {
     };
   }, [canAssignJobs]);
 
+  const customerLabel = (j: JobListRow) => {
+    const raw = j.customers;
+    const c = Array.isArray(raw) ? raw[0] : raw;
+    if (!c) return "—";
+    return c.company_name || c.contact_name || "—";
+  };
+
   const visibleJobs = useMemo(() => {
-    if (!assignedToMeOnly || !currentUserId) return jobs;
-    return jobs.filter((j) => j.assigned_user_id === currentUserId);
-  }, [jobs, assignedToMeOnly, currentUserId]);
+    let result = jobs;
+    if (assignedToMeOnly && currentUserId) {
+      result = result.filter((j) => j.assigned_user_id === currentUserId);
+    }
+    if (statusFilter) {
+      result = result.filter((j) => j.status === statusFilter);
+    }
+    const q = jobSearch.trim().toLowerCase();
+    if (q) {
+      result = result.filter((j) => {
+        const customerName = customerLabel(j).toLowerCase();
+        return (
+          j.job_name?.toLowerCase().includes(q) ||
+          j.job_number?.toLowerCase().includes(q) ||
+          customerName.includes(q)
+        );
+      });
+    }
+    return result;
+  }, [jobs, assignedToMeOnly, currentUserId, statusFilter, jobSearch]);
 
   const boardJobs = useMemo(() => {
     if (boardActiveOnly) {
@@ -254,13 +280,6 @@ export function JobsClient() {
         variant: "error",
       });
     }
-  };
-
-  const customerLabel = (j: JobListRow) => {
-    const raw = j.customers;
-    const c = Array.isArray(raw) ? raw[0] : raw;
-    if (!c) return "—";
-    return c.company_name || c.contact_name || "—";
   };
 
   const exportJobTreadCsv = () => {
@@ -559,28 +578,54 @@ export function JobsClient() {
         </div>
 
         {!loading && !error && jobs.length > 0 ? (
-          <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-white/80">
-            <label className="flex cursor-pointer items-center gap-2">
+          <div className="mt-4 space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <input
-                type="checkbox"
-                checked={assignedToMeOnly}
-                onChange={(e) => setAssignedToMeOnly(e.target.checked)}
-                className="rounded border-white/30"
+                type="search"
+                className="app-input w-full sm:max-w-sm"
+                placeholder="Search by job name, number, or customer…"
+                value={jobSearch}
+                onChange={(e) => setJobSearch(e.target.value)}
               />
-              Assigned to me
-            </label>
-
-            {view === "board" ? (
+              <select
+                className="app-input w-full sm:w-auto sm:min-w-[10rem]"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <option value="">All statuses</option>
+                {JOB_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-white/80">
               <label className="flex cursor-pointer items-center gap-2">
                 <input
                   type="checkbox"
-                  checked={boardActiveOnly}
-                  onChange={(e) => setBoardActiveOnly(e.target.checked)}
+                  checked={assignedToMeOnly}
+                  onChange={(e) => setAssignedToMeOnly(e.target.checked)}
                   className="rounded border-white/30"
                 />
-                Active jobs only (Lead, Quoted, Active, On Hold)
+                Assigned to me
               </label>
-            ) : null}
+              {view === "board" ? (
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={boardActiveOnly}
+                    onChange={(e) => setBoardActiveOnly(e.target.checked)}
+                    className="rounded border-white/30"
+                  />
+                  Active jobs only (Lead, Quoted, Active, On Hold)
+                </label>
+              ) : null}
+              <span className="text-xs text-white/40">
+                {visibleJobs.length} of {jobs.length} job
+                {jobs.length === 1 ? "" : "s"}
+              </span>
+            </div>
           </div>
         ) : null}
 

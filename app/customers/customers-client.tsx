@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CustomerListSkeleton,
   EmptyState,
@@ -37,6 +37,7 @@ export function CustomersClient() {
   const [formMsg, setFormMsg] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CustomerRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [search, setSearch] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -71,6 +72,15 @@ export function CustomersClient() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((c) =>
+      [c.company_name, c.contact_name, c.phone, c.email]
+        .some((v) => v?.toLowerCase().includes(q)),
+    );
+  }, [rows, search]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -239,6 +249,23 @@ export function CustomersClient() {
             </button>
           </div>
         </div>
+        {!loading && rows.length > 0 ? (
+          <div className="mt-4">
+            <input
+              type="search"
+              className="app-input w-full max-w-md"
+              placeholder="Search by company, contact, phone, or email…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+        ) : null}
+        {!loading && rows.length > 0 ? (
+          <p className="mt-2 text-xs text-white/40">
+            {filteredRows.length} of {rows.length} customer
+            {rows.length === 1 ? "" : "s"}
+          </p>
+        ) : null}
         {loading ? (
           <CustomerListSkeleton />
         ) : error ? (
@@ -253,7 +280,7 @@ export function CustomersClient() {
           />
         ) : (
           <ul className="space-y-3">
-            {rows.map((c) => (
+            {filteredRows.map((c) => (
               <li
                 key={c.id}
                 className="app-card app-card-pad-lg w-full"

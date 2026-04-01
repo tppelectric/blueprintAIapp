@@ -413,7 +413,7 @@ export async function fetchJobtreadDailyLogs(
 ): Promise<{ nodes: JobtreadDailyLog[]; nextPage: string | null }> {
   try {
     const args: Record<string, unknown> = {
-      size: 100,
+      size: 25,
       ...(page ? { page } : {}),
     };
 

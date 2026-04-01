@@ -285,50 +285,10 @@ const JOB_DEBUG_NODE_FIELDS: Record<string, unknown> = {
   number: {},
   createdAt: {},
   status: {},
-  statusLabel: {},
-  label: {},
   labels: {
-    nextPage: {},
     nodes: {
       id: {},
       name: {},
-      key: {},
-      value: {},
-      label: {},
-    },
-  },
-  invoiceStatus: {},
-  readyToInvoice: {},
-  needsInvoice: {},
-  customFields: {
-    nextPage: {},
-    nodes: {
-      id: {},
-      name: {},
-      key: {},
-      value: {},
-      label: {},
-      type: {},
-    },
-  },
-  fields: {
-    nextPage: {},
-    nodes: {
-      id: {},
-      name: {},
-      key: {},
-      value: {},
-      label: {},
-      type: {},
-    },
-  },
-  tags: {
-    nextPage: {},
-    nodes: {
-      id: {},
-      name: {},
-      key: {},
-      value: {},
     },
   },
   location: {

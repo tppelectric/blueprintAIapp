@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ReceiptCapture } from "@/components/receipt-capture";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UserRole } from "@/lib/user-roles";
 import {
   formatDecimalHoursAsReadable,
@@ -224,6 +224,9 @@ export function FieldClient() {
   const [auditTo, setAuditTo] = useState(todayYmd);
   const notesBaseline = useRef("");
   const [receiptOpen, setReceiptOpen] = useState(false);
+  const [jobSearch, setJobSearch] = useState("");
+  const [jobDropdownOpen, setJobDropdownOpen] = useState(false);
+  const jobSearchRef = useRef<HTMLDivElement>(null);
 
   const ingestClockResponse = useCallback(
     (j: {
@@ -442,6 +445,35 @@ export function FieldClient() {
       prev && jobs.some((j) => j.id === prev) ? prev : jobs[0]!.id,
     );
   }, [qpJob, jobs]);
+
+  const filteredJobOpts = useMemo(() => {
+    const q = jobSearch.trim().toLowerCase();
+    if (!q) return jobs;
+    return jobs.filter(
+      (j) =>
+        j.job_name?.toLowerCase().includes(q) ||
+        j.job_number?.toLowerCase().includes(q),
+    );
+  }, [jobs, jobSearch]);
+
+  const selectedJob = useMemo(
+    () => jobs.find((j) => j.id === jobId) ?? null,
+    [jobs, jobId],
+  );
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (
+        jobSearchRef.current &&
+        !jobSearchRef.current.contains(e.target as Node)
+      ) {
+        setJobDropdownOpen(false);
+        setJobSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const postJson = async (body: Record<string, unknown>) => {
     setBusy(true);
@@ -862,26 +894,70 @@ export function FieldClient() {
                   </p>
                 </section>
 
-                <label className="block text-sm font-medium text-white/90">
-                  Job
-                  <select
-                    value={jobId}
-                    onChange={(e) => setJobId(e.target.value)}
-                    disabled={busy}
-                    className="mt-2 w-full rounded-xl border border-white/20 bg-[#071422] px-4 py-3.5 text-base text-white"
-                  >
-                    {jobs.length === 0 ? (
-                      <option value="">No jobs</option>
-                    ) : (
-                      jobs.map((j) => (
-                        <option key={j.id} value={j.id}>
-                          {(j.job_number ? `${j.job_number} · ` : "") +
-                            (j.job_name || "Job")}
-                        </option>
-                      ))
-                    )}
-                  </select>
-                </label>
+                <div className="block text-sm font-medium text-white/90">
+                  <span>Job</span>
+                  <div className="relative mt-2" ref={jobSearchRef}>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setJobDropdownOpen((o) => !o);
+                        setJobSearch("");
+                      }}
+                      className="w-full rounded-xl border border-white/20 bg-[#071422] px-4 py-3.5 text-left text-base text-white disabled:opacity-50"
+                    >
+                      {selectedJob
+                        ? `${selectedJob.job_number ? selectedJob.job_number + " · " : ""}${selectedJob.job_name || "Job"}`
+                        : jobs.length === 0
+                          ? "No jobs available"
+                          : "Select a job…"}
+                    </button>
+                    {jobDropdownOpen ? (
+                      <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-white/20 bg-[#071422] shadow-xl">
+                        <div className="p-2">
+                          <input
+                            type="search"
+                            autoFocus
+                            className="w-full rounded-lg border border-white/20 bg-white/[0.06] px-3 py-2 text-sm text-white placeholder-white/40 outline-none focus:border-[#E8C84A]/60"
+                            placeholder="Search job name or number…"
+                            value={jobSearch}
+                            onChange={(e) => setJobSearch(e.target.value)}
+                          />
+                        </div>
+                        <ul className="max-h-60 overflow-y-auto">
+                          {filteredJobOpts.length === 0 ? (
+                            <li className="px-4 py-3 text-sm text-white/50">
+                              No jobs match
+                            </li>
+                          ) : (
+                            filteredJobOpts.map((j) => (
+                              <li key={j.id}>
+                                <button
+                                  type="button"
+                                  className={`w-full px-4 py-3 text-left text-sm transition-colors hover:bg-white/[0.08] ${
+                                    j.id === jobId
+                                      ? "bg-[#E8C84A]/10 text-[#E8C84A]"
+                                      : "text-white"
+                                  }`}
+                                  onClick={() => {
+                                    setJobId(j.id);
+                                    setJobDropdownOpen(false);
+                                    setJobSearch("");
+                                  }}
+                                >
+                                  <span className="font-medium">
+                                    {j.job_number ? `${j.job_number} · ` : ""}
+                                    {j.job_name || "Job"}
+                                  </span>
+                                </button>
+                              </li>
+                            ))
+                          )}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
 
                 <label className="block text-sm font-medium text-white/90">
                   Notes <span className="text-white/45">(optional)</span>

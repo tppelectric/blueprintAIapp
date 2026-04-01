@@ -293,7 +293,7 @@ export function IntegrationsSettingsClient() {
   const loadSyncLog = useCallback(async () => {
     setSyncLogLoading(true);
     try {
-      const r = await fetch("/api/integrations/jobtread/sync-log?limit=10", {
+      const r = await fetch("/api/integrations/jobtread/sync-log?limit=20", {
         credentials: "include",
       });
       const j = (await r.json()) as {
@@ -837,7 +837,7 @@ export function IntegrationsSettingsClient() {
                       <span>Exporting… {syncElapsed}s</span>
                     </>
                   ) : (
-                    "Export daily logs"
+                    "Sync daily logs"
                   )}
                 </button>
               </div>
@@ -1096,6 +1096,19 @@ export function IntegrationsSettingsClient() {
                   <dd className="text-right">
                     <span className="font-mono tabular-nums text-[#E8C84A]">
                       {settings?.jobsSyncedCount ?? 0}
+                    </span>
+                    {settings?.lastSyncAt ? (
+                      <span className="ml-2 text-[10px] text-white/40">
+                        {formatShortWhen(settings.lastSyncAt)}
+                      </span>
+                    ) : null}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-white/50">Daily logs synced (total)</dt>
+                  <dd className="text-right">
+                    <span className="font-mono tabular-nums text-[#E8C84A]">
+                      {settings?.dailyLogsSyncedCount ?? 0}
                     </span>
                     {settings?.lastSyncAt ? (
                       <span className="ml-2 text-[10px] text-white/40">

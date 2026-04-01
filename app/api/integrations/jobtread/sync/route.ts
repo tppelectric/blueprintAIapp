@@ -756,6 +756,8 @@ async function updateIntegrationAfterSuccess(
     patch.customers_synced_count = count;
   } else if (target === "jobs") {
     patch.jobs_synced_count = count;
+  } else if (target === "daily_logs") {
+    patch.daily_logs_synced_count = count;
   }
   const { error } = await admin
     .from("integration_settings")

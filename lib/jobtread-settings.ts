@@ -15,6 +15,7 @@ export type JobtreadIntegrationRow = {
   last_sync_at: string | null;
   customers_synced_count: number;
   jobs_synced_count: number;
+  daily_logs_synced_count: number;
   connection_status: string;
   connection_message: string | null;
   updated_at: string;
@@ -39,6 +40,7 @@ export type JobtreadSettingsPublic = {
   lastSyncAt: string | null;
   customersSyncedCount: number;
   jobsSyncedCount: number;
+  dailyLogsSyncedCount: number;
   connectionStatus: string;
   connectionMessage: string | null;
   updatedAt: string | null;
@@ -63,6 +65,7 @@ export function rowToPublic(
       lastSyncAt: null,
       customersSyncedCount: 0,
       jobsSyncedCount: 0,
+      dailyLogsSyncedCount: 0,
       connectionStatus: "unknown",
       connectionMessage: null,
       updatedAt: null,
@@ -85,6 +88,7 @@ export function rowToPublic(
     lastSyncAt: row.last_sync_at,
     customersSyncedCount: Number(row.customers_synced_count) || 0,
     jobsSyncedCount: Number(row.jobs_synced_count) || 0,
+    dailyLogsSyncedCount: Number(row.daily_logs_synced_count) || 0,
     connectionStatus: row.connection_status || "unknown",
     connectionMessage: row.connection_message,
     updatedAt: row.updated_at,

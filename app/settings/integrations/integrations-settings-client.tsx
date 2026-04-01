@@ -155,6 +155,7 @@ export function IntegrationsSettingsClient() {
     count?: number;
     at: string;
   } | null>(null);
+  const [syncElapsed, setSyncElapsed] = useState(0);
   const [syncLog, setSyncLog] = useState<JobtreadSyncLogEntry[]>([]);
   const [syncLogLoading, setSyncLogLoading] = useState(false);
   const [syncLogOpen, setSyncLogOpen] = useState(false);
@@ -167,11 +168,26 @@ export function IntegrationsSettingsClient() {
     clear: ReturnType<typeof setTimeout>;
   } | null>(null);
   const lastSyncResultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const clearLastSyncResultTimer = useCallback(() => {
     if (lastSyncResultTimerRef.current != null) {
       clearTimeout(lastSyncResultTimerRef.current);
       lastSyncResultTimerRef.current = null;
+    }
+  }, []);
+
+  const startSyncTimer = useCallback(() => {
+    setSyncElapsed(0);
+    syncTimerRef.current = setInterval(() => {
+      setSyncElapsed((s) => s + 1);
+    }, 1000);
+  }, []);
+
+  const stopSyncTimer = useCallback(() => {
+    if (syncTimerRef.current) {
+      clearInterval(syncTimerRef.current);
+      syncTimerRef.current = null;
     }
   }, []);
 
@@ -210,6 +226,10 @@ export function IntegrationsSettingsClient() {
   useEffect(() => {
     return () => clearConnectionTestTimers();
   }, [clearConnectionTestTimers]);
+
+  useEffect(() => {
+    return () => stopSyncTimer();
+  }, [stopSyncTimer]);
 
   useEffect(() => {
     if (!lastSyncResult) {
@@ -431,6 +451,7 @@ export function IntegrationsSettingsClient() {
 
   const runSync = async (target: "customers" | "jobs" | "daily_logs") => {
     setSyncingTarget(target);
+    startSyncTimer();
     try {
       const r = await fetch(
         `/api/integrations/jobtread/sync?target=${encodeURIComponent(target)}`,
@@ -476,6 +497,7 @@ export function IntegrationsSettingsClient() {
       });
       void loadSyncLog();
     } finally {
+      stopSyncTimer();
       setSyncingTarget(null);
     }
   };
@@ -760,7 +782,7 @@ export function IntegrationsSettingsClient() {
                         className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-white/25 border-t-white/80"
                         aria-hidden
                       />
-                      Syncing…
+                      <span>Syncing… {syncElapsed}s</span>
                     </>
                   ) : (
                     "Sync customers now"
@@ -778,7 +800,7 @@ export function IntegrationsSettingsClient() {
                         className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-white/25 border-t-white/80"
                         aria-hidden
                       />
-                      Syncing…
+                      <span>Syncing… {syncElapsed}s</span>
                     </>
                   ) : (
                     "Sync jobs now"
@@ -796,13 +818,20 @@ export function IntegrationsSettingsClient() {
                         className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-white/25 border-t-white/80"
                         aria-hidden
                       />
-                      Exporting…
+                      <span>Exporting… {syncElapsed}s</span>
                     </>
                   ) : (
                     "Export daily logs"
                   )}
                 </button>
               </div>
+              {syncingTarget ? (
+                <p className="mt-2 text-xs text-white/45">
+                  {syncingTarget === "jobs"
+                    ? "Jobs sync fetches locations to link customers — this takes ~60–90s."
+                    : "Syncing from JobTread…"}
+                </p>
+              ) : null}
               {lastSyncResult ? (
                 <div
                   className="mt-3 rounded-lg border border-white/10 px-3 py-2.5 text-sm"
@@ -986,14 +1015,28 @@ export function IntegrationsSettingsClient() {
                 ) : null}
                 <div className="flex justify-between gap-4">
                   <dt className="text-white/50">Customers synced (total)</dt>
-                  <dd className="font-mono tabular-nums text-[#E8C84A]">
-                    {settings?.customersSyncedCount ?? 0}
+                  <dd className="text-right">
+                    <span className="font-mono tabular-nums text-[#E8C84A]">
+                      {settings?.customersSyncedCount ?? 0}
+                    </span>
+                    {settings?.lastSyncAt ? (
+                      <span className="ml-2 text-[10px] text-white/40">
+                        {formatShortWhen(settings.lastSyncAt)}
+                      </span>
+                    ) : null}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-4">
                   <dt className="text-white/50">Jobs synced (total)</dt>
-                  <dd className="font-mono tabular-nums text-[#E8C84A]">
-                    {settings?.jobsSyncedCount ?? 0}
+                  <dd className="text-right">
+                    <span className="font-mono tabular-nums text-[#E8C84A]">
+                      {settings?.jobsSyncedCount ?? 0}
+                    </span>
+                    {settings?.lastSyncAt ? (
+                      <span className="ml-2 text-[10px] text-white/40">
+                        {formatShortWhen(settings.lastSyncAt)}
+                      </span>
+                    ) : null}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-4">

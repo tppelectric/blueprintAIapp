@@ -20,6 +20,7 @@ export type JobtreadJob = {
   name: string;
   number: string | null;
   createdAt: string;
+  status?: string | null;
   location?: {
     id: string;
     name: string;
@@ -202,6 +203,7 @@ function parseJobNode(n: Record<string, unknown>): JobtreadJob {
     name: str(n.name),
     number: strOrNull(n.number),
     createdAt: str(n.createdAt),
+    status: strOrNull(n.status),
     location: loc
       ? {
           id: str(loc.id),
@@ -238,6 +240,7 @@ export async function fetchJobtreadJobs(
             name: {},
             number: {},
             createdAt: {},
+            status: {},
             location: {
               id: {},
               name: {},

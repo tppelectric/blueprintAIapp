@@ -16,6 +16,26 @@ export const dynamic = "force-dynamic";
 
 const TARGETS = new Set(["customers", "jobs", "daily_logs"]);
 
+function mapJobTreadStatus(jobTreadStatus: string | null | undefined): string {
+  const s = (jobTreadStatus ?? "").trim();
+  switch (s) {
+    case "Lead":
+      return "lead";
+    case "Quoted":
+      return "quoted";
+    case "In Progress":
+      return "active";
+    case "On Hold":
+      return "on_hold";
+    case "Complete":
+      return "completed";
+    case "Cancelled":
+      return "cancelled";
+    default:
+      return "active";
+  }
+}
+
 /**
  * If upsert on jobtread_id fails, apply `supabase/jobtread_integration_columns.sql` in Supabase.
  */
@@ -222,7 +242,7 @@ async function syncJobsImport(
       job_name: j.name?.trim() || "Job",
       job_number: j.number?.trim() || "",
       jobtread_id: j.id,
-      status: "Active",
+      status: mapJobTreadStatus(j.status),
       address: j.location?.address?.trim() || null,
       customer_id: jtCustomerId
         ? (customerMap.get(jtCustomerId) ?? null)

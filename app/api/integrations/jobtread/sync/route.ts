@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { JobtreadCustomer, JobtreadJob } from "@/lib/jobtread-client";
 import {
+  debugJobTreadStatus,
   fetchJobtreadCustomers,
   fetchJobtreadJobs,
   fetchJobtreadLocationAccountMap,
@@ -307,6 +308,42 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
+  const url = new URL(request.url);
+  if (url.searchParams.get("debug") === "status") {
+    let apiKey: string | null;
+    try {
+      apiKey = await getStoredJobtreadApiKey();
+    } catch (e) {
+      return NextResponse.json(
+        { ok: false, error: e instanceof Error ? e.message : "Key error." },
+        { status: 500 },
+      );
+    }
+    let row: JobtreadIntegrationRow | null;
+    try {
+      row = await fetchJobtreadRow();
+    } catch (e) {
+      return NextResponse.json(
+        { ok: false, error: e instanceof Error ? e.message : "Settings error." },
+        { status: 500 },
+      );
+    }
+    const companyId = row?.company_id?.trim() ?? "";
+    if (!apiKey || !companyId) {
+      return NextResponse.json(
+        { ok: false, error: "JobTread not configured" },
+        { status: 400 },
+      );
+    }
+    try {
+      const jobs = await debugJobTreadStatus(apiKey, companyId);
+      return NextResponse.json({ ok: true, debug: "status", jobs });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Debug fetch failed.";
+      return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+    }
+  }
+
   let admin: ReturnType<typeof createServiceRoleClient>;
   try {
     admin = createServiceRoleClient();
@@ -317,7 +354,6 @@ export async function GET(request: Request) {
     );
   }
 
-  const url = new URL(request.url);
   const target = url.searchParams.get("target") ?? "";
   if (!TARGETS.has(target)) {
     return NextResponse.json(

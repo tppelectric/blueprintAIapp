@@ -196,14 +196,21 @@ export async function fetchJobtreadCustomers(
   }
 }
 
+let jtStatusDebugLogsRemaining = 5;
+
 function parseJobNode(n: Record<string, unknown>): JobtreadJob {
   const loc = asRecord(n.location);
+  const status = strOrNull(n.status);
+  if (jtStatusDebugLogsRemaining > 0) {
+    jtStatusDebugLogsRemaining -= 1;
+    console.log("[JT status debug]", n.id, n.status, Object.keys(n));
+  }
   return {
     id: str(n.id),
     name: str(n.name),
     number: strOrNull(n.number),
     createdAt: str(n.createdAt),
-    status: strOrNull(n.status),
+    status,
     location: loc
       ? {
           id: str(loc.id),
@@ -216,15 +223,17 @@ function parseJobNode(n: Record<string, unknown>): JobtreadJob {
 
 /**
  * One page of jobs for the organization. Pass `page` from previous `nextPage` to continue.
+ * `options.size` defaults to 100 when omitted.
  */
 export async function fetchJobtreadJobs(
   grantKey: string,
   orgId: string,
   page?: string,
+  options?: { size?: number },
 ): Promise<{ nodes: JobtreadJob[]; nextPage: string | null }> {
   try {
     const jobsArgs: Record<string, unknown> = {
-      size: 100,
+      size: options?.size ?? 100,
       ...(page ? { page } : {}),
     };
 
@@ -276,6 +285,17 @@ export async function fetchJobtreadJobs(
     const msg = e instanceof Error ? e.message : String(e);
     throw new Error(`fetchJobtreadJobs failed: ${msg}`);
   }
+}
+
+/** First page only (size 5). Parsed jobs including `status` — not used by sync. */
+export async function debugJobTreadStatus(
+  grantKey: string,
+  orgId: string,
+): Promise<JobtreadJob[]> {
+  const { nodes } = await fetchJobtreadJobs(grantKey, orgId, undefined, {
+    size: 5,
+  });
+  return nodes;
 }
 
 export type JobtreadLocationNode = {

@@ -25,27 +25,13 @@ export function HomeMarketingHeroToolsSection({ children }: Props) {
   );
 
   if (loading) {
-    return (
-      <>
-        <div className="mx-auto mt-4 w-full max-w-md self-stretch">
-          <HomeEmployeeRequestsWidget surface="marketing" />
-        </div>
-        {toolGrid}
-      </>
-    );
+    return <>{toolGrid}</>;
   }
 
   const usesCommandCenter = role === "admin" || role === "super_admin";
 
   if (usesCommandCenter) {
-    return (
-      <>
-        <div className="mx-auto mt-4 w-full max-w-md self-stretch">
-          <HomeEmployeeRequestsWidget surface="marketing" />
-        </div>
-        {toolGrid}
-      </>
-    );
+    return <>{toolGrid}</>;
   }
 
   return (

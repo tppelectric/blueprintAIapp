@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { DashboardMyWorkCard } from "@/components/dashboard-my-work-card";
+import { HomeJobStatusSnapshot } from "@/components/home-job-status-snapshot";
 import { HomeMarketingCommandCenter } from "@/components/home-marketing-command-center";
+import { HomeRequestsPanel } from "@/components/home-requests-panel";
 import { HomeMarketingHeroToolsSection } from "@/components/home-marketing-hero-tools";
 import { HomeIntegrationsSettingsLink } from "@/components/home-integrations-settings-link";
 import { HomeMarketingHeader } from "@/components/home-marketing-header";
@@ -203,15 +205,27 @@ export default function Home() {
 
       <main
         id="product"
-        className="mx-auto flex w-full max-w-6xl flex-1 flex-col items-stretch px-4 py-16 text-center md:px-8 md:py-24"
+        className="mx-auto flex w-full max-w-6xl flex-1 flex-col items-stretch px-4 py-6 text-center md:px-8 md:py-10"
       >
-        <h1 className="mx-auto max-w-3xl text-center text-2xl font-semibold leading-snug tracking-tight text-white sm:text-3xl md:text-4xl md:leading-tight lg:text-[2.5rem]">
-          <span className="block">Blueprint AI - TPP Electrical</span>
-          <span className="block">Contractors, Inc</span>
-        </h1>
-        <p className="mx-auto mt-5 max-w-xl text-center text-sm text-white/50 sm:text-base">
-          Est. 1982 · Powered by Blueprint AI
-        </p>
+        <div className="flex w-full items-center justify-between gap-4 text-left">
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight text-white sm:text-xl">
+              Blueprint AI
+              <span className="ml-2 text-sm font-normal text-[#E8C84A]">
+                TPP Electrical Contractors, Inc
+              </span>
+            </h1>
+            <p className="mt-0.5 text-xs text-white/40">
+              Est. 1982 · Powered by Blueprint AI
+            </p>
+          </div>
+          <Link
+            href="/upload"
+            className="btn-primary btn-h-11 shrink-0 px-4 text-sm"
+          >
+            + New Project
+          </Link>
+        </div>
 
         <section
           className="mt-6 w-full max-w-6xl self-stretch text-left"
@@ -220,16 +234,14 @@ export default function Home() {
           <DashboardMyWorkCard />
         </section>
 
-        <HomeMarketingCommandCenter />
-
-        <div className="mt-10 flex w-full flex-col items-center sm:mt-12">
-          <Link
-            href="/upload"
-            className="btn-primary btn-h-11 mx-auto inline-flex w-full max-w-lg justify-center sm:w-auto sm:min-w-[320px]"
-          >
-            Start New Project
-          </Link>
+        <div className="mt-8 w-full max-w-6xl self-stretch">
+          <div className="grid w-full items-start gap-4 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+            <HomeMarketingCommandCenter />
+            <HomeRequestsPanel />
+          </div>
         </div>
+
+        <HomeJobStatusSnapshot />
 
         <HomeMarketingHeroToolsSection>
           <Link

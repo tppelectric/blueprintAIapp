@@ -13,10 +13,7 @@ export function HomeMarketingCommandCenter() {
   if (!loading && !isAdmin) return null;
 
   return (
-    <section
-      className="mt-8 w-full max-w-6xl self-stretch text-left"
-      aria-label="Command center"
-    >
+    <section className="w-full text-left" aria-label="Command center">
       {loading ? (
         <div className="h-32 w-full animate-pulse rounded-xl border border-[#E8C84A]/30 bg-white/[0.06] lg:h-36" />
       ) : (

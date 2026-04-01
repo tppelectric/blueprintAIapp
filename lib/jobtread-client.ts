@@ -285,11 +285,10 @@ const JOB_DEBUG_NODE_FIELDS: Record<string, unknown> = {
   number: {},
   createdAt: {},
   status: {},
-  customFields: {
+  tags: {
     nodes: {
       id: {},
       name: {},
-      value: {},
     },
   },
   location: {

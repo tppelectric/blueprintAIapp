@@ -36,6 +36,15 @@ function mapJobTreadStatus(jobTreadStatus: string | null | undefined): string {
 const JOBTREAD_SCHEMA_HINT =
   "Ensure supabase/jobtread_integration_columns.sql has been applied (jobtread_id + unique index).";
 
+type CustomerRecordDetail = { name: string };
+type JobRecordDetail = { name: string; job_number: string };
+
+type SyncLogBreakdown = {
+  recordsCreated: number;
+  recordsUpdated: number;
+  recordDetails: unknown[];
+};
+
 async function insertSyncLog(
   admin: ServiceAdmin,
   syncType: string,
@@ -50,6 +59,9 @@ async function insertSyncLog(
       triggered_by: userId,
       started_at: startedAt,
       records_synced: 0,
+      records_created: 0,
+      records_updated: 0,
+      record_details: [],
     })
     .select("id")
     .maybeSingle();
@@ -66,6 +78,7 @@ async function finishSyncLog(
   status: "success" | "failed",
   recordsSynced: number,
   errorMessage: string | null,
+  breakdown?: SyncLogBreakdown,
 ) {
   if (!logId) return;
   const completedAt = new Date().toISOString();
@@ -76,6 +89,13 @@ async function finishSyncLog(
       completed_at: completedAt,
       records_synced: recordsSynced,
       error_message: errorMessage,
+      ...(breakdown
+        ? {
+            records_created: breakdown.recordsCreated,
+            records_updated: breakdown.recordsUpdated,
+            record_details: breakdown.recordDetails,
+          }
+        : {}),
     })
     .eq("id", logId);
   if (error) {
@@ -86,19 +106,87 @@ async function finishSyncLog(
 async function upsertCustomerChunk(
   admin: ServiceAdmin,
   slice: Record<string, unknown>[],
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{
+  ok: boolean;
+  error?: string;
+  recordsCreated?: number;
+  recordsUpdated?: number;
+  recordDetails?: CustomerRecordDetail[];
+}> {
+  if (slice.length === 0) {
+    return {
+      ok: true,
+      recordsCreated: 0,
+      recordsUpdated: 0,
+      recordDetails: [],
+    };
+  }
+
+  const jtIds = [
+    ...new Set(
+      slice
+        .map((r) => r.jobtread_id as string | undefined)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+
+  const existingJt = new Set<string>();
+  if (jtIds.length > 0) {
+    const { data: existingRows, error: selectError } = await admin
+      .from("customers")
+      .select("jobtread_id")
+      .in("jobtread_id", jtIds);
+    if (selectError) {
+      return { ok: false, error: selectError.message };
+    }
+    for (const er of existingRows ?? []) {
+      if (er.jobtread_id) {
+        existingJt.add(String(er.jobtread_id));
+      }
+    }
+  }
+
+  let recordsUpdated = 0;
+  let recordsCreated = 0;
+  const recordDetails: CustomerRecordDetail[] = [];
+  for (const row of slice) {
+    const jt = row.jobtread_id as string | undefined;
+    if (!jt) continue;
+    if (existingJt.has(jt)) {
+      recordsUpdated += 1;
+    } else {
+      recordsCreated += 1;
+      recordDetails.push({
+        name:
+          typeof row.company_name === "string"
+            ? row.company_name
+            : String(row.company_name ?? ""),
+      });
+    }
+  }
+
   const { error } = await admin.from("customers").upsert(slice, {
     onConflict: "jobtread_id",
   });
-  if (!error) return { ok: true };
+  if (!error) {
+    return { ok: true, recordsCreated, recordsUpdated, recordDetails };
+  }
   return { ok: false, error: error.message };
 }
 
 async function fallbackUpsertCustomers(
   admin: ServiceAdmin,
   slice: Record<string, unknown>[],
-): Promise<number> {
+): Promise<{
+  count: number;
+  recordsCreated: number;
+  recordsUpdated: number;
+  recordDetails: CustomerRecordDetail[];
+}> {
   let n = 0;
+  let recordsCreated = 0;
+  let recordsUpdated = 0;
+  const recordDetails: CustomerRecordDetail[] = [];
   for (const row of slice) {
     const jt = row.jobtread_id as string;
     if (!jt) continue;
@@ -113,19 +201,37 @@ async function fallbackUpsertCustomers(
         .from("customers")
         .update(payload)
         .eq("id", existing.id as string);
-      if (!error) n += 1;
+      if (!error) {
+        n += 1;
+        recordsUpdated += 1;
+      }
     } else {
       const { error } = await admin.from("customers").insert(payload);
-      if (!error) n += 1;
+      if (!error) {
+        n += 1;
+        recordsCreated += 1;
+        recordDetails.push({
+          name:
+            typeof row.company_name === "string"
+              ? row.company_name
+              : String(row.company_name ?? ""),
+        });
+      }
     }
   }
-  return n;
+  return { count: n, recordsCreated, recordsUpdated, recordDetails };
 }
 
 async function syncCustomersImport(
   admin: ServiceAdmin,
   customers: JobtreadCustomer[],
-): Promise<{ count: number; error?: string }> {
+): Promise<{
+  count: number;
+  recordsCreated: number;
+  recordsUpdated: number;
+  recordDetails: CustomerRecordDetail[];
+  error?: string;
+}> {
   const now = new Date().toISOString();
   const rows = customers.map((c) => ({
     jobtread_id: c.id,
@@ -137,31 +243,56 @@ async function syncCustomersImport(
   }));
 
   let total = 0;
+  let recordsCreated = 0;
+  let recordsUpdated = 0;
+  const recordDetails: CustomerRecordDetail[] = [];
   const chunkSize = 80;
   for (let i = 0; i < rows.length; i += chunkSize) {
     const slice = rows.slice(i, i + chunkSize);
     const res = await upsertCustomerChunk(admin, slice);
     if (res.ok) {
       total += slice.length;
+      recordsCreated += res.recordsCreated ?? 0;
+      recordsUpdated += res.recordsUpdated ?? 0;
+      recordDetails.push(...(res.recordDetails ?? []));
       continue;
     }
     const fb = await fallbackUpsertCustomers(admin, slice);
-    total += fb;
-    if (fb < slice.length && res.error) {
+    total += fb.count;
+    recordsCreated += fb.recordsCreated;
+    recordsUpdated += fb.recordsUpdated;
+    recordDetails.push(...fb.recordDetails);
+    if (fb.count < slice.length && res.error) {
       return {
         count: total,
+        recordsCreated,
+        recordsUpdated,
+        recordDetails,
         error: `${res.error}. ${JOBTREAD_SCHEMA_HINT}`,
       };
     }
   }
-  return { count: total };
+  return { count: total, recordsCreated, recordsUpdated, recordDetails };
 }
 
 async function upsertJobChunk(
   admin: ServiceAdmin,
   slice: Record<string, unknown>[],
-): Promise<{ ok: boolean; error?: string }> {
-  if (slice.length === 0) return { ok: true };
+): Promise<{
+  ok: boolean;
+  error?: string;
+  recordsCreated?: number;
+  recordsUpdated?: number;
+  recordDetails?: JobRecordDetail[];
+}> {
+  if (slice.length === 0) {
+    return {
+      ok: true,
+      recordsCreated: 0,
+      recordsUpdated: 0,
+      recordDetails: [],
+    };
+  }
 
   const jtIds = [
     ...new Set(
@@ -188,6 +319,7 @@ async function upsertJobChunk(
   }
 
   const toInsert: Record<string, unknown>[] = [];
+  let recordsUpdated = 0;
 
   for (const row of slice) {
     const jt = row.jobtread_id as string | undefined;
@@ -209,6 +341,7 @@ async function upsertJobChunk(
       if (error) {
         return { ok: false, error: error.message };
       }
+      recordsUpdated += 1;
     } else {
       toInsert.push(row);
     }
@@ -221,14 +354,38 @@ async function upsertJobChunk(
     }
   }
 
-  return { ok: true };
+  const recordDetails: JobRecordDetail[] = toInsert.map((row) => ({
+    name:
+      typeof row.job_name === "string"
+        ? row.job_name
+        : String(row.job_name ?? ""),
+    job_number:
+      typeof row.job_number === "string"
+        ? row.job_number
+        : String(row.job_number ?? ""),
+  }));
+
+  return {
+    ok: true,
+    recordsCreated: toInsert.length,
+    recordsUpdated,
+    recordDetails,
+  };
 }
 
 async function fallbackUpsertJobs(
   admin: ServiceAdmin,
   slice: Record<string, unknown>[],
-): Promise<number> {
+): Promise<{
+  count: number;
+  recordsCreated: number;
+  recordsUpdated: number;
+  recordDetails: JobRecordDetail[];
+}> {
   let n = 0;
+  let recordsCreated = 0;
+  let recordsUpdated = 0;
+  const recordDetails: JobRecordDetail[] = [];
   for (const row of slice) {
     const jt = row.jobtread_id as string;
     if (!jt) continue;
@@ -242,20 +399,42 @@ async function fallbackUpsertJobs(
         .from("jobs")
         .update(row)
         .eq("id", existing.id as string);
-      if (!error) n += 1;
+      if (!error) {
+        n += 1;
+        recordsUpdated += 1;
+      }
     } else {
       const { error } = await admin.from("jobs").insert(row);
-      if (!error) n += 1;
+      if (!error) {
+        n += 1;
+        recordsCreated += 1;
+        recordDetails.push({
+          name:
+            typeof row.job_name === "string"
+              ? row.job_name
+              : String(row.job_name ?? ""),
+          job_number:
+            typeof row.job_number === "string"
+              ? row.job_number
+              : String(row.job_number ?? ""),
+        });
+      }
     }
   }
-  return n;
+  return { count: n, recordsCreated, recordsUpdated, recordDetails };
 }
 
 async function syncJobsImport(
   admin: ServiceAdmin,
   jobs: JobtreadJob[],
   locationAccountMap: Map<string, string>,
-): Promise<{ count: number; error?: string }> {
+): Promise<{
+  count: number;
+  recordsCreated: number;
+  recordsUpdated: number;
+  recordDetails: JobRecordDetail[];
+  error?: string;
+}> {
   const now = new Date().toISOString();
 
   const jtCustomerIds = [
@@ -302,24 +481,36 @@ async function syncJobsImport(
   });
 
   let total = 0;
+  let recordsCreated = 0;
+  let recordsUpdated = 0;
+  const recordDetails: JobRecordDetail[] = [];
   const chunkSize = 80;
   for (let i = 0; i < rows.length; i += chunkSize) {
     const slice = rows.slice(i, i + chunkSize);
     const res = await upsertJobChunk(admin, slice);
     if (res.ok) {
       total += slice.length;
+      recordsCreated += res.recordsCreated ?? 0;
+      recordsUpdated += res.recordsUpdated ?? 0;
+      recordDetails.push(...(res.recordDetails ?? []));
       continue;
     }
     const fb = await fallbackUpsertJobs(admin, slice);
-    total += fb;
-    if (fb < slice.length && res.error) {
+    total += fb.count;
+    recordsCreated += fb.recordsCreated;
+    recordsUpdated += fb.recordsUpdated;
+    recordDetails.push(...fb.recordDetails);
+    if (fb.count < slice.length && res.error) {
       return {
         count: total,
+        recordsCreated,
+        recordsUpdated,
+        recordDetails,
         error: `${res.error}. ${JOBTREAD_SCHEMA_HINT}`,
       };
     }
   }
-  return { count: total };
+  return { count: total, recordsCreated, recordsUpdated, recordDetails };
 }
 
 async function updateIntegrationAfterSuccess(
@@ -434,9 +625,27 @@ export async function GET(request: Request) {
         page = nextPage ?? undefined;
       }
 
-      const { count, error: importErr } = await syncCustomersImport(admin, all);
+      const {
+        count,
+        recordsCreated,
+        recordsUpdated,
+        recordDetails,
+        error: importErr,
+      } = await syncCustomersImport(admin, all);
+      const customerBreakdown: SyncLogBreakdown = {
+        recordsCreated,
+        recordsUpdated,
+        recordDetails,
+      };
       if (importErr) {
-        await finishSyncLog(admin, logId, "failed", count, importErr);
+        await finishSyncLog(
+          admin,
+          logId,
+          "failed",
+          count,
+          importErr,
+          customerBreakdown,
+        );
         return NextResponse.json({
           ok: false,
           target,
@@ -446,7 +655,14 @@ export async function GET(request: Request) {
         });
       }
 
-      await finishSyncLog(admin, logId, "success", count, null);
+      await finishSyncLog(
+        admin,
+        logId,
+        "success",
+        count,
+        null,
+        customerBreakdown,
+      );
       if (row) {
         await updateIntegrationAfterSuccess(admin, row, "customers", count, syncedAt);
       }
@@ -478,13 +694,27 @@ export async function GET(request: Request) {
         companyId,
       );
 
-      const { count, error: importErr } = await syncJobsImport(
-        admin,
-        all,
-        locationAccountMap,
-      );
+      const {
+        count,
+        recordsCreated,
+        recordsUpdated,
+        recordDetails,
+        error: importErr,
+      } = await syncJobsImport(admin, all, locationAccountMap);
+      const jobBreakdown: SyncLogBreakdown = {
+        recordsCreated,
+        recordsUpdated,
+        recordDetails,
+      };
       if (importErr) {
-        await finishSyncLog(admin, logId, "failed", count, importErr);
+        await finishSyncLog(
+          admin,
+          logId,
+          "failed",
+          count,
+          importErr,
+          jobBreakdown,
+        );
         return NextResponse.json({
           ok: false,
           target,
@@ -494,7 +724,14 @@ export async function GET(request: Request) {
         });
       }
 
-      await finishSyncLog(admin, logId, "success", count, null);
+      await finishSyncLog(
+        admin,
+        logId,
+        "success",
+        count,
+        null,
+        jobBreakdown,
+      );
       if (row) {
         await updateIntegrationAfterSuccess(admin, row, "jobs", count, syncedAt);
       }

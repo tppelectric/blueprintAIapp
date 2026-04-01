@@ -3,6 +3,7 @@ import type { JobtreadCustomer, JobtreadJob } from "@/lib/jobtread-client";
 import {
   fetchJobtreadCustomers,
   fetchJobtreadJobs,
+  fetchJobtreadLocationAccountMap,
 } from "@/lib/jobtread-client";
 import { fetchJobtreadRow, getStoredJobtreadApiKey } from "@/lib/jobtread-server-store";
 import type { JobtreadIntegrationRow } from "@/lib/jobtread-settings";
@@ -183,17 +184,52 @@ async function fallbackUpsertJobs(
 async function syncJobsImport(
   admin: ServiceAdmin,
   jobs: JobtreadJob[],
+  locationAccountMap: Map<string, string>,
 ): Promise<{ count: number; error?: string }> {
   const now = new Date().toISOString();
-  const rows = jobs.map((j) => ({
-    job_name: j.name?.trim() || "Job",
-    job_number: j.number?.trim() || "",
-    jobtread_id: j.id,
-    status: "Active",
-    address: j.location?.address?.trim() || null,
-    customer_id: null,
-    updated_at: now,
-  }));
+
+  const jtCustomerIds = [
+    ...new Set(
+      jobs
+        .map((j) => {
+          const locationId = j.location?.id ?? null;
+          return locationId
+            ? (locationAccountMap.get(locationId) ?? null)
+            : null;
+        })
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  const customerMap = new Map<string, string>();
+  if (jtCustomerIds.length > 0) {
+    const { data: customerRows } = await admin
+      .from("customers")
+      .select("id, jobtread_id")
+      .in("jobtread_id", jtCustomerIds);
+    for (const row of customerRows ?? []) {
+      if (row.jobtread_id && row.id) {
+        customerMap.set(row.jobtread_id, row.id);
+      }
+    }
+  }
+
+  const rows = jobs.map((j) => {
+    const locationId = j.location?.id ?? null;
+    const jtCustomerId = locationId
+      ? (locationAccountMap.get(locationId) ?? null)
+      : null;
+    return {
+      job_name: j.name?.trim() || "Job",
+      job_number: j.number?.trim() || "",
+      jobtread_id: j.id,
+      status: "Active",
+      address: j.location?.address?.trim() || null,
+      customer_id: jtCustomerId
+        ? (customerMap.get(jtCustomerId) ?? null)
+        : null,
+      updated_at: now,
+    };
+  });
 
   let total = 0;
   const chunkSize = 80;
@@ -229,10 +265,9 @@ async function updateIntegrationAfterSuccess(
     connection_message: `Last ${target} sync: ${count} record(s).`,
   };
   if (target === "customers") {
-    patch.customers_synced_count =
-      Number(row.customers_synced_count) + count;
+    patch.customers_synced_count = count;
   } else {
-    patch.jobs_synced_count = Number(row.jobs_synced_count) + count;
+    patch.jobs_synced_count = count;
   }
   const { error } = await admin
     .from("integration_settings")
@@ -368,7 +403,16 @@ export async function GET(request: Request) {
         page = nextPage ?? undefined;
       }
 
-      const { count, error: importErr } = await syncJobsImport(admin, all);
+      const locationAccountMap = await fetchJobtreadLocationAccountMap(
+        apiKey,
+        companyId,
+      );
+
+      const { count, error: importErr } = await syncJobsImport(
+        admin,
+        all,
+        locationAccountMap,
+      );
       if (importErr) {
         await finishSyncLog(admin, logId, "failed", count, importErr);
         return NextResponse.json({

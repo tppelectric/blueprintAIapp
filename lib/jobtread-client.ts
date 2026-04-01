@@ -274,3 +274,71 @@ export async function fetchJobtreadJobs(
     throw new Error(`fetchJobtreadJobs failed: ${msg}`);
   }
 }
+
+export type JobtreadLocationNode = {
+  id: string;
+  accountId: string | null;
+};
+
+export async function fetchJobtreadLocationAccountMap(
+  grantKey: string,
+  orgId: string,
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  let page: string | undefined = undefined;
+
+  for (;;) {
+    const locArgs: Record<string, unknown> = {
+      size: 100,
+      ...(page ? { page } : {}),
+    };
+
+    const raw = await jobtreadQuery(grantKey, {
+      organization: {
+        $: { id: orgId },
+        id: {},
+        locations: {
+          $: locArgs,
+          nextPage: {},
+          nodes: {
+            id: {},
+            account: {
+              id: {},
+            },
+          },
+        },
+      },
+    });
+
+    const root = unwrapPaveRoot(raw);
+    const org = asRecord(root.organization);
+    const locs = org ? asRecord(org.locations) : null;
+    const nodesRaw = locs?.nodes;
+    const next = locs?.nextPage;
+
+    if (Array.isArray(nodesRaw)) {
+      for (const item of nodesRaw) {
+        const rec = asRecord(item);
+        if (!rec) continue;
+        const locId = str(rec.id);
+        const acct = asRecord(rec.account);
+        const acctId = acct ? str(acct.id) : null;
+        if (locId && acctId) {
+          map.set(locId, acctId);
+        }
+      }
+    }
+
+    const nextPage =
+      next == null || next === ""
+        ? null
+        : typeof next === "string"
+          ? next
+          : str(next);
+
+    if (!nextPage) break;
+    page = nextPage;
+  }
+
+  return map;
+}

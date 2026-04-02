@@ -75,14 +75,14 @@ Canonical action labels for common tasks (use navigate + href exactly as shown):
 - Daily field logs list: label "Daily Logs", href "/jobs/daily-logs"
 - Timesheets: label "View Timesheets", href "/timesheets"
 
-Return JSON only in this exact shape:
+Return JSON only in this exact shape — no other text, no markdown, no code blocks before or after:
 {
-  "message": "your response text here",
+  "message": "your natural language response here — NO JSON, NO code blocks inside this field",
   "actions": [
-    { "type": "navigate", "label": "Open Jobs", "href": "/jobs" },
-    { "type": "navigate", "label": "NEC Checker", "href": "/tools/nec-checker" }
+    { "type": "navigate", "label": "Open Jobs", "href": "/jobs" }
   ]
 }
+CRITICAL: The message value is plain conversational text only. Never paste JSON, action objects, or code blocks inside message. The entire API response is the JSON object — do not wrap it or repeat it inside the message string.
 
 actions array is optional — only include when genuinely useful.
 action types: navigate, create, info

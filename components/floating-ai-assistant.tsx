@@ -765,7 +765,7 @@ export function FloatingAIAssistant() {
             ) : null}
           </div>
 
-          <div className="shrink-0 border-t border-white/10 p-3">
+          <div className="shrink-0 border-t border-white/10 p-3 pb-16 md:pb-3">
             <div className="flex gap-2">
               <textarea
                 ref={textareaRef}

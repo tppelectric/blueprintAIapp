@@ -661,6 +661,7 @@ export function JobsClient() {
                 <thead className="border-b border-white/10 text-xs uppercase text-white/50">
                   <tr>
                     <th className="px-4 py-3 font-medium">Job</th>
+                    <th className="px-4 py-3 font-medium">Customer</th>
                     <th className="px-4 py-3 font-medium">Number</th>
                     <th className="px-4 py-3 font-medium">Status</th>
                     <th className="px-4 py-3 font-medium">Assigned</th>
@@ -682,6 +683,9 @@ export function JobsClient() {
                         >
                           {j.job_name}
                         </Link>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-white/70">
+                        {customerLabel(j)}
                       </td>
                       <td className="px-4 py-3 text-white/80">
                         {j.job_number}

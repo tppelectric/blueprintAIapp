@@ -4,12 +4,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAppToast } from "@/components/toast-provider";
 import { useUserRole } from "@/hooks/use-user-role";
+import { createBrowserClient } from "@/lib/supabase/client";
 import type {
   AIAction,
   AIMessage,
   AIResponse,
   AIPageContext,
 } from "@/lib/ai-assistant-context";
+import {
+  REQUEST_TYPE_OPTIONS,
+  type InternalRequestPriority,
+  type InternalRequestType,
+} from "@/lib/internal-request-types";
 
 type ChatMessage = AIMessage & { actions?: AIAction[] };
 
@@ -23,11 +29,36 @@ function normalizeNavigateHref(href: string | undefined): string | null {
   return path ? `/${path}` : null;
 }
 
+const VALID_INTERNAL_REQUEST_TYPES = new Set<string>([
+  ...REQUEST_TYPE_OPTIONS.map((o) => o.value),
+  "vehicle_request",
+]);
+
+const JOB_ID_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function coerceInlineRequestType(raw: unknown): InternalRequestType {
+  const s = typeof raw === "string" ? raw.trim() : "";
+  if (VALID_INTERNAL_REQUEST_TYPES.has(s)) return s as InternalRequestType;
+  return "other";
+}
+
+function coerceInlinePriority(raw: unknown): InternalRequestPriority {
+  const s = typeof raw === "string" ? raw.trim() : "";
+  if (s === "low" || s === "normal" || s === "urgent" || s === "emergency")
+    return s;
+  return "normal";
+}
+
+function coerceInlineJobId(raw: unknown): string | null {
+  const s = typeof raw === "string" ? raw.trim() : "";
+  if (!s || !JOB_ID_UUID_RE.test(s)) return null;
+  return s;
+}
+
 /** Semantic targets from action.data.target (model may send these). */
 const DATA_TARGET_ROUTES: Record<string, string> = {
-  material_order: "/requests/new?type=material_order",
   daily_log: "/jobs/daily-logs/new",
-  request: "/requests/new",
   timesheets: "/timesheets",
   timesheet: "/timesheets",
   team_clock: "/team-clock",
@@ -46,7 +77,7 @@ function pathFromDataTarget(data: Record<string, unknown> | undefined): string |
 function pathFromLabelFallback(label: string): string | null {
   const l = label.trim().toLowerCase();
   if (!l) return null;
-  if (l.includes("material") || l.includes("supply")) return "/requests/new?type=material_order";
+  if (l.includes("material") || l.includes("supply")) return null;
   if (l.includes("field log") || l.includes("daily log")) return "/jobs/daily-logs";
   if (l.includes("timesheet")) return "/timesheets";
   if (l.includes("team clock")) return "/team-clock";
@@ -492,6 +523,94 @@ export function FloatingAIAssistant() {
     }
   };
 
+  const handleInlineCreateRequest = useCallback(
+    async (action: AIAction) => {
+      const data = action.data;
+      if (!data || typeof data !== "object" || Array.isArray(data)) {
+        showToast({ message: "Invalid request data.", variant: "error" });
+        return;
+      }
+      const sb = createBrowserClient();
+      const {
+        data: { user },
+      } = await sb.auth.getUser();
+      if (!user?.id) {
+        showToast({ message: "Sign in required.", variant: "error" });
+        return;
+      }
+
+      const d = data as Record<string, unknown>;
+      const request_type = coerceInlineRequestType(d.request_type);
+      const title =
+        typeof d.title === "string" && d.title.trim()
+          ? d.title.trim()
+          : "Request from AI assistant";
+      const description =
+        typeof d.description === "string" && d.description.trim()
+          ? d.description.trim()
+          : null;
+      const priority = coerceInlinePriority(d.priority);
+      const item_description =
+        typeof d.item_description === "string" && d.item_description.trim()
+          ? d.item_description.trim()
+          : null;
+      const job_id = coerceInlineJobId(d.job_id);
+
+      const row = {
+        submitted_by: user.id,
+        request_type,
+        title,
+        description,
+        priority,
+        item_description,
+        job_id,
+        status: "new" as const,
+        details: {},
+        photos: [] as string[],
+        asset_id: null as string | null,
+        amount: null as number | null,
+        quantity: null as number | null,
+        date_needed: null as string | null,
+      };
+
+      const { data: ins, error } = await sb
+        .from("internal_requests")
+        .insert(row)
+        .select("id,request_number,title")
+        .single();
+
+      if (error) {
+        showToast({
+          message: error.message || "Could not create request.",
+          variant: "error",
+        });
+        return;
+      }
+
+      const id = String(ins?.id ?? "");
+      const request_number = String(ins?.request_number ?? "");
+      const titleOut = String(ins?.title ?? title);
+      const assistantMsg: ChatMessage = {
+        role: "assistant",
+        content: `Request created: #${request_number} — ${titleOut}`,
+        timestamp: nowIso(),
+        actions: [
+          {
+            type: "navigate",
+            label: "View Request",
+            href: `/requests/${id}`,
+          },
+        ],
+      };
+      setMessages((m) => {
+        const next = [...m, assistantMsg];
+        void saveMessagesRemote(next);
+        return next;
+      });
+    },
+    [saveMessagesRemote, showToast],
+  );
+
   const onActionClick = (action: AIAction) => {
     if (action.type === "navigate") {
       const href = resolveNavigatePath(action);
@@ -511,6 +630,10 @@ export function FloatingAIAssistant() {
         return;
       }
       showToast({ message: "Unable to open this action", variant: "error" });
+      return;
+    }
+    if (action.type === "create_request") {
+      void handleInlineCreateRequest(action);
       return;
     }
     if (action.type === "info") {

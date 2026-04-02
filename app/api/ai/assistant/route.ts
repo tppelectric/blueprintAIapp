@@ -53,7 +53,25 @@ Rules:
   /tools/project-describer, /dashboard, /settings/integrations
 
 Canonical action labels for common tasks (use navigate + href exactly as shown):
-- Material / internal request form: label "Submit Material Request", href "/requests/new"
+- Submit a request inline (never navigate): type "create_request", include data object with these fields:
+  request_type (one of: material_order, tool_request, tool_repair, vehicle_maintenance,
+  vehicle_request, document_request, license_request, expense_reimbursement,
+  safety_incident, hr_admin, app_support, other),
+  title (string, required),
+  description (string or null),
+  priority (one of: low, normal, urgent, emergency — default normal),
+  item_description (string or null),
+  job_id (UUID string or null — only if user mentioned a specific job)
+
+  Example action:
+  { "type": "create_request", "label": "Submit Material Request", "data": {
+    "request_type": "material_order",
+    "title": "Conduit and fittings for 584 Main St",
+    "description": "Need 50ft 3/4 EMT conduit plus connectors",
+    "priority": "normal",
+    "item_description": "3/4 EMT conduit, connectors",
+    "job_id": null
+  }}
 - Daily field logs list: label "Daily Logs", href "/jobs/daily-logs"
 - Timesheets: label "View Timesheets", href "/timesheets"
 

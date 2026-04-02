@@ -14,7 +14,7 @@ import { parseReceiptRow } from "@/lib/receipts-parse";
 import { createBrowserClient } from "@/lib/supabase/client";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
-  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs";
+  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs";
 
 const JOB_STATUSES = ["Lead", "Quoted", "Active", "On Hold"] as const;
 

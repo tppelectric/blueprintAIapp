@@ -13,7 +13,7 @@ import type {
 export type { PDFDocumentProxy, PDFPageProxy, RenderTask };
 
 /** Must match `package.json` pdfjs-dist version and worker CDN below. */
-export const PDFJS_DIST_VERSION = "4.4.168";
+export const PDFJS_DIST_VERSION = "4.10.38";
 
 const WORKER_SRC = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_DIST_VERSION}/pdf.worker.min.mjs`;
 

@@ -67,15 +67,9 @@ function UserProfileDetailFields({
   }) => void;
   saving: boolean;
 }) {
-  const [first, setFirst] = useState(() => (user.first_name ?? "").trim());
-  const [last, setLast] = useState(() => (user.last_name ?? "").trim());
-  const [emp, setEmp] = useState(() => (user.employee_number ?? "").trim());
-
-  useEffect(() => {
-    setFirst((user.first_name ?? "").trim());
-    setLast((user.last_name ?? "").trim());
-    setEmp((user.employee_number ?? "").trim());
-  }, [user.id, user.first_name, user.last_name, user.employee_number]);
+  const [first, setFirst] = useState((user.first_name ?? "").trim());
+  const [last, setLast] = useState((user.last_name ?? "").trim());
+  const [emp, setEmp] = useState((user.employee_number ?? "").trim());
 
   return (
     <div className="grid gap-3 border-t border-white/10 pt-4 sm:col-span-2 sm:grid-cols-2">
@@ -601,6 +595,7 @@ export function AdminUsersClient() {
                                   </p>
                                 </div>
                                 <UserProfileDetailFields
+                                  key={u.id}
                                   user={u}
                                   saving={patchingUserId === u.id}
                                   onSave={(p) => void patchUser(u.id, p)}

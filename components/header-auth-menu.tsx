@@ -8,6 +8,7 @@ import { ROLE_LABELS, canManageIntegrations } from "@/lib/user-roles";
 
 export function HeaderAuthMenu() {
   const [email, setEmail] = useState<string | null>(null);
+  const [fullName, setFullName] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [open, setOpen] = useState(false);
   const { role, loading: roleLoading } = useUserRole();
@@ -16,16 +17,42 @@ export function HeaderAuthMenu() {
   useEffect(() => {
     const sb = createBrowserClient();
     let cancelled = false;
-    void sb.auth.getSession().then(({ data }) => {
-      if (!cancelled) {
-        setEmail(data.session?.user?.email ?? null);
-        setReady(true);
+
+    const loadFullName = async (userId: string) => {
+      const client = createBrowserClient();
+      const { data, error } = await client
+        .from("user_profiles")
+        .select("full_name")
+        .eq("id", userId)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error) {
+        setFullName(null);
+        return;
       }
+      const fn =
+        typeof data?.full_name === "string" ? data.full_name.trim() : "";
+      setFullName(fn || null);
+    };
+
+    const applySession = (session: {
+      user?: { id?: string; email?: string | null } | null;
+    } | null) => {
+      if (cancelled) return;
+      setEmail(session?.user?.email ?? null);
+      const uid = session?.user?.id;
+      if (uid) void loadFullName(uid);
+      else setFullName(null);
+      setReady(true);
+    };
+
+    void sb.auth.getSession().then(({ data }) => {
+      applySession(data.session);
     });
     const {
       data: { subscription },
     } = sb.auth.onAuthStateChange((_e, session) => {
-      setEmail(session?.user?.email ?? null);
+      applySession(session);
     });
     return () => {
       cancelled = true;
@@ -82,6 +109,12 @@ export function HeaderAuthMenu() {
   const showUserManagement = !roleLoading && role === "super_admin";
   const showSettings = !roleLoading && canManageIntegrations(role);
 
+  const displayName = fullName?.trim() || email || "";
+  const triggerTitle =
+    fullName?.trim() && email
+      ? `${fullName.trim()} — ${email}`
+      : displayName || undefined;
+
   return (
     <div className="relative max-w-[16rem] sm:max-w-md" ref={wrapRef}>
       <button
@@ -91,8 +124,8 @@ export function HeaderAuthMenu() {
         aria-haspopup="menu"
         onClick={() => setOpen((o) => !o)}
       >
-        <span className="truncate text-xs text-white/70" title={email}>
-          {email}
+        <span className="truncate text-xs text-white/70" title={triggerTitle}>
+          {displayName}
         </span>
         <span className="flex items-center gap-1 text-[11px] text-white/55">
           {roleLabel ? (
@@ -121,8 +154,13 @@ export function HeaderAuthMenu() {
       >
         <div className="border-b border-white/10 px-3 pb-2 pt-1">
           <p className="break-all text-xs font-medium text-white/90">
-            {email}
+            {displayName}
           </p>
+          {fullName?.trim() && email ? (
+            <p className="mt-0.5 break-all text-[11px] text-white/45">
+              {email}
+            </p>
+          ) : null}
           {roleLabel ? (
             <p className="mt-1 text-[11px] text-white/55">
               Role:{" "}

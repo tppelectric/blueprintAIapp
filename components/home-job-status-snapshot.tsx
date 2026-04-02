@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { createBrowserClient } from "@/lib/supabase/client";
 import { useUserRole } from "@/hooks/use-user-role";
 
 type StatusCount = { status: string; count: number };
@@ -64,20 +63,28 @@ export function HomeJobStatusSnapshot() {
     let cancelled = false;
     void (async () => {
       try {
-        const sb = createBrowserClient();
-        const { data } = await sb
-          .from("jobs")
-          .select("status");
+        const res = await fetch("/api/jobs/status-counts", {
+          credentials: "include",
+        });
         if (cancelled) return;
-        const map: Record<string, number> = {};
-        for (const row of data ?? []) {
-          const s = (row as { status: string }).status;
-          map[s] = (map[s] ?? 0) + 1;
+        if (!res.ok) {
+          setCounts([]);
+          return;
         }
+        const body = (await res.json()) as {
+          ok?: boolean;
+          counts?: Record<string, number>;
+        };
+        if (cancelled) return;
+        if (!body.ok || !body.counts) {
+          setCounts([]);
+          return;
+        }
+        const { counts: byStatus } = body;
         setCounts(
           STATUS_CONFIG.map((c) => ({
             status: c.status,
-            count: map[c.status] ?? 0,
+            count: byStatus[c.status] ?? 0,
           })),
         );
       } catch {

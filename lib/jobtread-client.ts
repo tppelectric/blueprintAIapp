@@ -20,12 +20,138 @@ export type JobtreadJob = {
   name: string;
   number: string | null;
   createdAt: string;
+  status?: string | null;
   location?: {
     id: string;
     name: string;
     address?: string;
   } | null;
 };
+
+export type JobtreadDailyLogCustomFieldValueNode = {
+  id: string;
+  value: string | null;
+  customField: { id: string; name: string };
+};
+
+/**
+ * Daily log after parsing Pave `customFieldValues` into app fields.
+ * Raw API nodes include `customFieldValues: { nodes: [...] }` before parsing.
+ */
+export type JobtreadDailyLog = {
+  id: string;
+  date: string;
+  notes: string | null;
+  createdAt: string;
+  job: { id: string; name: string; number: string | null };
+  job_status: string | null;
+  employees_onsite: string | null;
+  trades_onsite: string | null;
+  visitors_onsite: string | null;
+  materials_used: string | null;
+  materials_left_onsite: boolean;
+  anticipated_delays: string | null;
+  equipment_left_onsite: string | null;
+  tpp_equipment_left: boolean;
+  additional_notes: string | null;
+  work_completed: string | null;
+};
+
+const JT_CF_EQUIPMENT_LEFT = 'Equipment Left On Site: (or write "NONE")';
+
+function customFieldMapFromNode(n: Record<string, unknown>): Map<string, string> {
+  const m = new Map<string, string>();
+  const wrap = asRecord(n.customFieldValues);
+  const nodesRaw = wrap?.nodes;
+  if (!Array.isArray(nodesRaw)) return m;
+  for (const item of nodesRaw) {
+    const rec = asRecord(item);
+    if (!rec) continue;
+    const cf = asRecord(rec.customField);
+    const name = cf ? str(cf.name).trim() : "";
+    const val = rec.value != null ? str(rec.value) : "";
+    if (name) m.set(name, val);
+  }
+  return m;
+}
+
+function parseCustomFieldBool(v: string | undefined): boolean {
+  if (v == null || !v.trim()) return false;
+  const s = v.trim().toLowerCase();
+  if (["yes", "y", "true", "1"].includes(s)) return true;
+  if (["no", "n", "false", "0", "none"].includes(s)) return false;
+  return false;
+}
+
+/** Map Pave daily log node; maps named custom fields into typed columns. */
+export function parseDailyLogNode(n: Record<string, unknown>): JobtreadDailyLog {
+  const jobRec = asRecord(n.job);
+  const job = jobRec
+    ? {
+        id: str(jobRec.id),
+        name: str(jobRec.name),
+        number: strOrNull(jobRec.number),
+      }
+    : { id: "", name: "", number: null };
+
+  const byName = customFieldMapFromNode(n);
+
+  const get = (exact: string) => {
+    const v = byName.get(exact);
+    return v != null && String(v).trim() ? String(v).trim() : null;
+  };
+
+  let work_completed: string | null = null;
+  for (const [k, v] of byName) {
+    if (k.toLowerCase().includes("please use notes section")) {
+      const t = v != null ? String(v).trim() : "";
+      work_completed = t ? t : null;
+      break;
+    }
+  }
+
+  return {
+    id: str(n.id),
+    date: normalizeDailyLogDate(str(n.date)),
+    notes: strOrNull(n.notes),
+    createdAt: str(n.createdAt),
+    job,
+    job_status: get("Job Status"),
+    employees_onsite: get("TPP Employees On-Site"),
+    trades_onsite: get("Trades Onsite"),
+    visitors_onsite: get("Visitors Onsite"),
+    materials_used: get("Materials Used"),
+    materials_left_onsite: parseCustomFieldBool(
+      byName.get("Any TPP Materials Left On Site?") ?? undefined,
+    ),
+    anticipated_delays: get("Anticipated Delays"),
+    tpp_equipment_left: parseCustomFieldBool(
+      byName.get("Any TPP Equipment Left On Site?") ?? undefined,
+    ),
+    equipment_left_onsite:
+      get(JT_CF_EQUIPMENT_LEFT) ??
+      (() => {
+        for (const [k, v] of byName) {
+          if (k.startsWith("Equipment Left On Site")) {
+            const t = v != null ? String(v).trim() : "";
+            return t ? t : null;
+          }
+        }
+        return null;
+      })(),
+    additional_notes: get("General Notes/Additional Materials Needed:"),
+    work_completed,
+  };
+}
+
+function normalizeDailyLogDate(raw: string): string {
+  const t = raw.trim();
+  if (!t) return new Date().toISOString().slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
+  const d = new Date(t);
+  if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  return t.slice(0, 10);
+}
 
 function unwrapPaveRoot(data: Record<string, unknown>): Record<string, unknown> {
   const inner = data.data;
@@ -202,6 +328,7 @@ function parseJobNode(n: Record<string, unknown>): JobtreadJob {
     name: str(n.name),
     number: strOrNull(n.number),
     createdAt: str(n.createdAt),
+    status: strOrNull(n.status),
     location: loc
       ? {
           id: str(loc.id),
@@ -238,6 +365,7 @@ export async function fetchJobtreadJobs(
             name: {},
             number: {},
             createdAt: {},
+            status: {},
             location: {
               id: {},
               name: {},
@@ -272,6 +400,82 @@ export async function fetchJobtreadJobs(
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     throw new Error(`fetchJobtreadJobs failed: ${msg}`);
+  }
+}
+
+/**
+ * One page of organization daily logs. Pass `page` from previous `nextPage` to continue.
+ */
+export async function fetchJobtreadDailyLogs(
+  grantKey: string,
+  orgId: string,
+  page?: string,
+): Promise<{ nodes: JobtreadDailyLog[]; nextPage: string | null }> {
+  try {
+    const args: Record<string, unknown> = {
+      size: 25,
+      ...(page ? { page } : {}),
+    };
+
+    const raw = await jobtreadQuery(grantKey, {
+      organization: {
+        $: { id: orgId },
+        id: {},
+        dailyLogs: {
+          $: args,
+          nextPage: {},
+          nodes: {
+            id: {},
+            date: {},
+            notes: {},
+            createdAt: {},
+            job: {
+              id: {},
+              name: {},
+              number: {},
+            },
+            customFieldValues: {
+              nextPage: {},
+              nodes: {
+                id: {},
+                value: {},
+                customField: {
+                  id: {},
+                  name: {},
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const root = unwrapPaveRoot(raw);
+    const org = asRecord(root.organization);
+    const dailyLogs = org ? asRecord(org.dailyLogs) : null;
+    const nodesRaw = dailyLogs?.nodes;
+    const next = dailyLogs?.nextPage;
+
+    const nodes: JobtreadDailyLog[] = [];
+    if (Array.isArray(nodesRaw)) {
+      for (const item of nodesRaw) {
+        const rec = asRecord(item);
+        if (rec && str(rec.id)) {
+          nodes.push(parseDailyLogNode(rec));
+        }
+      }
+    }
+
+    const nextPage =
+      next == null || next === ""
+        ? null
+        : typeof next === "string"
+          ? next
+          : str(next);
+
+    return { nodes, nextPage };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`fetchJobtreadDailyLogs failed: ${msg}`);
   }
 }
 

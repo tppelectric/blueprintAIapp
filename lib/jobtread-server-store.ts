@@ -9,7 +9,9 @@ export async function fetchJobtreadRow(): Promise<JobtreadIntegrationRow | null>
   const admin = createServiceRoleClient();
   const { data, error } = await admin
     .from("integration_settings")
-    .select("*")
+    .select(
+      "id,provider,integration_name,company_id,api_key_ciphertext,auto_sync_enabled,sync_interval,import_customers,import_jobs,export_daily_logs,export_photos,export_time_entries,last_sync_at,customers_synced_count,jobs_synced_count,daily_logs_synced_count,connection_status,connection_message,updated_at",
+    )
     .eq("provider", JOBTREAD_PROVIDER)
     .maybeSingle();
   if (error) throw new Error(error.message);

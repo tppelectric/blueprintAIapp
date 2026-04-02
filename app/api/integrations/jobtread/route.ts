@@ -146,6 +146,10 @@ export async function PATCH(request: Request) {
       existing?.jobs_synced_count != null
         ? Number(existing.jobs_synced_count)
         : 0;
+    const daily_logs_synced_count =
+      existing?.daily_logs_synced_count != null
+        ? Number(existing.daily_logs_synced_count)
+        : 0;
 
     const payload = {
       provider: JOBTREAD_PROVIDER,
@@ -161,6 +165,7 @@ export async function PATCH(request: Request) {
       export_time_entries,
       customers_synced_count,
       jobs_synced_count,
+      daily_logs_synced_count,
       connection_status: existing?.connection_status ?? "unknown",
       connection_message: existing?.connection_message ?? null,
       last_sync_at: existing?.last_sync_at ?? null,

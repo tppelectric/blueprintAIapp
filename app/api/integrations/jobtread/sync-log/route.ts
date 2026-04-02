@@ -11,6 +11,9 @@ export type JobtreadSyncLogRow = {
   started_at: string;
   completed_at: string | null;
   records_synced: number;
+  records_created: number;
+  records_updated: number;
+  record_details: Array<{ name: string; job_number?: string }> | null;
   error_message: string | null;
 };
 
@@ -40,7 +43,7 @@ export async function GET(request: Request) {
   const { data, error } = await admin
     .from("jobtread_sync_log")
     .select(
-      "id,sync_type,status,started_at,completed_at,records_synced,error_message",
+      "id,sync_type,status,started_at,completed_at,records_synced,records_created,records_updated,record_details,error_message",
     )
     .order("started_at", { ascending: false })
     .limit(limit);

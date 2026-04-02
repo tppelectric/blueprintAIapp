@@ -164,7 +164,7 @@ export function DashboardMyWorkCard({
   const [myWorkActiveCount, setMyWorkActiveCount] = useState(0);
   const [myWorkCompletedCount, setMyWorkCompletedCount] = useState(0);
   const [users, setUsers] = useState<UserProfileRow[]>([]);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [requestsOpen, setRequestsOpen] = useState(false);
   const [requestPipeline, setRequestPipeline] =
     useState<RequestPipelineCounts | null>(null);

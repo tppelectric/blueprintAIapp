@@ -2,6 +2,7 @@
 
 import { TeamCommandCenterCard } from "@/components/team-command-center-card";
 import { useUserRole } from "@/hooks/use-user-role";
+import { useState } from "react";
 
 /**
  * Marketing homepage: Command Center for admin / super_admin (skeleton while role loads).
@@ -9,6 +10,7 @@ import { useUserRole } from "@/hooks/use-user-role";
 export function HomeMarketingCommandCenter() {
   const { role, loading } = useUserRole();
   const isAdmin = role === "admin" || role === "super_admin";
+  const [commandCenterDefaultExpanded] = useState(false);
 
   if (!loading && !isAdmin) return null;
 
@@ -21,6 +23,7 @@ export function HomeMarketingCommandCenter() {
           enabled
           surface="marketing"
           showQuickLinks
+          defaultExpanded={commandCenterDefaultExpanded}
         />
       )}
     </section>

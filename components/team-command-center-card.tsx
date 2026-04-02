@@ -30,6 +30,8 @@ type Props = {
   compact?: boolean;
   /** Show Team clock + Timesheets links (homepage command center). */
   showQuickLinks?: boolean;
+  /** Initial expanded state before localStorage is read (default true). */
+  defaultExpanded?: boolean;
 };
 
 export function TeamCommandCenterCard({
@@ -37,6 +39,7 @@ export function TeamCommandCenterCard({
   surface = "app",
   compact = false,
   showQuickLinks = false,
+  defaultExpanded = true,
 }: Props) {
   const { role, loading: roleLoading } = useUserRole();
   const {
@@ -64,7 +67,7 @@ export function TeamCommandCenterCard({
   const [fleetAttentionCount, setFleetAttentionCount] = useState<number | null>(
     null,
   );
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [expandedStorageReady, setExpandedStorageReady] = useState(false);
 
   useEffect(() => {

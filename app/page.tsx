@@ -226,15 +226,11 @@ export default function Home() {
           </Link>
         </div>
 
-        <section
-          className="mt-6 w-full max-w-6xl self-stretch text-left"
-          aria-label="My work"
-        >
-          <DashboardMyWorkCard />
-        </section>
-
-        <div className="mt-8 w-full max-w-6xl self-stretch">
+        <div className="mt-6 flex w-full max-w-6xl flex-col gap-6 self-stretch text-left">
           <HomeMarketingCommandCenter />
+          <section aria-label="My work">
+            <DashboardMyWorkCard />
+          </section>
         </div>
 
         <HomeJobStatusSnapshot />

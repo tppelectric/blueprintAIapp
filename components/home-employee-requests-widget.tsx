@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useAppToast } from "@/components/toast-provider";
 import { useUserRole } from "@/hooks/use-user-role";
@@ -72,17 +73,52 @@ const MARKETING_TYPE_META: Record<
   other: { icon: "📝", short: "Other" },
 };
 
-function priorityDotClass(p: InternalRequestRow["priority"]): string {
-  switch (p) {
-    case "low":
-      return "bg-white/30";
-    case "urgent":
-      return "bg-orange-400";
-    case "emergency":
-      return "bg-red-500";
-    default:
-      return "bg-blue-400";
+/** Marketing collapsed row: dot color = status, with urgent/emergency override when non-terminal. */
+function marketingCollapsedListDot(r: InternalRequestRow): {
+  className: string;
+  style: CSSProperties;
+} {
+  const nonTerminal = !isTerminalStatus(r.status);
+  if (r.priority === "urgent" && nonTerminal) {
+    return {
+      className: "h-2.5 w-2.5 shrink-0 rounded-full",
+      style: { backgroundColor: "#fb923c" },
+    };
   }
+  if (r.priority === "emergency" && nonTerminal) {
+    return {
+      className: "h-3 w-3 shrink-0 rounded-full",
+      style: {
+        backgroundColor: "#ef4444",
+        boxShadow: "0 0 0 1px rgba(239, 68, 68, 0.4)",
+      },
+    };
+  }
+  const st = r.status;
+  let bg = "#6b7280";
+  if (st === "new") {
+    bg = "#ffffff";
+  } else if (
+    st === "in_review" ||
+    st === "approved" ||
+    st === "in_progress" ||
+    st === "waiting"
+  ) {
+    bg = "#60a5fa";
+  } else if (st === "completed") {
+    bg = "#34d399";
+  } else if (st === "declined" || st === "cancelled") {
+    bg = "#6b7280";
+  }
+  return {
+    className: "h-2 w-2 shrink-0 rounded-full",
+    style: { backgroundColor: bg },
+  };
+}
+
+function MarketingCollapsedListDotSpan({ r }: { r: InternalRequestRow }) {
+  const d = marketingCollapsedListDot(r);
+  return <span className={d.className} style={d.style} aria-hidden />;
 }
 
 function formatAgeLabel(r: InternalRequestRow): string {
@@ -374,7 +410,11 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
                       }`}
                       style={
                         active
-                          ? { borderColor: tabColor, color: tabColor }
+                          ? {
+                              borderColor: tabColor,
+                              borderBottomColor: tabColor,
+                              color: tabColor,
+                            }
                           : undefined
                       }
                     >
@@ -418,16 +458,7 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
                       >
                         <div className="flex items-start gap-2">
                           <div className="flex w-11 shrink-0 flex-col items-center gap-1 pt-0.5">
-                            <span
-                              className={`shrink-0 rounded-full ${
-                                r.priority === "urgent"
-                                  ? "h-2.5 w-2.5 bg-[#E8C84A]"
-                                  : r.priority === "emergency"
-                                    ? "h-3 w-3 bg-[#E8C84A] ring-1 ring-[#E8C84A]/40"
-                                    : `h-2 w-2 ${priorityDotClass(r.priority)}`
-                              }`}
-                              aria-hidden
-                            />
+                            <MarketingCollapsedListDotSpan r={r} />
                             <span
                               className="text-base leading-none"
                               aria-hidden

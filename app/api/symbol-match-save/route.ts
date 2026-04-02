@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { withAuth } from "@/lib/api/withAuth";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 
 const uuidRe =
@@ -80,7 +81,7 @@ async function distributeDescriptionCount(
   return {};
 }
 
-export async function POST(request: Request) {
+export const POST = withAuth(async (request: NextRequest, _ctx) => {
   let body: {
     projectId?: string;
     projectSymbolId?: string;
@@ -228,4 +229,4 @@ export async function POST(request: Request) {
     totalMatchCount: totalMatch,
     items: items ?? [],
   });
-}
+});

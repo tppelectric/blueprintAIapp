@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { withAuth } from "@/lib/api/withAuth";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import type { ProjectRoomScanRow } from "@/lib/project-room-scans";
 import { parseRoomsJson } from "@/lib/project-room-scans";
@@ -58,7 +59,7 @@ function cardSummary(
   };
 }
 
-export async function GET(request: Request) {
+export const GET = withAuth(async (request: NextRequest, _ctx) => {
   const { searchParams } = new URL(request.url);
   const raw = searchParams.get("ids")?.trim();
   if (!raw) {
@@ -142,4 +143,4 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({ summaries });
-}
+});

@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { withAuth } from "@/lib/api/withAuth";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { normalizeBlueprintStoragePath } from "@/lib/storage-path";
 
@@ -7,7 +8,7 @@ const uuidRe =
 
 const BUCKET = "blueprints";
 
-export async function POST(request: Request) {
+export const POST = withAuth(async (request: NextRequest, _ctx) => {
   let body: { projectId?: string };
   try {
     body = (await request.json()) as typeof body;
@@ -135,4 +136,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ ok: true });
-}
+});

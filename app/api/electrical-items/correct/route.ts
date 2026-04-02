@@ -1,9 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { withAuth } from "@/lib/api/withAuth";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 
 const CATEGORIES = new Set(["fixture", "panel", "wiring", "plan_note"]);
 
-export async function POST(request: Request) {
+export const POST = withAuth(async (request: NextRequest, _ctx) => {
   let body: {
     itemId?: string;
     description?: string;
@@ -93,4 +94,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ item: updated });
-}
+});

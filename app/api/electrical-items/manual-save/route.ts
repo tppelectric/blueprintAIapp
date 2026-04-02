@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { withAuth } from "@/lib/api/withAuth";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 
-export async function POST(request: Request) {
+export const POST = withAuth(async (request: NextRequest, _ctx) => {
   let body: {
     projectId?: string;
     pageNumber?: number;
@@ -144,4 +145,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ items: updated });
-}
+});

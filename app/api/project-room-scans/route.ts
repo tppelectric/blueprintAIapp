@@ -1,10 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { withAuth } from "@/lib/api/withAuth";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 
 const uuidRe =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export async function GET(request: Request) {
+export const GET = withAuth(async (request: NextRequest, _ctx) => {
   const { searchParams } = new URL(request.url);
   const projectId = searchParams.get("projectId")?.trim();
   if (!projectId || !uuidRe.test(projectId)) {
@@ -41,9 +42,9 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({ scans: data ?? [] });
-}
+});
 
-export async function POST(request: Request) {
+export const POST = withAuth(async (request: NextRequest, _ctx) => {
   let body: {
     projectId?: string;
     roomsJson?: unknown[];
@@ -128,9 +129,9 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ scan: data });
-}
+});
 
-export async function PATCH(request: Request) {
+export const PATCH = withAuth(async (request: NextRequest, _ctx) => {
   let body: { id?: string; scanLabel?: string };
   try {
     body = (await request.json()) as typeof body;
@@ -175,4 +176,4 @@ export async function PATCH(request: Request) {
   }
 
   return NextResponse.json({ scan: data });
-}
+});

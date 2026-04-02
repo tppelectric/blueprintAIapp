@@ -235,7 +235,7 @@ export default function Home() {
         </section>
 
         <div className="mt-8 w-full max-w-6xl self-stretch">
-          <div className="grid w-full items-start gap-4 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+          <div className="flex w-full flex-col gap-4">
             <HomeMarketingCommandCenter />
             <HomeRequestsPanel />
           </div>

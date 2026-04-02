@@ -7,7 +7,7 @@ import { useUserRole } from "@/hooks/use-user-role";
 
 export function HomeRequestsPanel() {
   const [open, setOpen] = useState(true);
-  const { profile, loading } = useUserRole();
+  const { profile, loading, role } = useUserRole();
   const [count, setCount] = useState<number | null>(null);
 
   useEffect(() => {
@@ -30,6 +30,10 @@ export function HomeRequestsPanel() {
       cancelled = true;
     };
   }, [profile?.id, loading]);
+
+  if (!loading && (role === "admin" || role === "super_admin")) {
+    return null;
+  }
 
   return (
     <div className="flex w-full flex-col items-start self-start rounded-xl border border-white/10 bg-white/[0.04]">

@@ -2,7 +2,6 @@ import Link from "next/link";
 import { DashboardMyWorkCard } from "@/components/dashboard-my-work-card";
 import { HomeJobStatusSnapshot } from "@/components/home-job-status-snapshot";
 import { HomeMarketingCommandCenter } from "@/components/home-marketing-command-center";
-import { HomeRequestsPanel } from "@/components/home-requests-panel";
 import { HomeMarketingHeroToolsSection } from "@/components/home-marketing-hero-tools";
 import { HomeIntegrationsSettingsLink } from "@/components/home-integrations-settings-link";
 import { HomeMarketingHeader } from "@/components/home-marketing-header";
@@ -235,10 +234,7 @@ export default function Home() {
         </section>
 
         <div className="mt-8 w-full max-w-6xl self-stretch">
-          <div className="flex w-full flex-col gap-4">
-            <HomeMarketingCommandCenter />
-            <HomeRequestsPanel />
-          </div>
+          <HomeMarketingCommandCenter />
         </div>
 
         <HomeJobStatusSnapshot />

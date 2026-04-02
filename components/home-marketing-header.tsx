@@ -105,10 +105,6 @@ export function HomeMarketingHeader() {
         >
           {navItems}
         </nav>
-
-        <div className="w-full max-w-xl self-center pt-1 lg:pt-2">
-          <GlobalNavSearch variant="drawer" className="w-full" />
-        </div>
       </div>
     </header>
   );

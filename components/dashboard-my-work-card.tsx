@@ -23,8 +23,6 @@ export function DashboardMyWorkCard({
 }: DashboardMyWorkCardProps = {}) {
   const { role, loading: roleLoading, profile } = useUserRole();
   const showAdminFromRole = !roleLoading && role === "super_admin";
-  const hideMyRequestsSection =
-    !roleLoading && (role === "admin" || role === "super_admin");
   const showAdminUsersQuick =
     isAdminProp !== undefined ? isAdminProp : showAdminFromRole;
 
@@ -133,7 +131,7 @@ export function DashboardMyWorkCard({
   }, [showAdminUsersQuick, controlled]);
 
   useEffect(() => {
-    if (roleLoading || !profile?.id || hideMyRequestsSection) return;
+    if (roleLoading || !profile?.id) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -151,7 +149,7 @@ export function DashboardMyWorkCard({
     return () => {
       cancelled = true;
     };
-  }, [profile?.id, roleLoading, hideMyRequestsSection]);
+  }, [profile?.id, roleLoading]);
 
   return (
     <div className={className ?? "min-w-0 space-y-3"}>
@@ -278,62 +276,60 @@ export function DashboardMyWorkCard({
           </div>
         </div>
 
-        {!hideMyRequestsSection ? (
-          <div className="mt-4 border-t border-white/10 pt-4">
-            <button
-              type="button"
-              onClick={() => setRequestsOpen((o) => !o)}
-              className="flex w-full items-center justify-between gap-3 px-0 py-3 text-left transition-colors hover:bg-white/[0.03] rounded-lg"
-              aria-expanded={requestsOpen}
-              aria-controls="dashboard-my-requests-panel"
-              id="dashboard-my-requests-heading"
-            >
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                <span className="text-sm font-semibold text-white">
-                  My Requests
+        <div className="mt-4 border-t border-white/10 pt-4">
+          <button
+            type="button"
+            onClick={() => setRequestsOpen((o) => !o)}
+            className="flex w-full items-center justify-between gap-3 px-0 py-3 text-left transition-colors hover:bg-white/[0.03] rounded-lg"
+            aria-expanded={requestsOpen}
+            aria-controls="dashboard-my-requests-panel"
+            id="dashboard-my-requests-heading"
+          >
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <span className="text-sm font-semibold text-white">
+                My Requests
+              </span>
+              {requestCount !== null && requestCount > 0 ? (
+                <span className="rounded-full border border-[#E8C84A]/30 bg-[#E8C84A]/10 px-2 py-0.5 text-[11px] font-semibold text-[#E8C84A]">
+                  {requestCount} open
                 </span>
-                {requestCount !== null && requestCount > 0 ? (
-                  <span className="rounded-full border border-[#E8C84A]/30 bg-[#E8C84A]/10 px-2 py-0.5 text-[11px] font-semibold text-[#E8C84A]">
-                    {requestCount} open
-                  </span>
-                ) : null}
-                {!requestsOpen && requestCount === 0 ? (
-                  <span className="text-[11px] text-white/35">
-                    No open requests
-                  </span>
-                ) : null}
-              </div>
-              <svg
-                className={`h-4 w-4 shrink-0 text-white/40 transition-transform duration-200 ${
-                  requestsOpen ? "rotate-0" : "-rotate-180"
-                }`}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden
-              >
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </button>
-            <div
-              id="dashboard-my-requests-panel"
-              role="region"
-              aria-labelledby="dashboard-my-requests-heading"
-              className={`grid w-full transition-[grid-template-rows] duration-200 ease-out ${
-                requestsOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+              ) : null}
+              {!requestsOpen && requestCount === 0 ? (
+                <span className="text-[11px] text-white/35">
+                  No open requests
+                </span>
+              ) : null}
+            </div>
+            <svg
+              className={`h-4 w-4 shrink-0 text-white/40 transition-transform duration-200 ${
+                requestsOpen ? "rotate-0" : "-rotate-180"
               }`}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
             >
-              <div className="min-h-0 overflow-hidden">
-                <div className="border-t border-white/10 px-0 pb-0 pt-3">
-                  <HomeEmployeeRequestsWidget surface="marketing" />
-                </div>
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+          <div
+            id="dashboard-my-requests-panel"
+            role="region"
+            aria-labelledby="dashboard-my-requests-heading"
+            className={`grid w-full transition-[grid-template-rows] duration-200 ease-out ${
+              requestsOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+            }`}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <div className="border-t border-white/10 px-0 pb-0 pt-3">
+                <HomeEmployeeRequestsWidget surface="marketing" />
               </div>
             </div>
           </div>
-        ) : null}
+        </div>
       </div>
     </div>
   );

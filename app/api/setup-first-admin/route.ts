@@ -4,6 +4,10 @@ import { createServiceRoleClient } from "@/lib/supabase/service";
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(request: Request) {
+  if (process.env.ENABLE_SETUP_ROUTE?.trim() !== "true") {
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
+  }
+
   let body: { email?: string; password?: string };
   try {
     body = (await request.json()) as typeof body;

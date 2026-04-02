@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { withAuth } from "@/lib/api/withAuth";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import type { ScanModeId } from "@/lib/scan-modes";
 import { userMayReadApiUsageAggregates } from "@/lib/require-api-cost-access";
@@ -18,7 +19,7 @@ const SCAN_TYPES = new Set<ScanModeId>([
   "manual",
 ]);
 
-export async function POST(request: Request) {
+export const POST = withAuth(async (request: NextRequest, _ctx) => {
   let body: {
     projectId?: string;
     pageNumber?: number;
@@ -113,7 +114,7 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
-}
+});
 
 type UsageRow = {
   total_cost: number | string | null;

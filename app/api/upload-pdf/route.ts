@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { withAuth } from "@/lib/api/withAuth";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { buildBlueprintUploadObjectPath } from "@/lib/storage-path";
 
@@ -11,7 +12,7 @@ const BUCKET = "blueprints";
 /** Align with reference library uploads (50 MiB). */
 const MAX_UPLOAD_BYTES = 52_428_800;
 
-export async function POST(request: Request) {
+export const POST = withAuth(async (request: NextRequest, _ctx) => {
   let supabase;
   try {
     supabase = createServiceRoleClient();
@@ -79,4 +80,4 @@ export async function POST(request: Request) {
     fileSize: file.size,
     originalFileName: file.name,
   });
-}
+});

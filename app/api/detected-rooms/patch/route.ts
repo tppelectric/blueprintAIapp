@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { withAuth } from "@/lib/api/withAuth";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 
 const ROOM_TYPES = new Set([
@@ -17,7 +18,7 @@ const ROOM_TYPES = new Set([
   "other",
 ]);
 
-export async function POST(request: Request) {
+export const POST = withAuth(async (request: NextRequest, _ctx) => {
   let body: {
     roomId?: string;
     room_name?: string;
@@ -138,4 +139,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ room: data });
-}
+});

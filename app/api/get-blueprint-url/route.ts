@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { withAuth } from "@/lib/api/withAuth";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import {
   isSafeStoragePath,
@@ -9,7 +10,7 @@ const BUCKET = "blueprints";
 /** Signed URL TTL (seconds). Client refreshes before expiry. */
 const EXPIRES_IN = 60 * 60;
 
-export async function POST(request: Request) {
+export const POST = withAuth(async (request: NextRequest, _ctx) => {
   let body: { filePath?: string; fileUrl?: string };
   try {
     body = (await request.json()) as typeof body;
@@ -63,4 +64,4 @@ export async function POST(request: Request) {
     expiresIn: EXPIRES_IN,
     path,
   });
-}
+});

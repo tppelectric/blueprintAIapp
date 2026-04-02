@@ -1,5 +1,6 @@
 import OpenAI from "openai";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { withAuth } from "@/lib/api/withAuth";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import {
   OPENAI_RATE_LIMIT_USER_MESSAGE,
@@ -36,7 +37,7 @@ type ClaudeItemInput = {
   quantity: number;
 };
 
-export async function POST(request: Request) {
+export const POST = withAuth(async (request: NextRequest, _ctx) => {
   const rl = checkAiRouteRateLimit(request, "verify-counts");
   if (!rl.allowed) {
     return NextResponse.json(
@@ -283,4 +284,4 @@ Return raw JSON only, no markdown.`;
   }
 
   return NextResponse.json({ items: updatedRows });
-}
+});

@@ -1,10 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { withAuth } from "@/lib/api/withAuth";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 
 const uuidRe =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export async function GET() {
+export const GET = withAuth(async (request: NextRequest, _ctx) => {
   let supabase;
   try {
     supabase = createServiceRoleClient();
@@ -52,9 +53,9 @@ export async function GET() {
   }));
 
   return NextResponse.json({ symbols });
-}
+});
 
-export async function POST(request: Request) {
+export const POST = withAuth(async (request: NextRequest, _ctx) => {
   let body: {
     action?: string;
     description?: string;
@@ -177,4 +178,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ symbol: data });
-}
+});

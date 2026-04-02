@@ -449,7 +449,7 @@ export function JobsClient() {
           </span>
         </div>
         {[j.address, j.city, j.state].filter(Boolean).length ? (
-          <p className="app-muted mt-1.5 hidden sm:mt-2 sm:block">
+          <p className="app-muted mt-1.5 sm:mt-2">
             {[j.address, j.city, j.state, j.zip].filter(Boolean).join(", ")}
           </p>
         ) : null}

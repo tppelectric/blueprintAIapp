@@ -44,6 +44,33 @@ const MARKETING_TABS: { id: string; label: string }[] = [
   { id: "completed", label: "Completed" },
 ];
 
+/** Active-state colors for marketing filter tabs (inactive uses shared muted styles). */
+const MARKETING_TAB_ACTIVE: Record<
+  string,
+  { label: string; count: string }
+> = {
+  all: {
+    label: "border-[#E8C84A] text-[#E8C84A]",
+    count: "text-[#E8C84A]",
+  },
+  new: {
+    label: "border-white/60 text-white",
+    count: "text-white",
+  },
+  in_review: {
+    label: "border-blue-400 text-blue-400",
+    count: "text-blue-400",
+  },
+  urgent: {
+    label: "border-orange-400 text-orange-400",
+    count: "text-orange-400",
+  },
+  completed: {
+    label: "border-emerald-400 text-emerald-400",
+    count: "text-emerald-400",
+  },
+};
+
 /** Icons/short labels by `InternalRequestType` (marketing list). */
 const MARKETING_TYPE_META: Record<
   InternalRequestType,
@@ -350,6 +377,7 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
                   const count =
                     tabCounts[tab.id as keyof typeof tabCounts] ?? 0;
                   const active = marketingFilter === tab.id;
+                  const activeStyle = MARKETING_TAB_ACTIVE[tab.id];
                   return (
                     <button
                       key={tab.id}
@@ -359,12 +387,19 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
                       onClick={() => setMarketingFilter(tab.id)}
                       className={`flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 py-2 text-xs font-semibold transition ${
                         active
-                          ? "border-[#E8C84A] text-[#E8C84A]"
+                          ? (activeStyle?.label ??
+                            "border-[#E8C84A] text-[#E8C84A]")
                           : "border-transparent text-white/55 hover:text-white/85"
                       }`}
                     >
                       {tab.label}
-                      <span className="rounded-full bg-white/10 px-1.5 py-0 text-[10px] font-bold tabular-nums text-white/70">
+                      <span
+                        className={`rounded-full bg-white/10 px-1.5 py-0 text-[10px] font-bold tabular-nums ${
+                          active
+                            ? (activeStyle?.count ?? "text-[#E8C84A]")
+                            : "text-white/70"
+                        }`}
+                      >
                         {count}
                       </span>
                     </button>

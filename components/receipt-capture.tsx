@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import * as pdfjsLib from "pdfjs-dist";
 import { useAppToast } from "@/components/toast-provider";
 import {
   RECEIPT_CATEGORIES,
@@ -11,6 +12,9 @@ import {
 import type { ScanReceiptResult } from "@/lib/receipt-scan-types";
 import { parseReceiptRow } from "@/lib/receipts-parse";
 import { createBrowserClient } from "@/lib/supabase/client";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs";
 
 const JOB_STATUSES = ["Lead", "Quoted", "Active", "On Hold"] as const;
 
@@ -39,6 +43,29 @@ function fileToDataUrl(file: File): Promise<string> {
     r.onerror = () => reject(new Error("read failed"));
     r.readAsDataURL(file);
   });
+}
+
+async function convertPdfToImage(pdfFile: File): Promise<File> {
+  const data = new Uint8Array(await pdfFile.arrayBuffer());
+  const pdf = await pdfjsLib.getDocument({ data }).promise;
+  const page = await pdf.getPage(1);
+  const scale = 2.0;
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Could not create canvas context.");
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  const renderTask = page.render({
+    canvasContext: ctx,
+    viewport,
+  });
+  await renderTask.promise;
+  const blob = await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob((b) => resolve(b), "image/jpeg", 0.92);
+  });
+  if (!blob) throw new Error("Could not convert PDF to image.");
+  return new File([blob], "receipt.jpg", { type: "image/jpeg" });
 }
 
 export type ReceiptCaptureProps = {
@@ -658,7 +685,7 @@ export function ReceiptCapture({
           <p className="text-sm text-white/70">
             {phase === "reading"
               ? "Reading receipt…"
-              : "Drop a receipt photo here, or use the buttons below."}
+              : "Drag & drop an image or PDF here"}
           </p>
           {phase === "reading" ? (
             <p className="mt-2 text-xs text-[#E8C84A]">Reading receipt…</p>
@@ -679,7 +706,7 @@ export function ReceiptCapture({
               <input
                 ref={fileRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,application/pdf"
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];

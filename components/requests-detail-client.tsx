@@ -63,7 +63,15 @@ function RequestStatusStepCheckIcon({ className }: { className?: string }) {
   );
 }
 
-function RequestStatusStepper({ status }: { status: InternalRequestRow["status"] }) {
+function RequestStatusStepper({
+  status,
+  isStaff,
+  onStatusChange,
+}: {
+  status: InternalRequestRow["status"];
+  isStaff: boolean;
+  onStatusChange?: (status: InternalRequestRow["status"]) => void;
+}) {
   if (status === "declined" || status === "cancelled") {
     return (
       <div className="mt-6 rounded-xl border border-white/10 bg-[#0a1628] p-4">
@@ -86,86 +94,29 @@ function RequestStatusStepper({ status }: { status: InternalRequestRow["status"]
         {REQUEST_STATUS_PIPELINE.map((step, i) => {
           const done = i < activeIndex;
           const current = i === activeIndex;
-          return (
-            <div key={step} className="flex min-w-0 flex-1 items-center">
-              {i > 0 ? (
-                <div
-                  className="mx-1 h-px min-w-[8px] flex-1 border-t border-white/15"
-                  aria-hidden
-                />
-              ) : null}
-              <div
-                className={`flex shrink-0 flex-col items-center gap-1 px-1 text-center ${
-                  current ? "min-w-[4.5rem]" : "min-w-0"
+          const staffClickable =
+            isStaff && onStatusChange && !done;
+          const stepBody = (
+            <>
+              <span
+                className={`flex h-6 w-6 items-center justify-center rounded-full border ${
+                  done
+                    ? "border-[#E8C84A]/35 bg-[#E8C84A]/10 text-[#E8C84A]/70"
+                    : current
+                      ? "border-[#E8C84A] bg-[#E8C84A]/20 text-[#E8C84A]"
+                      : "border-white/15 bg-white/[0.04] text-white/35"
                 }`}
               >
-                <span
-                  className={`flex h-6 w-6 items-center justify-center rounded-full border ${
-                    done
-                      ? "border-[#E8C84A]/35 bg-[#E8C84A]/10 text-[#E8C84A]/70"
-                      : current
-                        ? "border-[#E8C84A] bg-[#E8C84A]/20 text-[#E8C84A]"
-                        : "border-white/15 bg-white/[0.04] text-white/35"
-                  }`}
-                >
-                  {done ? (
-                    <RequestStatusStepCheckIcon className="h-3.5 w-3.5" />
-                  ) : (
-                    <span className="text-[10px] font-bold tabular-nums text-current">
-                      {i + 1}
-                    </span>
-                  )}
-                </span>
-                <span
-                  className={`max-w-[5.5rem] text-[10px] font-medium capitalize leading-tight sm:max-w-none sm:text-xs ${
-                    done
-                      ? "text-[#E8C84A]/55"
-                      : current
-                        ? "text-base font-bold text-[#E8C84A]"
-                        : "text-white/50"
-                  }`}
-                >
-                  {statusLabel(step)}
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="flex flex-col gap-0 md:hidden">
-        {REQUEST_STATUS_PIPELINE.map((step, i) => {
-          const done = i < activeIndex;
-          const current = i === activeIndex;
-          return (
-            <div key={step} className="flex gap-3">
-              <div className="flex flex-col items-center">
-                <span
-                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${
-                    done
-                      ? "border-[#E8C84A]/35 bg-[#E8C84A]/10 text-[#E8C84A]/70"
-                      : current
-                        ? "border-[#E8C84A] bg-[#E8C84A]/20 text-[#E8C84A]"
-                        : "border-white/15 bg-white/[0.04] text-white/35"
-                  }`}
-                >
-                  {done ? (
-                    <RequestStatusStepCheckIcon className="h-3.5 w-3.5" />
-                  ) : (
-                    <span className="text-[10px] font-bold tabular-nums text-current">
-                      {i + 1}
-                    </span>
-                  )}
-                </span>
-                {i < REQUEST_STATUS_PIPELINE.length - 1 ? (
-                  <div
-                    className="my-0.5 min-h-[10px] w-px flex-1 border-l border-white/15"
-                    aria-hidden
-                  />
-                ) : null}
-              </div>
+                {done ? (
+                  <RequestStatusStepCheckIcon className="h-3.5 w-3.5" />
+                ) : (
+                  <span className="text-[10px] font-bold tabular-nums text-current">
+                    {i + 1}
+                  </span>
+                )}
+              </span>
               <span
-                className={`pb-3 text-left text-sm capitalize ${
+                className={`max-w-[5.5rem] text-[10px] font-medium capitalize leading-tight sm:max-w-none sm:text-xs ${
                   done
                     ? "text-[#E8C84A]/55"
                     : current
@@ -175,6 +126,116 @@ function RequestStatusStepper({ status }: { status: InternalRequestRow["status"]
               >
                 {statusLabel(step)}
               </span>
+            </>
+          );
+          const stepWrapClass = `flex shrink-0 flex-col items-center gap-1 px-1 text-center ${
+            current ? "min-w-[4.5rem]" : "min-w-0"
+          }`;
+          return (
+            <div key={step} className="flex min-w-0 flex-1 items-center">
+              {i > 0 ? (
+                <div
+                  className="mx-1 h-px min-w-[8px] flex-1 border-t border-white/15"
+                  aria-hidden
+                />
+              ) : null}
+              {staffClickable ? (
+                <button
+                  type="button"
+                  className={`${stepWrapClass} m-0 border-0 bg-transparent p-0 text-inherit ${
+                    current ? "cursor-default" : "cursor-pointer"
+                  }`}
+                  onClick={() => {
+                    if (!current) onStatusChange(step);
+                  }}
+                >
+                  {stepBody}
+                </button>
+              ) : (
+                <div className={stepWrapClass}>{stepBody}</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex flex-col gap-0 md:hidden">
+        {REQUEST_STATUS_PIPELINE.map((step, i) => {
+          const done = i < activeIndex;
+          const current = i === activeIndex;
+          const staffClickable =
+            isStaff && onStatusChange && !done;
+          const circleCol = (
+            <div className="flex flex-col items-center">
+              <span
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${
+                  done
+                    ? "border-[#E8C84A]/35 bg-[#E8C84A]/10 text-[#E8C84A]/70"
+                    : current
+                      ? "border-[#E8C84A] bg-[#E8C84A]/20 text-[#E8C84A]"
+                      : "border-white/15 bg-white/[0.04] text-white/35"
+                }`}
+              >
+                {done ? (
+                  <RequestStatusStepCheckIcon className="h-3.5 w-3.5" />
+                ) : (
+                  <span className="text-[10px] font-bold tabular-nums text-current">
+                    {i + 1}
+                  </span>
+                )}
+              </span>
+              {i < REQUEST_STATUS_PIPELINE.length - 1 ? (
+                <div
+                  className="my-0.5 min-h-[10px] w-px flex-1 border-l border-white/15"
+                  aria-hidden
+                />
+              ) : null}
+            </div>
+          );
+          const labelEl = (
+            <span
+              className={`text-left text-sm capitalize ${
+                done
+                  ? "text-[#E8C84A]/55"
+                  : current
+                    ? "text-base font-bold text-[#E8C84A]"
+                    : "text-white/50"
+              }`}
+            >
+              {statusLabel(step)}
+            </span>
+          );
+          return (
+            <div key={step} className="flex gap-3">
+              {staffClickable ? (
+                <button
+                  type="button"
+                  className={`flex min-w-0 flex-1 gap-3 pb-3 text-left m-0 border-0 bg-transparent px-0 pt-0 font-inherit text-inherit ${
+                    current ? "cursor-default" : "cursor-pointer"
+                  }`}
+                  onClick={() => {
+                    if (!current) onStatusChange(step);
+                  }}
+                >
+                  {circleCol}
+                  {labelEl}
+                </button>
+              ) : (
+                <>
+                  {circleCol}
+                  <span
+                    className={`pb-3 text-left text-sm capitalize ${
+                      done
+                        ? "text-[#E8C84A]/55"
+                        : current
+                          ? "text-base font-bold text-[#E8C84A]"
+                          : "text-white/50"
+                    }`}
+                  >
+                    {statusLabel(step)}
+                  </span>
+                </>
+              )}
             </div>
           );
         })}
@@ -569,7 +630,11 @@ export function RequestsDetailClient({ requestId }: { requestId: string }) {
           </p>
         </header>
 
-        <RequestStatusStepper status={req.status} />
+        <RequestStatusStepper
+          status={req.status}
+          isStaff={isStaff}
+          onStatusChange={isStaff ? (s) => setAdminStatus(s) : undefined}
+        />
 
         <section className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] p-4">
           <h2 className="text-sm font-bold uppercase tracking-wide text-[#E8C84A]/90">

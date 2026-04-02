@@ -255,39 +255,58 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
 
   const displayRows = isMarketing ? filteredRows : rows;
 
+  const newShortcutClass =
+    "rounded-lg px-2 py-1 text-xs transition bg-white/10 text-white hover:bg-white/20";
+
   return (
     <div className={cardClass}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3
-          className={
-            isMarketing
-              ? "text-sm font-semibold text-white"
-              : "text-base font-semibold text-[var(--foreground)]"
-          }
-        >
-          My recent requests
-        </h3>
-        <Link
-          href="/my-requests"
-          className={
-            isMarketing
-              ? "text-xs font-semibold text-[#E8C84A] hover:underline"
-              : "text-xs font-semibold text-violet-300 hover:underline"
-          }
-        >
-          View all
-        </Link>
-      </div>
-      <Link
-        href="/requests/new"
-        className={`mt-3 flex w-full items-center justify-center rounded-xl px-4 py-3 text-sm font-bold transition ${
-          isMarketing
-            ? "bg-[#E8C84A] text-[#0a1628] hover:bg-[#f0d56e]"
-            : "bg-violet-500 text-white hover:bg-violet-400"
-        }`}
-      >
-        + New request
-      </Link>
+      {isMarketing ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-white">
+            My recent requests
+          </h3>
+          <div className="flex flex-wrap items-center justify-end gap-1">
+            <Link
+              href="/requests/new?type=material_order"
+              className={newShortcutClass}
+            >
+              📦 Material
+            </Link>
+            <Link
+              href="/requests/new?type=vehicle_maintenance"
+              className={newShortcutClass}
+            >
+              🔧 Vehicle
+            </Link>
+            <Link
+              href="/requests/new"
+              className="rounded-lg px-2 py-1 text-xs font-bold transition bg-[#E8C84A] text-[#0a1628] hover:bg-[#f0d56e]"
+            >
+              + New
+            </Link>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-base font-semibold text-[var(--foreground)]">
+              My recent requests
+            </h3>
+            <Link
+              href="/my-requests"
+              className="text-xs font-semibold text-violet-300 hover:underline"
+            >
+              View all
+            </Link>
+          </div>
+          <Link
+            href="/requests/new"
+            className="mt-3 flex w-full items-center justify-center rounded-xl px-4 py-3 text-sm font-bold transition bg-violet-500 text-white hover:bg-violet-400"
+          >
+            + New request
+          </Link>
+        </>
+      )}
       {loading ? (
         <p
           className={`mt-3 text-xs ${isMarketing ? "text-white/50" : "text-[var(--foreground-muted)]"}`}
@@ -301,44 +320,66 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
           Requests will show here when your profile is available.
         </p>
       ) : rows.length === 0 ? (
-        <p
-          className={`mt-3 text-xs ${isMarketing ? "text-white/50" : "text-[var(--foreground-muted)]"}`}
-        >
-          No requests yet.
-        </p>
+        <>
+          {isMarketing ? (
+            <div className="mt-2 flex justify-end">
+              <Link
+                href="/my-requests"
+                className="text-xs font-semibold text-[#E8C84A] hover:underline"
+              >
+                View all
+              </Link>
+            </div>
+          ) : null}
+          <p
+            className={`mt-3 text-xs ${isMarketing ? "text-white/50" : "text-[var(--foreground-muted)]"}`}
+          >
+            No requests yet.
+          </p>
+        </>
       ) : (
         <>
           {isMarketing ? (
-            <div
-              className="mt-3 flex gap-1 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-              role="tablist"
-              aria-label="Filter requests"
-            >
-              {MARKETING_TABS.map((tab) => {
-                const count =
-                  tabCounts[tab.id as keyof typeof tabCounts] ?? 0;
-                const active = marketingFilter === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    onClick={() => setMarketingFilter(tab.id)}
-                    className={`flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 py-2 text-xs font-semibold transition ${
-                      active
-                        ? "border-[#E8C84A] text-[#E8C84A]"
-                        : "border-transparent text-white/55 hover:text-white/85"
-                    }`}
-                  >
-                    {tab.label}
-                    <span className="rounded-full bg-white/10 px-1.5 py-0 text-[10px] font-bold tabular-nums text-white/70">
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+            <>
+              <div
+                className="mt-3 flex gap-1 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                role="tablist"
+                aria-label="Filter requests"
+              >
+                {MARKETING_TABS.map((tab) => {
+                  const count =
+                    tabCounts[tab.id as keyof typeof tabCounts] ?? 0;
+                  const active = marketingFilter === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setMarketingFilter(tab.id)}
+                      className={`flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 py-2 text-xs font-semibold transition ${
+                        active
+                          ? "border-[#E8C84A] text-[#E8C84A]"
+                          : "border-transparent text-white/55 hover:text-white/85"
+                      }`}
+                    >
+                      {tab.label}
+                      <span className="rounded-full bg-white/10 px-1.5 py-0 text-[10px] font-bold tabular-nums text-white/70">
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-2 flex justify-end">
+                <Link
+                  href="/my-requests"
+                  className="text-xs font-semibold text-[#E8C84A] hover:underline"
+                >
+                  View all
+                </Link>
+              </div>
+            </>
           ) : null}
           <ul className="mt-3 space-y-2">
             {displayRows.map((r) => {

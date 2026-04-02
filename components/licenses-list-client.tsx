@@ -18,9 +18,16 @@ import {
   licenseTypeLabel,
 } from "@/lib/license-utils";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { userDisplayName } from "@/lib/user-display-name";
 import { canManageLicenses } from "@/lib/user-roles";
 
-type UserOpt = { id: string; full_name: string | null; email: string | null };
+type UserOpt = {
+  id: string;
+  full_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+};
 
 function statusBadgeClass(status: LicenseRow["license_status"]): string {
   switch (status) {
@@ -167,12 +174,20 @@ export function LicensesListClient() {
         return;
       }
       const j = (await r.json()) as {
-        users?: { id: string; full_name?: string | null; email?: string | null }[];
+        users?: {
+          id: string;
+          full_name?: string | null;
+          first_name?: string | null;
+          last_name?: string | null;
+          email?: string | null;
+        }[];
       };
       setUsers(
         (j.users ?? []).map((u) => ({
           id: u.id,
           full_name: u.full_name ?? null,
+          first_name: u.first_name ?? null,
+          last_name: u.last_name ?? null,
           email: u.email ?? null,
         })),
       );
@@ -194,9 +209,8 @@ export function LicensesListClient() {
       if (!id) return "Unknown user";
       const u = users.find((x) => x.id === id);
       if (!u) return "Employee";
-      const n = u.full_name?.trim();
-      if (n) return n;
-      return u.email ?? "Employee";
+      const n = userDisplayName(u);
+      return n !== "—" ? n : "Employee";
     },
     [users],
   );

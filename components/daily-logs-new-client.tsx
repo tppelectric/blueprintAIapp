@@ -31,6 +31,7 @@ import { formatDailyLogSaveError } from "@/lib/daily-logs-api-errors";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { formatReceiptCurrency } from "@/lib/receipts-types";
 import { useUserRole } from "@/hooks/use-user-role";
+import { userDisplayName } from "@/lib/user-display-name";
 
 type JobOption = { id: string; job_name: string; job_number: string };
 
@@ -40,7 +41,9 @@ const DAILY_LOG_JOB_STATUSES = ["Lead", "Quoted", "Active", "On Hold"] as const;
 type AssigneeOption = {
   id: string;
   email: string;
-  full_name: string;
+  full_name: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
 };
 
 type MaterialNeededRow = DailyLogMaterialLine & { order?: boolean };
@@ -329,15 +332,13 @@ export function DailyLogsNewClient() {
   const seededSelfRef = useRef(false);
   useEffect(() => {
     if (profileLoading || !profile || seededSelfRef.current) return;
-    const fn = profile.first_name?.trim();
-    const ln = profile.last_name?.trim();
-    const fromParts = [fn, ln].filter(Boolean).join(" ").trim();
-    const displayName =
-      fromParts ||
-      profile.full_name?.trim() ||
-      profile.email?.trim() ||
-      "";
-    if (!displayName) return;
+    const displayName = userDisplayName({
+      first_name: profile.first_name,
+      last_name: profile.last_name,
+      full_name: profile.full_name,
+      email: profile.email,
+    });
+    if (displayName === "—") return;
     seededSelfRef.current = true;
     setEmployeeLines((lines) => {
       const names = lines.map((s) => s.trim()).filter(Boolean);
@@ -983,7 +984,8 @@ export function DailyLogsNewClient() {
         const add: string[] = [];
         for (const id of followUpDraft.employeeIds) {
           const u = assignees.find((x) => x.id === id);
-          const n = u?.full_name?.trim() || u?.email?.trim();
+          const n = u ? userDisplayName(u) : "";
+          if (n === "—") continue;
           if (
             n &&
             !names.some((x) => x.toLowerCase() === n.toLowerCase())
@@ -1536,7 +1538,7 @@ export function DailyLogsNewClient() {
                   >
                     {assignees.map((u) => (
                       <option key={u.id} value={u.id}>
-                        {u.full_name || u.email}
+                        {userDisplayName(u)}
                       </option>
                     ))}
                   </select>
@@ -2062,7 +2064,8 @@ export function DailyLogsNewClient() {
                   const id = e.target.value;
                   if (!id) return;
                   const u = assignees.find((x) => x.id === id);
-                  const name = u?.full_name?.trim() || u?.email?.trim() || "";
+                  const dn = u ? userDisplayName(u) : "—";
+                  const name = dn !== "—" ? dn : "";
                   if (name) {
                     setEmployeeLines((lines) => {
                       const next = [...lines.filter(Boolean), name];
@@ -2075,7 +2078,7 @@ export function DailyLogsNewClient() {
                 <option value="">— Add employee —</option>
                 {assignees.map((u) => (
                   <option key={u.id} value={u.id}>
-                    {u.full_name || u.email}
+                    {userDisplayName(u)}
                   </option>
                 ))}
               </select>

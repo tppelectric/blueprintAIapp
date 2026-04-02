@@ -7,6 +7,7 @@ import { useAppToast } from "@/components/toast-provider";
 import { useUserRole } from "@/hooks/use-user-role";
 import { createBrowserClient } from "@/lib/supabase/client";
 import type { UserProfileRow } from "@/lib/user-profile-types";
+import { userDisplayName } from "@/lib/user-display-name";
 import { ROLE_LABELS, type UserRole } from "@/lib/user-roles";
 
 function parseProfileRow(r: Record<string, unknown>): UserProfileRow | null {
@@ -49,12 +50,12 @@ function parseProfileRow(r: Record<string, unknown>): UserProfileRow | null {
 }
 
 function displayFullName(p: UserProfileRow): string {
-  const fn = p.first_name.trim();
-  const ln = p.last_name.trim();
-  if (fn || ln) return [fn, ln].filter(Boolean).join(" ");
-  const full = p.full_name.trim();
-  if (full) return full;
-  return p.email;
+  return userDisplayName({
+    first_name: p.first_name,
+    last_name: p.last_name,
+    full_name: p.full_name,
+    email: p.email,
+  });
 }
 
 function avatarInitials(p: UserProfileRow): string {
@@ -62,6 +63,14 @@ function avatarInitials(p: UserProfileRow): string {
   const ln = p.last_name.trim();
   if (fn[0] && ln[0]) return (fn[0] + ln[0]).toUpperCase();
   if (fn[0]) return fn[0]!.toUpperCase();
+  const full = p.full_name.trim();
+  if (full) {
+    const parts = full.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2 && parts[0]![0] && parts[1]![0]) {
+      return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
+    }
+    if (parts[0]?.[0]) return parts[0]![0]!.toUpperCase();
+  }
   const local = p.email.split("@")[0]?.trim() ?? "";
   if (local[0]) return local[0]!.toUpperCase();
   return "?";

@@ -16,6 +16,10 @@ import {
   type CustomerRow,
   type JobListRow,
 } from "@/lib/jobs-types";
+import {
+  userAssigneeOptionLabel,
+  userDisplayName,
+} from "@/lib/user-display-name";
 
 const KANBAN_STATUSES = [
   "Lead",
@@ -85,7 +89,9 @@ type JobFormState = {
 type AssigneeOption = {
   id: string;
   email: string;
-  full_name: string;
+  full_name: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
 };
 
 const emptyJobForm: JobFormState = {
@@ -259,8 +265,7 @@ export function JobsClient() {
   const assigneeLabel = (j: JobListRow): string => {
     if (!j.assigned_user_id) return "—";
     const u = assignees.find((a) => a.id === j.assigned_user_id);
-    if (u?.full_name?.trim()) return u.full_name.trim();
-    if (u?.email) return u.email;
+    if (u) return userDisplayName(u);
     return canAssignJobs ? `${j.assigned_user_id.slice(0, 8)}…` : "Assigned";
   };
 
@@ -697,9 +702,7 @@ export function JobsClient() {
                             <option value="">— Unassigned —</option>
                             {assignees.map((u) => (
                               <option key={u.id} value={u.id}>
-                                {u.full_name?.trim()
-                                  ? `${u.full_name} (${u.email})`
-                                  : u.email}
+                                {userAssigneeOptionLabel(u)}
                               </option>
                             ))}
                           </select>
@@ -840,9 +843,7 @@ export function JobsClient() {
                     <option value="">— Unassigned —</option>
                     {assignees.map((u) => (
                       <option key={u.id} value={u.id}>
-                        {u.full_name?.trim()
-                          ? `${u.full_name} (${u.email})`
-                          : u.email}
+                        {userAssigneeOptionLabel(u)}
                       </option>
                     ))}
                   </select>

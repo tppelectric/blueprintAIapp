@@ -11,6 +11,7 @@ import {
   formatLastLoginLabel,
   lastLoginToneClass,
 } from "@/lib/format-last-login";
+import { userDisplayName } from "@/lib/user-display-name";
 import { ROLE_LABELS, type UserRole } from "@/lib/user-roles";
 import { localDayBounds } from "@/lib/team-clock-utils";
 
@@ -23,10 +24,12 @@ const ROLES: UserRole[] = [
 ];
 
 function listDisplayName(u: AdminUserProfileRow): string {
-  const f = (u.first_name ?? "").trim();
-  const l = (u.last_name ?? "").trim();
-  if (f || l) return [f, l].filter(Boolean).join(" ");
-  return (u.full_name ?? "").trim() || "—";
+  return userDisplayName({
+    first_name: u.first_name,
+    last_name: u.last_name,
+    full_name: u.full_name,
+    email: u.email,
+  });
 }
 
 function listEmployeeNumber(u: AdminUserProfileRow): string {

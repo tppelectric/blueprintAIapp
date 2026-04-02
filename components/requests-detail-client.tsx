@@ -26,6 +26,7 @@ import {
   statusLabel,
 } from "@/lib/internal-request-utils";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { userDisplayName } from "@/lib/user-display-name";
 import type {
   InternalRequestStatusEventRow,
   RequestCommentRow,
@@ -196,7 +197,13 @@ export function RequestsDetailClient({ requestId }: { requestId: string }) {
   const [events, setEvents] = useState<InternalRequestStatusEventRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<
-    { id: string; full_name: string | null; email: string | null }[]
+    {
+      id: string;
+      full_name: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      email: string | null;
+    }[]
   >([]);
   const [jobs, setJobs] = useState<JobOpt[]>([]);
   const [assets, setAssets] = useState<AssetOpt[]>([]);
@@ -298,12 +305,20 @@ export function RequestsDetailClient({ requestId }: { requestId: string }) {
       );
       if (uRes.ok) {
         const j = (await uRes.json()) as {
-          users?: { id: string; full_name?: string | null; email?: string | null }[];
+          users?: {
+            id: string;
+            full_name?: string | null;
+            first_name?: string | null;
+            last_name?: string | null;
+            email?: string | null;
+          }[];
         };
         setUsers(
           (j.users ?? []).map((u) => ({
             id: u.id,
             full_name: u.full_name ?? null,
+            first_name: u.first_name ?? null,
+            last_name: u.last_name ?? null,
             email: u.email ?? null,
           })),
         );
@@ -326,7 +341,9 @@ export function RequestsDetailClient({ requestId }: { requestId: string }) {
     (id: string | null) => {
       if (!id) return "—";
       const u = users.find((x) => x.id === id);
-      return u?.full_name?.trim() || u?.email?.trim() || id.slice(0, 8);
+      if (!u) return id.slice(0, 8);
+      const n = userDisplayName(u);
+      return n !== "—" ? n : id.slice(0, 8);
     },
     [users],
   );
@@ -786,7 +803,7 @@ export function RequestsDetailClient({ requestId }: { requestId: string }) {
                   <option value="">— Unassigned —</option>
                   {users.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.full_name?.trim() || u.email}
+                      {userDisplayName(u)}
                     </option>
                   ))}
                 </select>

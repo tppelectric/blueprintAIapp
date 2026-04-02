@@ -8,7 +8,9 @@ async function loadJobCrewAssignments(
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("job_assignments")
-    .select("user_id, assigned_at, notes, user_profiles!job_assignments_user_id_fkey ( full_name, role )")
+    .select(
+      "user_id, assigned_at, notes, user_profiles!job_assignments_user_id_fkey ( full_name, first_name, last_name, email, role )",
+    )
     .eq("job_id", jobId)
     .order("assigned_at", { ascending: true });
 

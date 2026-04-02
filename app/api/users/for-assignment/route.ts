@@ -35,7 +35,7 @@ export async function GET() {
 
   const { data, error } = await admin
     .from("user_profiles")
-    .select("id,email,full_name,role")
+    .select("id,email,full_name,first_name,last_name,role")
     .eq("is_active", true)
     .order("email", { ascending: true });
 

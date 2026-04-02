@@ -14,9 +14,16 @@ import { appendLicenseHistory } from "@/lib/license-history-log";
 import { LICENSE_TYPE_OPTIONS } from "@/lib/license-types";
 import { US_STATE_OPTIONS } from "@/lib/us-states";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { userDisplayName } from "@/lib/user-display-name";
 import { canManageLicenses } from "@/lib/user-roles";
 
-type UserOpt = { id: string; full_name: string | null; email: string | null };
+type UserOpt = {
+  id: string;
+  full_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+};
 
 function randomId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -73,12 +80,20 @@ export function LicensesNewClient() {
         });
         if (!r.ok) return;
         const j = (await r.json()) as {
-          users?: { id: string; full_name?: string | null; email?: string | null }[];
+          users?: {
+            id: string;
+            full_name?: string | null;
+            first_name?: string | null;
+            last_name?: string | null;
+            email?: string | null;
+          }[];
         };
         setUsers(
           (j.users ?? []).map((u) => ({
             id: u.id,
             full_name: u.full_name ?? null,
+            first_name: u.first_name ?? null,
+            last_name: u.last_name ?? null,
             email: u.email ?? null,
           })),
         );
@@ -366,11 +381,14 @@ export function LicensesNewClient() {
                     onChange={(e) => setHolderUserId(e.target.value)}
                   >
                     <option value="">— Select user —</option>
-                    {users.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {(u.full_name?.trim() || u.email) ?? u.id}
-                      </option>
-                    ))}
+                    {users.map((u) => {
+                      const label = userDisplayName(u);
+                      return (
+                        <option key={u.id} value={u.id}>
+                          {label !== "—" ? label : u.id}
+                        </option>
+                      );
+                    })}
                   </select>
                 </label>
               ) : null}

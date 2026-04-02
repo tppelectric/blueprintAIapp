@@ -14,6 +14,10 @@ import type {
   JobCrewAssignmentRow,
   JobRow,
 } from "@/lib/jobs-types";
+import {
+  userAssigneeOptionLabel,
+  userDisplayName,
+} from "@/lib/user-display-name";
 
 function attachmentHref(
   type: string,
@@ -44,6 +48,8 @@ type CrewAssignmentUserOption = {
   id: string;
   email: string;
   full_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
   role: string | null;
 };
 
@@ -218,6 +224,9 @@ export function JobDetailClient({
           notes: null,
           user_profiles: {
             full_name: u?.full_name ?? null,
+            first_name: u?.first_name ?? null,
+            last_name: u?.last_name ?? null,
+            email: u?.email ?? null,
             role: u?.role ?? null,
           },
         },
@@ -489,8 +498,17 @@ export function JobDetailClient({
                         const prof = Array.isArray(row.user_profiles)
                           ? row.user_profiles[0]
                           : row.user_profiles;
-                        const name =
-                          prof?.full_name?.trim() || "Crew member";
+                        const name = !prof
+                          ? "Crew member"
+                          : (() => {
+                              const n = userDisplayName({
+                                first_name: prof.first_name,
+                                last_name: prof.last_name,
+                                full_name: prof.full_name,
+                                email: prof.email,
+                              });
+                              return n === "—" ? "Crew member" : n;
+                            })();
                         const roleLabel = formatRole(prof?.role ?? null);
                         return (
                           <li
@@ -568,7 +586,7 @@ export function JobDetailClient({
                                     value={u.id}
                                     className="bg-[#0a1628] text-white"
                                   >
-                                    {(u.full_name?.trim() || u.email) +
+                                    {userAssigneeOptionLabel(u) +
                                       (u.role ? ` (${u.role})` : "")}
                                   </option>
                                 ))}

@@ -6,6 +6,7 @@ import {
   splitRegularOvertime,
   workedMsFromPunch,
 } from "@/lib/time-punch-worked";
+import { userDisplayName } from "@/lib/user-display-name";
 
 export type PunchRow = {
   id: string;
@@ -41,10 +42,7 @@ export type TeamEmployee = {
 };
 
 export function displayName(e: TeamEmployee): string {
-  const f = e.first_name?.trim();
-  const l = e.last_name?.trim();
-  if (f || l) return [f, l].filter(Boolean).join(" ");
-  return e.full_name?.trim() || e.email?.trim() || "—";
+  return userDisplayName(e);
 }
 
 export function initials(e: TeamEmployee): string {

@@ -87,6 +87,9 @@ export type JobListRow = {
 /** Server-loaded shape: `job_assignments` joined to `user_profiles`. */
 export type JobCrewProfile = {
   full_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
   role: string | null;
 };
 

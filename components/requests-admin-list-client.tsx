@@ -23,6 +23,7 @@ import {
   urgentOpenCount,
 } from "@/lib/internal-request-utils";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { userDisplayName } from "@/lib/user-display-name";
 import { canViewAdminRequestQueue } from "@/lib/user-roles";
 
 function typeIcon(t: InternalRequestType): string {
@@ -48,7 +49,13 @@ export function RequestsAdminListClient() {
   const [cardFilter, setCardFilter] = useState<AdminListCardFilter>(null);
 
   const [users, setUsers] = useState<
-    { id: string; full_name: string | null; email: string | null }[]
+    {
+      id: string;
+      full_name: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      email: string | null;
+    }[]
   >([]);
 
   const load = useCallback(async () => {
@@ -83,12 +90,20 @@ export function RequestsAdminListClient() {
       });
       if (!r.ok) return;
       const j = (await r.json()) as {
-        users?: { id: string; full_name?: string | null; email?: string | null }[];
+        users?: {
+          id: string;
+          full_name?: string | null;
+          first_name?: string | null;
+          last_name?: string | null;
+          email?: string | null;
+        }[];
       };
       setUsers(
         (j.users ?? []).map((u) => ({
           id: u.id,
           full_name: u.full_name ?? null,
+          first_name: u.first_name ?? null,
+          last_name: u.last_name ?? null,
           email: u.email ?? null,
         })),
       );
@@ -113,11 +128,9 @@ export function RequestsAdminListClient() {
     (id: string | null) => {
       if (!id) return "—";
       const u = users.find((x) => x.id === id);
-      return (
-        u?.full_name?.trim() ||
-        u?.email?.trim() ||
-        id.slice(0, 8)
-      );
+      if (!u) return id.slice(0, 8);
+      const n = userDisplayName(u);
+      return n !== "—" ? n : id.slice(0, 8);
     },
     [users],
   );

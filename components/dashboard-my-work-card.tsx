@@ -9,6 +9,7 @@ import { isTerminalStatus } from "@/lib/internal-request-utils";
 import type { InternalRequestStatus } from "@/lib/internal-request-types";
 import type { JobListRow } from "@/lib/jobs-types";
 import type { UserProfileRow } from "@/lib/user-profile-types";
+import { userDisplayName } from "@/lib/user-display-name";
 
 export type DashboardMyWorkCardProps = {
   className?: string;
@@ -311,10 +312,7 @@ export function DashboardMyWorkCard({
             <option value="">My Work</option>
             {users.map((u) => (
               <option key={u.id} value={u.id}>
-                {u.full_name?.trim()
-                  ? u.full_name
-                  : [u.first_name, u.last_name].filter(Boolean).join(" ") ||
-                    u.email}
+                {userDisplayName(u)}
               </option>
             ))}
           </select>

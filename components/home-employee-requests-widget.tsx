@@ -399,7 +399,13 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
                         <div className="flex items-start gap-2">
                           <div className="flex w-11 shrink-0 flex-col items-center gap-1 pt-0.5">
                             <span
-                              className={`h-2 w-2 shrink-0 rounded-full ${priorityDotClass(r.priority)}`}
+                              className={`shrink-0 rounded-full ${
+                                r.priority === "urgent"
+                                  ? "h-2.5 w-2.5 bg-[#E8C84A]"
+                                  : r.priority === "emergency"
+                                    ? "h-3 w-3 bg-[#E8C84A] ring-1 ring-[#E8C84A]/40"
+                                    : `h-2 w-2 ${priorityDotClass(r.priority)}`
+                              }`}
                               aria-hidden
                             />
                             <span
@@ -440,6 +446,13 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
                             <MarketingRequestMiniStepper status={r.status} />
                           </div>
                           <div className="flex shrink-0 flex-col items-end gap-1 pt-0.5">
+                            {r.priority === "urgent" || r.priority === "emergency" ? (
+                              <span className="shrink-0 rounded-full border border-[#E8C84A]/30 bg-[#E8C84A]/15 px-2 py-0.5 text-[10px] font-bold uppercase text-[#E8C84A]">
+                                {r.priority === "urgent"
+                                  ? "⚠ Urgent"
+                                  : "🚨 Emergency"}
+                              </span>
+                            ) : null}
                             <span
                               className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${statusBadgeClass(r.status)}`}
                             >

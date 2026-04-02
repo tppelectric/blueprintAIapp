@@ -28,7 +28,7 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
           .select("*")
           .eq("submitted_by", profile.id)
           .order("created_at", { ascending: false })
-          .limit(3);
+          .limit(surface === "marketing" ? 5 : 3);
         if (cancelled || error) {
           if (!cancelled) setRows([]);
           return;
@@ -45,11 +45,11 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
     return () => {
       cancelled = true;
     };
-  }, [profile?.id, loading]);
+  }, [profile?.id, loading, surface]);
 
   const isMarketing = surface === "marketing";
   const cardClass = isMarketing
-    ? "w-full max-w-md rounded-xl border border-[#E8C84A]/25 bg-white/[0.05] p-4 text-left shadow-lg shadow-black/20"
+    ? "w-full rounded-xl border border-[#E8C84A]/25 bg-white/[0.05] p-4 text-left shadow-lg shadow-black/20"
     : "app-card app-card-pad-lg";
 
   return (
@@ -109,27 +109,51 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
             <li key={r.id}>
               <Link
                 href={`/requests/${r.id}`}
-                className={`block rounded-lg border px-3 py-2 text-left transition ${
+                className={
                   isMarketing
-                    ? "border-white/10 bg-white/[0.04] hover:border-[#E8C84A]/35"
-                    : "border-[var(--border)] hover:border-violet-400/35"
-                }`}
+                    ? "block rounded-lg border border-white/10 border-l-2 border-l-[#E8C84A]/40 bg-white/[0.04] px-4 py-3 text-left transition hover:border-[#E8C84A]/35"
+                    : `block rounded-lg border px-3 py-2 text-left transition border-[var(--border)] hover:border-violet-400/35`
+                }
               >
-                <p
-                  className={`font-mono text-[10px] ${isMarketing ? "text-[#E8C84A]" : "text-violet-300"}`}
-                >
-                  {r.request_number}
-                </p>
-                <p
-                  className={`truncate text-sm font-medium ${isMarketing ? "text-white" : "text-[var(--foreground)]"}`}
-                >
-                  {r.title}
-                </p>
-                <span
-                  className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${statusBadgeClass(r.status)}`}
-                >
-                  {statusLabel(r.status)}
-                </span>
+                {isMarketing ? (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="min-w-0 font-mono text-[10px] text-[#E8C84A]">
+                        {r.request_number}
+                      </p>
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${statusBadgeClass(r.status)}`}
+                      >
+                        {statusLabel(r.status)}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <p className="min-w-0 truncate text-base font-medium text-white">
+                        {r.title}
+                      </p>
+                      <span
+                        className="shrink-0 text-sm text-white/40"
+                        aria-hidden
+                      >
+                        →
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-mono text-[10px] text-violet-300">
+                      {r.request_number}
+                    </p>
+                    <p className="truncate text-sm font-medium text-[var(--foreground)]">
+                      {r.title}
+                    </p>
+                    <span
+                      className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${statusBadgeClass(r.status)}`}
+                    >
+                      {statusLabel(r.status)}
+                    </span>
+                  </>
+                )}
               </Link>
             </li>
           ))}

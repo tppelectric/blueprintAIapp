@@ -141,6 +141,13 @@ function CollapsedRequestPipelineSummary({
   );
 }
 
+function customerLabel(j: JobListRow): string {
+  const raw = j.customers;
+  const c = Array.isArray(raw) ? raw[0] : raw;
+  if (!c) return "";
+  return String(c.company_name || c.contact_name || "").trim();
+}
+
 export function DashboardMyWorkCard({
   className,
   selectedUserId: selectedUserIdProp,
@@ -181,7 +188,9 @@ export function DashboardMyWorkCard({
     if (assigneeId) {
       const { data: mine, error: mineErr } = await supabase
         .from("jobs")
-        .select("id,job_name,job_number,status,updated_at")
+        .select(
+          "id,job_name,job_number,status,updated_at,customer_id,customers(company_name,contact_name)",
+        )
         .eq("assigned_user_id", assigneeId)
         .order("updated_at", { ascending: false });
 
@@ -386,19 +395,27 @@ export function DashboardMyWorkCard({
 
               {myWorkTop.length > 0 ? (
                 <ul className="mt-3 space-y-2 border-t border-white/10 pt-3">
-                  {myWorkTop.map((j) => (
-                    <li key={j.id}>
-                      <Link
-                        href={`/jobs/${j.id}`}
-                        className="block text-sm text-white/90 hover:text-[#E8C84A] hover:underline"
-                      >
-                        <span className="font-medium">{j.job_name}</span>
-                        <span className="ml-2 text-xs text-white/55">
-                          · {j.status}
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
+                  {myWorkTop.map((j) => {
+                    const cust = customerLabel(j);
+                    return (
+                      <li key={j.id}>
+                        <Link
+                          href={`/jobs/${j.id}`}
+                          className="block text-sm text-white/90 hover:text-[#E8C84A] hover:underline"
+                        >
+                          <span className="font-medium">{j.job_name}</span>
+                          <span className="ml-2 text-xs text-white/55">
+                            · {j.status}
+                          </span>
+                          {cust ? (
+                            <span className="mt-0.5 block text-xs text-white/45">
+                              {cust}
+                            </span>
+                          ) : null}
+                        </Link>
+                      </li>
+                    );
+                  })}
                 </ul>
               ) : (
                 <p className="mt-3 border-t border-white/10 pt-3 text-xs text-white/55">

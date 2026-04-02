@@ -28,6 +28,13 @@ type Props = {
   attachmentLabel?: string;
 };
 
+function customerLabel(j: JobListRow): string {
+  const raw = j.customers;
+  const c = Array.isArray(raw) ? raw[0] : raw;
+  if (!c) return "";
+  return String(c.company_name || c.contact_name || "").trim();
+}
+
 export function LinkToJobDialog({
   open,
   onOpenChange,
@@ -56,7 +63,9 @@ export function LinkToJobDialog({
       const [jr, cr] = await Promise.all([
         sb
           .from("jobs")
-          .select("id,job_name,job_number,status,job_type,updated_at,customer_id")
+          .select(
+            "id,job_name,job_number,status,job_type,updated_at,customer_id,customers(company_name,contact_name)",
+          )
           .order("updated_at", { ascending: false })
           .limit(80),
         sb
@@ -240,22 +249,28 @@ export function LinkToJobDialog({
           {filteredJobs.length === 0 ? (
             <p className="p-3 text-sm text-white/45">No jobs found.</p>
           ) : (
-            filteredJobs.map((j) => (
-              <button
-                key={j.id}
-                type="button"
-                disabled={busy || !canLink}
-                onClick={() => void linkToJob(j.id)}
-                className="flex w-full flex-col items-start border-b border-white/5 px-3 py-2 text-left text-sm hover:bg-white/5 disabled:opacity-40"
-              >
-                <span className="font-medium text-white">
-                  {j.job_number} · {j.job_name}
-                </span>
-                <span className="text-xs text-white/50">
-                  {j.job_type} · {j.status}
-                </span>
-              </button>
-            ))
+            filteredJobs.map((j) => {
+              const cust = customerLabel(j);
+              return (
+                <button
+                  key={j.id}
+                  type="button"
+                  disabled={busy || !canLink}
+                  onClick={() => void linkToJob(j.id)}
+                  className="flex w-full flex-col items-start border-b border-white/5 px-3 py-2 text-left text-sm hover:bg-white/5 disabled:opacity-40"
+                >
+                  <span className="font-medium text-white">
+                    {j.job_number} · {j.job_name}
+                  </span>
+                  <span className="text-xs text-white/50">
+                    {j.job_type} · {j.status}
+                  </span>
+                  {cust ? (
+                    <span className="mt-0.5 text-xs text-white/45">{cust}</span>
+                  ) : null}
+                </button>
+              );
+            })
           )}
         </div>
 

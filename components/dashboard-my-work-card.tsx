@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { HomeEmployeeRequestsWidget } from "@/components/home-employee-requests-widget";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { useUserRole } from "@/hooks/use-user-role";
+import { isTerminalStatus } from "@/lib/internal-request-utils";
+import type { InternalRequestStatus } from "@/lib/internal-request-types";
 import type { JobListRow } from "@/lib/jobs-types";
 import type { UserProfileRow } from "@/lib/user-profile-types";
 
@@ -14,6 +16,129 @@ export type DashboardMyWorkCardProps = {
   onSelectedUserIdChange?: (id: string | null) => void;
   isAdmin?: boolean;
 };
+
+type RequestPipelineCounts = {
+  new: number;
+  in_review: number;
+  urgent: number;
+  completed_today: number;
+};
+
+const IN_REVIEW_STATUSES = new Set<string>([
+  "in_review",
+  "approved",
+  "in_progress",
+  "waiting",
+]);
+
+function computeRequestPipeline(
+  rows: {
+    status: string;
+    priority: string;
+    resolved_at: string | null;
+  }[],
+): RequestPipelineCounts {
+  const ymd = new Date().toISOString().slice(0, 10);
+  let newC = 0;
+  let inReviewC = 0;
+  let urgentC = 0;
+  let completedTodayC = 0;
+  for (const r of rows) {
+    const st = r.status;
+    if (st === "new") newC++;
+    if (IN_REVIEW_STATUSES.has(st)) inReviewC++;
+    if (
+      (r.priority === "urgent" || r.priority === "emergency") &&
+      !isTerminalStatus(st as InternalRequestStatus)
+    ) {
+      urgentC++;
+    }
+    if (
+      st === "completed" &&
+      r.resolved_at &&
+      String(r.resolved_at).slice(0, 10) === ymd
+    ) {
+      completedTodayC++;
+    }
+  }
+  return {
+    new: newC,
+    in_review: inReviewC,
+    urgent: urgentC,
+    completed_today: completedTodayC,
+  };
+}
+
+function CollapsedRequestPipelineSummary({
+  pipeline,
+}: {
+  pipeline: RequestPipelineCounts;
+}) {
+  const segments: { key: string; dotClass: string; label: string; n: number }[] =
+    [];
+  if (pipeline.new > 0) {
+    segments.push({
+      key: "new",
+      dotClass: "bg-white/60",
+      label: "New",
+      n: pipeline.new,
+    });
+  }
+  if (pipeline.in_review > 0) {
+    segments.push({
+      key: "in_review",
+      dotClass: "bg-blue-400",
+      label: "In Review",
+      n: pipeline.in_review,
+    });
+  }
+  if (pipeline.urgent > 0) {
+    segments.push({
+      key: "urgent",
+      dotClass: "bg-red-500",
+      label: "Urgent",
+      n: pipeline.urgent,
+    });
+  }
+  if (pipeline.completed_today > 0) {
+    segments.push({
+      key: "completed_today",
+      dotClass: "bg-emerald-500",
+      label: "Done",
+      n: pipeline.completed_today,
+    });
+  }
+
+  if (segments.length === 0) {
+    return (
+      <span className="text-[11px] text-white/35">No open requests</span>
+    );
+  }
+
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-x-1 text-[11px] text-white/80">
+      {segments.map((seg, i) => (
+        <Fragment key={seg.key}>
+          {i > 0 ? (
+            <span className="text-white/35" aria-hidden>
+              {" "}
+              ·{" "}
+            </span>
+          ) : null}
+          <span className="inline-flex items-center gap-1">
+            <span
+              className={`h-1.5 w-1.5 shrink-0 rounded-full ${seg.dotClass}`}
+              aria-hidden
+            />
+            <span>
+              {seg.label} {seg.n}
+            </span>
+          </span>
+        </Fragment>
+      ))}
+    </span>
+  );
+}
 
 export function DashboardMyWorkCard({
   className,
@@ -41,7 +166,8 @@ export function DashboardMyWorkCard({
   const [users, setUsers] = useState<UserProfileRow[]>([]);
   const [open, setOpen] = useState(true);
   const [requestsOpen, setRequestsOpen] = useState(false);
-  const [requestCount, setRequestCount] = useState<number | null>(null);
+  const [requestPipeline, setRequestPipeline] =
+    useState<RequestPipelineCounts | null>(null);
 
   const loadMyWork = useCallback(async () => {
     const supabase = createBrowserClient();
@@ -136,14 +262,30 @@ export function DashboardMyWorkCard({
     void (async () => {
       try {
         const sb = createBrowserClient();
-        const { count: c } = await sb
+        const { data, error } = await sb
           .from("internal_requests")
-          .select("*", { count: "exact", head: true })
-          .eq("submitted_by", profile.id)
-          .neq("status", "closed");
-        if (!cancelled) setRequestCount(c ?? 0);
+          .select("status,priority,resolved_at")
+          .eq("submitted_by", profile.id);
+        if (cancelled) return;
+        if (error) {
+          setRequestPipeline({
+            new: 0,
+            in_review: 0,
+            urgent: 0,
+            completed_today: 0,
+          });
+          return;
+        }
+        setRequestPipeline(computeRequestPipeline(data ?? []));
       } catch {
-        if (!cancelled) setRequestCount(null);
+        if (!cancelled) {
+          setRequestPipeline({
+            new: 0,
+            in_review: 0,
+            urgent: 0,
+            completed_today: 0,
+          });
+        }
       }
     })();
     return () => {
@@ -285,19 +427,12 @@ export function DashboardMyWorkCard({
             aria-controls="dashboard-my-requests-panel"
             id="dashboard-my-requests-heading"
           >
-            <div className="flex min-w-0 flex-1 items-center gap-2">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
               <span className="text-sm font-semibold text-white">
                 My Requests
               </span>
-              {requestCount !== null && requestCount > 0 ? (
-                <span className="rounded-full border border-[#E8C84A]/30 bg-[#E8C84A]/10 px-2 py-0.5 text-[11px] font-semibold text-[#E8C84A]">
-                  {requestCount} open
-                </span>
-              ) : null}
-              {!requestsOpen && requestCount === 0 ? (
-                <span className="text-[11px] text-white/35">
-                  No open requests
-                </span>
+              {!requestsOpen && requestPipeline !== null ? (
+                <CollapsedRequestPipelineSummary pipeline={requestPipeline} />
               ) : null}
             </div>
             <svg

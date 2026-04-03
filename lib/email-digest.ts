@@ -194,7 +194,7 @@ export function buildDigestHtml(data: DigestData, sentAt: string): string {
         .map(
           (r) => `
         <div style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-top:1px solid #ef444425;">
-          <span style="color:${priorityColor(r.priority)};font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;white-space:nowrap;padding-top:1px;">${r.priority}</span>
+          <span style="color:${priorityColor(r.priority)};font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;white-space:nowrap;padding-top:1px;margin-right:8px;">${r.priority}</span>
           <span style="color:#fecaca;font-size:13px;line-height:1.5;">${r.title}</span>
         </div>`
         )
@@ -215,9 +215,7 @@ export function buildDigestHtml(data: DigestData, sentAt: string): string {
           </div>
           <p style="color:#f1f5f9;font-size:14px;font-weight:600;margin:0 0 6px;line-height:1.4;">${r.title}</p>
           <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-            <span style="color:#64748b;font-size:11px;">by ${r.submitted_by_name}</span>
-            <span style="color:#334155;font-size:11px;">·</span>
-            <span style="color:#64748b;font-size:11px;">${formatDate(r.created_at)}</span>
+            <span style="color:#64748b;font-size:11px;">by ${r.submitted_by_name} &nbsp;·&nbsp; ${formatDate(r.created_at)}</span>
           </div>
         </div>
         <div style="text-align:right;flex-shrink:0;">

@@ -28,6 +28,10 @@ export type JobtreadJob = {
     name: string;
     address?: string;
   } | null;
+  account?: {
+    id: string;
+    name?: string | null;
+  } | null;
 };
 
 export type JobtreadDailyLogCustomFieldValueNode = {

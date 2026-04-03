@@ -169,6 +169,13 @@ export function IntegrationsSettingsClient() {
     ok: boolean;
     fading: boolean;
   } | null>(null);
+  const [recipients, setRecipients] = useState<
+    { id: string; email: string; is_active: boolean }[]
+  >([]);
+  const [recipientsLoading, setRecipientsLoading] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [addingEmail, setAddingEmail] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const connectionTestTimersRef = useRef<{
     fade: ReturnType<typeof setTimeout>;
     clear: ReturnType<typeof setTimeout>;
@@ -286,9 +293,56 @@ export function IntegrationsSettingsClient() {
     }
   }, [showToast]);
 
+  const loadRecipients = useCallback(async () => {
+    setRecipientsLoading(true);
+    try {
+      const r = await fetch("/api/digest-recipients", { credentials: "include" });
+      const j = await r.json() as { ok?: boolean; recipients?: { id: string; email: string; is_active: boolean }[] };
+      if (j.ok) setRecipients(j.recipients ?? []);
+    } catch { /* ignore */ }
+    finally { setRecipientsLoading(false); }
+  }, []);
+
+  const addRecipient = async () => {
+    const email = newEmail.trim().toLowerCase();
+    if (!email) return;
+    setAddingEmail(true);
+    try {
+      const r = await fetch("/api/digest-recipients", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const j = await r.json() as { ok?: boolean; error?: string };
+      if (!r.ok) throw new Error(j.error ?? "Failed to add");
+      setNewEmail("");
+      await loadRecipients();
+      showToast({ message: "Recipient added", variant: "success" });
+    } catch (e) {
+      showToast({ message: e instanceof Error ? e.message : "Failed to add", variant: "error" });
+    } finally { setAddingEmail(false); }
+  };
+
+  const deleteRecipient = async (id: string) => {
+    setDeletingId(id);
+    try {
+      const r = await fetch(`/api/digest-recipients?id=${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const j = await r.json() as { ok?: boolean; error?: string };
+      if (!r.ok) throw new Error(j.error ?? "Failed to delete");
+      await loadRecipients();
+      showToast({ message: "Recipient removed", variant: "success" });
+    } catch (e) {
+      showToast({ message: e instanceof Error ? e.message : "Failed to remove", variant: "error" });
+    } finally { setDeletingId(null); }
+  };
+
   useEffect(() => {
-    if (!roleLoading && allowed) void load();
-  }, [roleLoading, allowed, load]);
+    if (!roleLoading && allowed) { void load(); void loadRecipients(); }
+  }, [roleLoading, allowed, load, loadRecipients]);
 
   const loadSyncLog = useCallback(async () => {
     setSyncLogLoading(true);
@@ -1143,6 +1197,59 @@ export function IntegrationsSettingsClient() {
               >
                 Reload
               </button>
+            </div>
+
+            <div className="mt-8 border-t border-white/10 pt-6">
+              <p className="text-xs font-bold uppercase tracking-wide text-[#E8C84A]/90">
+                Digest recipients
+              </p>
+              <p className="mt-1 text-xs text-white/45">
+                These email addresses receive the 3× daily Blueprint AI digest.
+              </p>
+
+              <div className="mt-4 space-y-2">
+                {recipientsLoading ? (
+                  <div className="h-8 w-48 animate-pulse rounded bg-white/10" />
+                ) : recipients.length === 0 ? (
+                  <p className="text-xs text-white/40">No recipients configured.</p>
+                ) : (
+                  recipients.map((rec) => (
+                    <div
+                      key={rec.id}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2"
+                    >
+                      <span className="text-sm text-white/85">{rec.email}</span>
+                      <button
+                        type="button"
+                        className="shrink-0 text-xs text-red-300/70 hover:text-red-300 transition-colors"
+                        disabled={deletingId === rec.id}
+                        onClick={() => void deleteRecipient(rec.id)}
+                      >
+                        {deletingId === rec.id ? "Removing…" : "Remove"}
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="mt-3 flex gap-2">
+                <input
+                  type="email"
+                  className="app-input flex-1 text-sm"
+                  placeholder="name@example.com"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") void addRecipient(); }}
+                />
+                <button
+                  type="button"
+                  className="btn-secondary btn-h-11 shrink-0"
+                  disabled={addingEmail || !newEmail.trim()}
+                  onClick={() => void addRecipient()}
+                >
+                  {addingEmail ? "Adding…" : "Add"}
+                </button>
+              </div>
             </div>
           </section>
         )}

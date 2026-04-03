@@ -8,6 +8,14 @@ import type {
 
 const DAY_MS = 86_400_000;
 
+function localYmd(): string {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export function isTerminalStatus(s: InternalRequestStatus): boolean {
   return s === "completed" || s === "declined" || s === "cancelled";
 }
@@ -69,7 +77,7 @@ export function inProgressPipelineCount(rows: InternalRequestRow[]): number {
 }
 
 export function completedTodayUtcCount(rows: InternalRequestRow[]): number {
-  const ymd = new Date().toISOString().slice(0, 10);
+  const ymd = localYmd();
   return rows.filter((r) => {
     if (r.status !== "completed" || !r.resolved_at) return false;
     return r.resolved_at.slice(0, 10) === ymd;
@@ -243,7 +251,7 @@ export function rowMatchesAdminListCardFilter(
     );
   }
   if (filter === "done_today") {
-    const ymd = new Date().toISOString().slice(0, 10);
+    const ymd = localYmd();
     return (
       r.status === "completed" &&
       Boolean(r.resolved_at) &&

@@ -37,7 +37,7 @@ const PIPELINE_FILTER_STATUSES = new Set<InternalRequestRow["status"]>([
   "waiting",
 ]);
 
-const ALL_REQUEST_STATUSES: InternalRequestRow["status"][] = [
+const ALL_STATUSES = [
   "new",
   "in_review",
   "approved",
@@ -46,7 +46,7 @@ const ALL_REQUEST_STATUSES: InternalRequestRow["status"][] = [
   "completed",
   "declined",
   "cancelled",
-];
+] as const;
 
 function isImageStoragePath(path: string): boolean {
   return /\.(jpe?g|png|gif|webp)$/i.test(path);
@@ -269,12 +269,14 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
   const [fileUploadTargetId, setFileUploadTargetId] = useState<string | null>(
     null,
   );
-  const [statusBusyId, setStatusBusyId] = useState<string | null>(null);
   const [commentBusyId, setCommentBusyId] = useState<string | null>(null);
   const [jobBusyId, setJobBusyId] = useState<string | null>(null);
-  const [pendingStatusById, setPendingStatusById] = useState<
-    Record<string, InternalRequestRow["status"]>
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState<
+    Record<string, boolean>
   >({});
+  const [pendingStatus, setPendingStatus] = useState<Record<string, string>>(
+    {},
+  );
   const [commentDraftById, setCommentDraftById] = useState<
     Record<string, string>
   >({});
@@ -356,12 +358,12 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
   }, []);
 
   useEffect(() => {
-    const next: Record<string, InternalRequestRow["status"]> = {};
+    const next: Record<string, string> = {};
     for (const id of expandedIds) {
       const row = rows.find((x) => x.id === id);
       if (row) next[id] = row.status;
     }
-    setPendingStatusById(next);
+    setPendingStatus(next);
   }, [expandedIds, rows]);
 
   useEffect(() => {
@@ -494,48 +496,6 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
       });
     } finally {
       setJobBusyId(null);
-    }
-  };
-
-  const applyStatusUpdate = async (
-    requestId: string,
-    newStatus: InternalRequestRow["status"],
-  ) => {
-    setStatusBusyId(requestId);
-    try {
-      const sb = createBrowserClient();
-      const row = rows.find((x) => x.id === requestId);
-      const wasTerminal = row ? isTerminalStatus(row.status) : false;
-      const nowTerminal = isTerminalStatus(newStatus);
-      const nowTerminalResolved =
-        newStatus === "completed" || newStatus === "declined";
-      const payload: {
-        status: InternalRequestRow["status"];
-        updated_at: string;
-        resolved_at?: string | null;
-      } = {
-        status: newStatus,
-        updated_at: new Date().toISOString(),
-      };
-      if (nowTerminalResolved) {
-        payload.resolved_at = new Date().toISOString();
-      } else if (wasTerminal && !nowTerminal) {
-        payload.resolved_at = null;
-      }
-      const { error } = await sb
-        .from("internal_requests")
-        .update(payload)
-        .eq("id", requestId);
-      if (error) throw error;
-      showToast({ message: "Status updated.", variant: "success" });
-      setRefreshTick((t) => t + 1);
-    } catch (e) {
-      showToast({
-        message: e instanceof Error ? e.message : "Status update failed.",
-        variant: "error",
-      });
-    } finally {
-      setStatusBusyId(null);
     }
   };
 
@@ -773,6 +733,7 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
           <ul className="mt-3 space-y-2">
             {displayRows.map((r) => {
               const typeMeta = MARKETING_TYPE_META[r.request_type];
+              const currentStatus = pendingStatus[r.id] ?? r.status;
               return (
                 <li key={r.id}>
                   {isMarketing ? (
@@ -1042,52 +1003,95 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
                               ) : null;
                             })()}
                             {isAdminRole ? (
-                              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/75">
-                                <span className="shrink-0 font-medium text-white/60">
+                              <div
+                                className="mt-2 flex items-center gap-2"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <span className="shrink-0 text-xs text-white/50">
                                   Status:
                                 </span>
                                 <div className="relative flex-1">
-                                  <select
-                                    value={
-                                      pendingStatusById[r.id] ?? r.status
+                                  <button
+                                    type="button"
+                                    className="flex w-full items-center justify-between rounded-lg border border-white/15 bg-[#071422] px-3 py-1.5 text-left text-sm text-white"
+                                    onClick={() =>
+                                      setStatusDropdownOpen((prev) => ({
+                                        ...prev,
+                                        [r.id]: !prev[r.id],
+                                      }))
                                     }
-                                    disabled={statusBusyId === r.id}
-                                    className="w-full rounded-lg border border-white/15 bg-[#071422] px-2 py-1.5 text-sm text-white focus:border-[#E8C84A]/50 focus:outline-none appearance-none cursor-pointer"
-                                    onClick={(e) => e.stopPropagation()}
-                                    onChange={(e) => {
-                                      e.stopPropagation();
-                                      const v = e.target
-                                        .value as InternalRequestRow["status"];
-                                      setPendingStatusById((p) => ({
-                                        ...p,
-                                        [r.id]: v,
-                                      }));
-                                    }}
                                   >
-                                    {ALL_REQUEST_STATUSES.map((st) => (
-                                      <option key={st} value={st}>
-                                        {statusLabel(st)}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-white/40 text-xs">
-                                    ▾
-                                  </span>
+                                    <span className="capitalize">
+                                      {currentStatus.replace(/_/g, " ")}
+                                    </span>
+                                    <span className="ml-2 text-xs text-white/40">
+                                      ▾
+                                    </span>
+                                  </button>
+                                  {statusDropdownOpen[r.id] ? (
+                                    <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-lg border border-white/15 bg-[#0a1628] shadow-xl">
+                                      {ALL_STATUSES.map((s) => (
+                                        <button
+                                          key={s}
+                                          type="button"
+                                          className={`w-full px-3 py-2 text-left text-sm capitalize hover:bg-white/[0.06] ${
+                                            currentStatus === s
+                                              ? "text-[#E8C84A]"
+                                              : "text-white"
+                                          }`}
+                                          onClick={() => {
+                                            setPendingStatus((prev) => ({
+                                              ...prev,
+                                              [r.id]: s,
+                                            }));
+                                            setStatusDropdownOpen((prev) => ({
+                                              ...prev,
+                                              [r.id]: false,
+                                            }));
+                                          }}
+                                        >
+                                          {s.replace(/_/g, " ")}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  ) : null}
                                 </div>
                                 <button
                                   type="button"
-                                  disabled={statusBusyId === r.id}
-                                  className="shrink-0 rounded-lg bg-[#E8C84A] px-2.5 py-1.5 text-[10px] font-bold text-[#0a1628] transition hover:bg-[#f0d56e] disabled:opacity-50"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const next =
-                                      pendingStatusById[r.id] ?? r.status;
-                                    void applyStatusUpdate(r.id, next);
+                                  className="shrink-0 rounded-lg bg-[#E8C84A] px-3 py-1.5 text-xs font-bold text-[#0a1628] disabled:opacity-50"
+                                  disabled={busyId === r.id}
+                                  onClick={async () => {
+                                    const newStatus =
+                                      (pendingStatus[r.id] ??
+                                        r.status) as InternalRequestRow["status"];
+                                    const sb = createBrowserClient();
+                                    const terminal =
+                                      newStatus === "completed" ||
+                                      newStatus === "declined";
+                                    const wasTerminal =
+                                      r.status === "completed" ||
+                                      r.status === "declined";
+                                    await sb
+                                      .from("internal_requests")
+                                      .update({
+                                        status: newStatus,
+                                        updated_at:
+                                          new Date().toISOString(),
+                                        resolved_at: terminal
+                                          ? new Date().toISOString()
+                                          : !wasTerminal
+                                            ? undefined
+                                            : null,
+                                      })
+                                      .eq("id", r.id);
+                                    showToast({
+                                      message: "Status updated.",
+                                      variant: "success",
+                                    });
+                                    setRefreshTick((t) => t + 1);
                                   }}
                                 >
-                                  {statusBusyId === r.id
-                                    ? "…"
-                                    : "Update"}
+                                  Update
                                 </button>
                               </div>
                             ) : null}

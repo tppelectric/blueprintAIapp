@@ -488,24 +488,36 @@ export function buildDigestHtml(data: DigestData, sentAt: string): string {
         <h2 style="color:#e2e8f0;font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin:0;">Weekly Summary</h2>
         <span style="color:#475569;font-size:11px;">${data.weeklySummary.weekRange}</span>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
-        <div style="background:#060f1e;border-radius:8px;padding:12px 16px;">
-          <p style="color:#475569;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 4px;">Requests Opened</p>
-          <p style="color:#E8C84A;font-size:24px;font-weight:800;margin:0;">${data.weeklySummary.requestsOpened}</p>
-        </div>
-        <div style="background:#060f1e;border-radius:8px;padding:12px 16px;">
-          <p style="color:#475569;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 4px;">Requests Completed</p>
-          <p style="color:#34d399;font-size:24px;font-weight:800;margin:0;">${data.weeklySummary.requestsCompleted}</p>
-        </div>
-        <div style="background:#060f1e;border-radius:8px;padding:12px 16px;">
-          <p style="color:#475569;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 4px;">Daily Logs This Week</p>
-          <p style="color:#60a5fa;font-size:24px;font-weight:800;margin:0;">${data.weeklySummary.dailyLogsSubmitted}</p>
-        </div>
-        <div style="background:#060f1e;border-radius:8px;padding:12px 16px;">
-          <p style="color:#475569;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 4px;">Active Jobs</p>
-          <p style="color:#E8C84A;font-size:24px;font-weight:800;margin:0;">${data.weeklySummary.activeJobCount}</p>
-        </div>
-      </div>
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+        <tr>
+          <td width="50%" style="padding:0 6px 12px 0;vertical-align:top;">
+            <div style="background:#060f1e;border-radius:8px;padding:12px 16px;">
+              <p style="color:#475569;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 4px;">Requests Opened</p>
+              <p style="color:#E8C84A;font-size:24px;font-weight:800;margin:0;">${data.weeklySummary.requestsOpened}</p>
+            </div>
+          </td>
+          <td width="50%" style="padding:0 0 12px 6px;vertical-align:top;">
+            <div style="background:#060f1e;border-radius:8px;padding:12px 16px;">
+              <p style="color:#475569;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 4px;">Requests Completed</p>
+              <p style="color:#34d399;font-size:24px;font-weight:800;margin:0;">${data.weeklySummary.requestsCompleted}</p>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td width="50%" style="padding:0 6px 0 0;vertical-align:top;">
+            <div style="background:#060f1e;border-radius:8px;padding:12px 16px;">
+              <p style="color:#475569;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 4px;">Daily Logs This Week</p>
+              <p style="color:#60a5fa;font-size:24px;font-weight:800;margin:0;">${data.weeklySummary.dailyLogsSubmitted}</p>
+            </div>
+          </td>
+          <td width="50%" style="padding:0 0 0 6px;vertical-align:top;">
+            <div style="background:#060f1e;border-radius:8px;padding:12px 16px;">
+              <p style="color:#475569;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 4px;">Active Jobs</p>
+              <p style="color:#E8C84A;font-size:24px;font-weight:800;margin:0;">${data.weeklySummary.activeJobCount}</p>
+            </div>
+          </td>
+        </tr>
+      </table>
     </div>`;
 
   return `<!DOCTYPE html>

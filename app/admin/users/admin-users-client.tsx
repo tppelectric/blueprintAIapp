@@ -670,53 +670,58 @@ export function AdminUsersClient() {
                                   <p className="text-[10px] font-bold uppercase tracking-wide text-white/40">
                                     Time clock access
                                   </p>
-                                  <label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-sm">
-                                    <input
-                                      type="checkbox"
-                                      checked={Boolean(u.show_punch_interface)}
-                                      onClick={(e) => e.stopPropagation()}
-                                      onChange={(e) =>
-                                        void patchUser(u.id, {
-                                          show_punch_interface: e.target.checked,
-                                        })
-                                      }
-                                    />
-                                    <span className="text-white/75">
-                                      ⏱ Time Clock Access —{" "}
-                                      {u.show_punch_interface ? "ON" : "OFF"}
-                                    </span>
-                                  </label>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      void patchUser(u.id, {
-                                        can_edit_timeclock: !u.can_edit_timeclock,
-                                      });
-                                    }}
-                                    disabled={patchingUserId === u.id}
-                                    className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
-                                      u.can_edit_timeclock
-                                        ? "border-sky-400/40 bg-sky-500/15 text-sky-200 hover:bg-sky-500/25"
-                                        : "border-white/15 bg-white/[0.04] text-white/55 hover:bg-white/10"
-                                    }`}
-                                  >
-                                    {u.can_edit_timeclock
-                                      ? "⏱ Time Edit: ON"
-                                      : "⏱ Time Edit: OFF"}
-                                  </button>
-                                  {u.show_punch_interface ? (
+                                  <div className="mt-2 flex flex-wrap items-center gap-3">
+                                    <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
+                                      <input
+                                        type="checkbox"
+                                        checked={Boolean(u.show_punch_interface)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        onChange={(e) =>
+                                          void patchUser(u.id, {
+                                            show_punch_interface:
+                                              e.target.checked,
+                                          })
+                                        }
+                                      />
+                                      <span className="text-white/75">
+                                        Clock{" "}
+                                        {u.show_punch_interface ? "ON" : "OFF"}
+                                      </span>
+                                    </label>
+
                                     <button
                                       type="button"
-                                      className="mt-3 rounded-lg border border-[#E8C84A]/50 px-3 py-2 text-xs font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        void openPunchesModal(u);
+                                        void patchUser(u.id, {
+                                          can_edit_timeclock:
+                                            !u.can_edit_timeclock,
+                                        });
                                       }}
+                                      disabled={patchingUserId === u.id}
+                                      className={`rounded-lg border px-3 py-1 text-xs font-semibold transition ${
+                                        u.can_edit_timeclock
+                                          ? "border-sky-400/40 bg-sky-500/15 text-sky-200 hover:bg-sky-500/25"
+                                          : "border-white/15 bg-white/[0.04] text-white/55 hover:bg-white/10"
+                                      }`}
                                     >
-                                      Manage today&apos;s punches
+                                      Edit:{" "}
+                                      {u.can_edit_timeclock ? "ON" : "OFF"}
                                     </button>
-                                  ) : null}
+
+                                    {u.show_punch_interface ? (
+                                      <button
+                                        type="button"
+                                        className="rounded-lg border border-[#E8C84A]/50 px-3 py-1 text-xs font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          void openPunchesModal(u);
+                                        }}
+                                      >
+                                        Today&apos;s punches
+                                      </button>
+                                    ) : null}
+                                  </div>
                                 </div>
                               </div>
                               <div

@@ -18,4 +18,6 @@ export type UserProfileRow = {
 /** Super-admin user list: profile + auth last sign-in. */
 export type AdminUserProfileRow = UserProfileRow & {
   last_sign_in_at: string | null;
+  /** From admin users API; may edit own time entries when true. */
+  can_edit_timeclock?: boolean;
 };

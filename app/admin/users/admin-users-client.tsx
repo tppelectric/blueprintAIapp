@@ -194,6 +194,7 @@ export function AdminUsersClient() {
       role?: UserRole;
       is_active?: boolean;
       show_punch_interface?: boolean;
+      can_edit_timeclock?: boolean;
       first_name?: string;
       last_name?: string;
       employee_number?: string;
@@ -685,6 +686,25 @@ export function AdminUsersClient() {
                                       {u.show_punch_interface ? "ON" : "OFF"}
                                     </span>
                                   </label>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void patchUser(u.id, {
+                                        can_edit_timeclock: !u.can_edit_timeclock,
+                                      });
+                                    }}
+                                    disabled={patchingUserId === u.id}
+                                    className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                                      u.can_edit_timeclock
+                                        ? "border-sky-400/40 bg-sky-500/15 text-sky-200 hover:bg-sky-500/25"
+                                        : "border-white/15 bg-white/[0.04] text-white/55 hover:bg-white/10"
+                                    }`}
+                                  >
+                                    {u.can_edit_timeclock
+                                      ? "⏱ Time Edit: ON"
+                                      : "⏱ Time Edit: OFF"}
+                                  </button>
                                   {u.show_punch_interface ? (
                                     <button
                                       type="button"

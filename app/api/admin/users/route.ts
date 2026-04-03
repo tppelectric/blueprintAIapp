@@ -22,7 +22,7 @@ export async function GET() {
   const { data: profileRows, error } = await admin
     .from("user_profiles")
     .select(
-      "id,email,full_name,first_name,last_name,employee_number,role,is_active,show_punch_interface,created_at,updated_at",
+      "id,email,full_name,first_name,last_name,employee_number,role,is_active,show_punch_interface,can_edit_timeclock,created_at,updated_at",
     );
 
   if (error) {
@@ -134,6 +134,9 @@ export async function PATCH(request: Request) {
   if (body.show_punch_interface !== undefined) {
     patch.show_punch_interface = Boolean(body.show_punch_interface);
   }
+  if (body.can_edit_timeclock !== undefined) {
+    patch.can_edit_timeclock = Boolean(body.can_edit_timeclock);
+  }
 
   const trimStr = (v: string | undefined) =>
     v === undefined ? undefined : String(v).trim();
@@ -182,7 +185,7 @@ export async function PATCH(request: Request) {
     .update(patch)
     .eq("id", userId)
     .select(
-      "id,email,full_name,first_name,last_name,employee_number,role,is_active,show_punch_interface,created_at,updated_at",
+      "id,email,full_name,first_name,last_name,employee_number,role,is_active,show_punch_interface,can_edit_timeclock,created_at,updated_at",
     )
     .maybeSingle();
 

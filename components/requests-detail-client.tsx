@@ -280,6 +280,11 @@ export function RequestsDetailClient({ requestId }: { requestId: string }) {
   const [oshaRecordable, setOshaRecordable] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  const [editMode, setEditMode] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editPriority, setEditPriority] = useState<InternalRequestRow["priority"]>("normal");
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -438,6 +443,13 @@ export function RequestsDetailClient({ requestId }: { requestId: string }) {
     return isStaff;
   }, [req, profile?.id, isStaff]);
 
+  const canEdit = useMemo(() => {
+    if (!req || !profile?.id) return false;
+    if (isStaff) return true;
+    if (req.submitted_by === profile.id && req.status === "new") return true;
+    return false;
+  }, [req, profile?.id, isStaff]);
+
   const addComment = async (e: FormEvent) => {
     e.preventDefault();
     const t = commentText.trim();
@@ -542,6 +554,34 @@ export function RequestsDetailClient({ requestId }: { requestId: string }) {
     }
   };
 
+  const saveEdit = async () => {
+    if (!req) return;
+    setBusy(true);
+    try {
+      const sb = createBrowserClient();
+      const { error } = await sb
+        .from("internal_requests")
+        .update({
+          title: editTitle.trim() || req.title,
+          description: editDescription.trim() || null,
+          priority: editPriority,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", requestId);
+      if (error) throw error;
+      showToast({ message: "Request updated.", variant: "success" });
+      setEditMode(false);
+      void load();
+    } catch (err) {
+      showToast({
+        message: err instanceof Error ? err.message : "Save failed.",
+        variant: "error",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (roleLoading || loading) {
     return (
       <div className="flex min-h-screen flex-col">
@@ -628,6 +668,83 @@ export function RequestsDetailClient({ requestId }: { requestId: string }) {
               {userLabel(req.assigned_to)}
             </span>
           </p>
+          {canEdit ? (
+            <div className="mt-4 border-t border-white/10 pt-4">
+              {!editMode ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditTitle(req.title);
+                    setEditDescription(req.description ?? "");
+                    setEditPriority(req.priority);
+                    setEditMode(true);
+                  }}
+                  className="text-xs font-semibold text-[#E8C84A] hover:underline"
+                >
+                  ✏️ Edit request
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-[#E8C84A]/80">
+                    Edit request
+                  </p>
+                  <label className="block text-xs text-white/55">
+                    Title
+                    <input
+                      type="text"
+                      className="mt-1 w-full rounded-lg border border-white/15 bg-[#071422] px-3 py-2 text-sm text-white"
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                    />
+                  </label>
+                  <label className="block text-xs text-white/55">
+                    Description
+                    <textarea
+                      className="mt-1 w-full rounded-lg border border-white/15 bg-[#071422] px-3 py-2 text-sm text-white"
+                      rows={3}
+                      value={editDescription}
+                      onChange={(e) => setEditDescription(e.target.value)}
+                    />
+                  </label>
+                  <label className="block text-xs text-white/55">
+                    Priority
+                    <select
+                      className="mt-1 w-full rounded-lg border border-white/15 bg-[#071422] px-2 py-2 text-sm text-white"
+                      value={editPriority}
+                      onChange={(e) =>
+                        setEditPriority(
+                          e.target.value as InternalRequestRow["priority"],
+                        )
+                      }
+                    >
+                      <option value="low">Low</option>
+                      <option value="normal">Normal</option>
+                      <option value="urgent">Urgent</option>
+                      <option value="emergency">Emergency</option>
+                    </select>
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void saveEdit()}
+                      className="rounded-lg bg-[#E8C84A] px-4 py-2 text-sm font-bold text-[#0a1628] disabled:opacity-50"
+                    >
+                      {busy ? "Saving…" : "Save changes"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setEditMode(false)}
+                      className="rounded-lg border border-white/15 px-4 py-2 text-sm text-white/70 hover:bg-white/10"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
         </header>
 
         <RequestStatusStepper

@@ -88,6 +88,7 @@ export async function PATCH(request: Request) {
     role?: string;
     is_active?: boolean;
     show_punch_interface?: boolean;
+    can_edit_timeclock?: boolean;
     first_name?: string;
     last_name?: string;
     employee_number?: string;

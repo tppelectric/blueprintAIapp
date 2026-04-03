@@ -59,6 +59,16 @@ function roleLabel(role: string | null): string {
   return ROLE_LABELS[r as UserRole] ?? role;
 }
 
+function collapsedMembersLine(c: CrewWithMembers): string | null {
+  if (c.members.length === 0) return null;
+  return c.members
+    .map((m) => {
+      const crown = c.lead_user_id === m.user_id ? "👑 " : "";
+      return `${crown}${m.display_name}`;
+    })
+    .join(", ");
+}
+
 const inputClass =
   "w-full rounded-lg border border-white/15 bg-[#071422] px-3 py-2 text-sm text-white focus:border-[#E8C84A]/50 focus:outline-none";
 
@@ -320,22 +330,32 @@ export function CrewsAdminClient() {
 
   const removeMember = async (crewId: string, userId: string) => {
     setPatchBusyId(crewId);
+    let clearingLead = false;
     setCrews((prev) =>
       prev.map((c) => {
         if (c.id !== crewId) return c;
+        clearingLead = c.lead_user_id === userId;
         return {
           ...c,
           members: c.members.filter((m) => m.user_id !== userId),
           member_count: Math.max(0, c.member_count - 1),
+          ...(clearingLead
+            ? { lead_user_id: null as string | null, lead_name: null as string | null }
+            : {}),
         };
       }),
     );
+    if (expandedId === crewId && clearingLead) setEditLeadId(null);
     try {
       const r = await fetch(`/api/crews/${crewId}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ remove_member_ids: [userId] }),
+        body: JSON.stringify(
+          clearingLead
+            ? { remove_member_ids: [userId], lead_user_id: null }
+            : { remove_member_ids: [userId] },
+        ),
       });
       const j = (await r.json()) as { crew?: CrewWithMembers; error?: string };
       if (!r.ok) {
@@ -353,6 +373,37 @@ export function CrewsAdminClient() {
       setRefreshTick((t) => t + 1);
     } catch {
       showToast({ message: "Could not remove member.", variant: "error" });
+      setRefreshTick((t) => t + 1);
+    } finally {
+      setPatchBusyId(null);
+    }
+  };
+
+  const setCrewLead = async (crewId: string, userId: string) => {
+    setPatchBusyId(crewId);
+    try {
+      const r = await fetch(`/api/crews/${crewId}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lead_user_id: userId }),
+      });
+      const j = (await r.json()) as { crew?: CrewWithMembers; error?: string };
+      if (!r.ok) {
+        showToast({
+          message: j.error ?? "Could not set lead.",
+          variant: "error",
+        });
+        setRefreshTick((t) => t + 1);
+        return;
+      }
+      if (j.crew) {
+        setCrews((prev) => prev.map((c) => (c.id === crewId ? j.crew! : c)));
+        if (expandedId === crewId) setEditLeadId(j.crew.lead_user_id);
+      }
+      setRefreshTick((t) => t + 1);
+    } catch {
+      showToast({ message: "Could not set lead.", variant: "error" });
       setRefreshTick((t) => t + 1);
     } finally {
       setPatchBusyId(null);
@@ -489,7 +540,7 @@ export function CrewsAdminClient() {
     return (
       <div className="relative mt-3" onClick={(e) => e.stopPropagation()}>
         <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-white/40">
-          Add member
+          Add technician
         </p>
         <input
           type="text"
@@ -615,18 +666,23 @@ export function CrewsAdminClient() {
               <div className="sm:col-span-2">{renderLeadCombobox("new")}</div>
               <label className="block text-xs text-white/60 sm:col-span-2">
                 Default vehicle
-                <select
-                  className={`mt-1 ${inputClass}`}
-                  value={newVehicleId}
-                  onChange={(e) => setNewVehicleId(e.target.value)}
-                >
-                  <option value="">— None —</option>
-                  {vehicles.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {vehicleLabel(v)}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative mt-1">
+                  <select
+                    className="w-full rounded-lg border border-white/15 bg-[#071422] px-3 py-2 text-sm text-white focus:border-[#E8C84A]/50 focus:outline-none appearance-none cursor-pointer pr-7"
+                    value={newVehicleId}
+                    onChange={(e) => setNewVehicleId(e.target.value)}
+                  >
+                    <option value="">— None —</option>
+                    {vehicles.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {vehicleLabel(v)}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-white/40 text-xs">
+                    ▾
+                  </span>
+                </div>
               </label>
               <label className="block text-xs text-white/60 sm:col-span-2">
                 Notes
@@ -679,6 +735,7 @@ export function CrewsAdminClient() {
                 const truckShared =
                   c.default_vehicle_id &&
                   sharedTrucks.has(c.default_vehicle_id);
+                const membersLine = collapsedMembersLine(c);
                 return (
                   <li key={c.id}>
                     <div
@@ -716,11 +773,17 @@ export function CrewsAdminClient() {
                               </span>
                             ) : null}
                           </div>
-                          <p className="mt-1 text-xs text-white/50">
-                            Lead: {c.lead_name ?? "—"}
-                          </p>
+                          {membersLine ? (
+                            <p className="mt-1 text-xs text-white/50">
+                              {membersLine}
+                            </p>
+                          ) : null}
                           {c.vehicle_name ? (
-                            <p className="mt-0.5 text-xs text-white/45">
+                            <p
+                              className={`text-xs text-white/45 ${
+                                membersLine ? "mt-0.5" : "mt-1"
+                              }`}
+                            >
                               Truck: {c.vehicle_name}
                             </p>
                           ) : null}
@@ -765,25 +828,27 @@ export function CrewsAdminClient() {
                                 ))}
                               </div>
                             </div>
-                            <div className="sm:col-span-2">
-                              {expandedId ? renderLeadCombobox("edit") : null}
-                            </div>
                             <label className="block text-xs text-white/60 sm:col-span-2">
                               Default vehicle
-                              <select
-                                className={`mt-1 ${inputClass}`}
-                                value={editVehicleId}
-                                onChange={(e) =>
-                                  setEditVehicleId(e.target.value)
-                                }
-                              >
-                                <option value="">— None —</option>
-                                {vehicles.map((v) => (
-                                  <option key={v.id} value={v.id}>
-                                    {vehicleLabel(v)}
-                                  </option>
-                                ))}
-                              </select>
+                              <div className="relative mt-1">
+                                <select
+                                  className="w-full rounded-lg border border-white/15 bg-[#071422] px-3 py-2 text-sm text-white focus:border-[#E8C84A]/50 focus:outline-none appearance-none cursor-pointer pr-7"
+                                  value={editVehicleId}
+                                  onChange={(e) =>
+                                    setEditVehicleId(e.target.value)
+                                  }
+                                >
+                                  <option value="">— None —</option>
+                                  {vehicles.map((v) => (
+                                    <option key={v.id} value={v.id}>
+                                      {vehicleLabel(v)}
+                                    </option>
+                                  ))}
+                                </select>
+                                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-white/40 text-xs">
+                                  ▾
+                                </span>
+                              </div>
                             </label>
                             <label className="block text-xs text-white/60 sm:col-span-2">
                               Notes
@@ -816,7 +881,7 @@ export function CrewsAdminClient() {
 
                           <div className="mt-6 border-t border-white/10 pt-4">
                             <p className="text-[10px] font-bold uppercase tracking-wide text-white/40">
-                              Members
+                              Technicians
                             </p>
                             <ul className="mt-2 space-y-2">
                               {c.members.map((m) => {
@@ -828,21 +893,30 @@ export function CrewsAdminClient() {
                                     className="flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-[#071422]/60 px-3 py-2"
                                   >
                                     <span
-                                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                      className="h-2 w-2 shrink-0 rounded-full"
                                       style={{ backgroundColor: c.color }}
                                       aria-hidden
                                     />
                                     <span className="min-w-0 flex-1 text-sm text-white/85">
-                                      {isLead ? (
-                                        <span className="mr-1" aria-hidden>
-                                          👑
-                                        </span>
-                                      ) : null}
                                       {m.display_name}
                                     </span>
                                     <span className="rounded border border-white/15 px-1.5 py-0.5 text-[10px] text-white/55">
                                       {roleLabel(m.role)}
                                     </span>
+                                    <button
+                                      type="button"
+                                      disabled={patchBusyId === c.id}
+                                      onClick={() =>
+                                        void setCrewLead(c.id, m.user_id)
+                                      }
+                                      className={`shrink-0 rounded-lg px-2 py-0.5 text-xs transition ${
+                                        isLead
+                                          ? "border border-[#E8C84A]/40 bg-[#E8C84A]/20 text-[#E8C84A]"
+                                          : "border border-white/15 text-white/40"
+                                      }`}
+                                    >
+                                      {isLead ? "👑 Lead" : "👑"}
+                                    </button>
                                     <button
                                       type="button"
                                       disabled={patchBusyId === c.id}

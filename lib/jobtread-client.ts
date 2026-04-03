@@ -12,6 +12,8 @@ export type JobtreadCustomer = {
   primaryContact?: {
     id: string;
     name: string;
+    email?: string | null;
+    phone?: string | null;
   } | null;
 };
 

@@ -241,8 +241,17 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
   const [refreshTick, setRefreshTick] = useState(0);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [jobs, setJobs] = useState<
-    { id: string; job_name: string; job_number: string }[]
+    {
+      id: string;
+      job_name: string;
+      job_number: string;
+      customer_name: string;
+    }[]
   >([]);
+  const [jobSearch, setJobSearch] = useState<Record<string, string>>({});
+  const [jobDropdownOpen, setJobDropdownOpen] = useState<
+    Record<string, boolean>
+  >({});
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>(
     {},
   );
@@ -317,16 +326,25 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
         const sb = createBrowserClient();
         const { data, error } = await sb
           .from("jobs")
-          .select("id,job_name,job_number")
-          .order("job_name")
+          .select("id,job_name,job_number,customers(company_name,contact_name)")
+          .order("job_number", { ascending: false })
           .limit(300);
         if (cancelled || error) return;
         setJobs(
-          (data ?? []) as {
-            id: string;
-            job_name: string;
-            job_number: string;
-          }[],
+          (data ?? []).map((row) => {
+            const rec = row as Record<string, unknown>;
+            const c = Array.isArray(rec.customers)
+              ? rec.customers[0]
+              : rec.customers;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- embedded customers row
+            const customer_name = (c as any)?.company_name || (c as any)?.contact_name || "";
+            return {
+              id: String(rec.id ?? ""),
+              job_name: String(rec.job_name ?? ""),
+              job_number: String(rec.job_number ?? ""),
+              customer_name: String(customer_name ?? ""),
+            };
+          }),
         );
       } catch {
         if (!cancelled) setJobs([]);
@@ -908,29 +926,117 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
                                       </button>
                                     </div>
                                   ) : (
-                                    <select
-                                      key={`job-sel-${r.id}`}
-                                      disabled={jobBusyId === r.id}
-                                      defaultValue=""
-                                      className="w-full max-w-full rounded-lg border border-white/15 bg-black/30 px-2 py-1.5 text-xs text-white/85 outline-none focus:border-[#E8C84A]/50"
+                                    <div
+                                      className="relative mt-2"
                                       onClick={(e) => e.stopPropagation()}
-                                      onChange={(e) => {
-                                        e.stopPropagation();
-                                        const v = e.target.value;
-                                        if (!v) return;
-                                        void saveJobId(r.id, v);
-                                        e.target.value = "";
-                                      }}
                                     >
-                                      <option value="" disabled>
-                                        Link to job…
-                                      </option>
-                                      {jobs.map((j) => (
-                                        <option key={j.id} value={j.id}>
-                                          {j.job_name} (#{j.job_number})
-                                        </option>
-                                      ))}
-                                    </select>
+                                      <input
+                                        type="text"
+                                        className="w-full rounded-lg border border-white/15 bg-[#071422] px-3 py-1.5 text-sm text-white placeholder-white/30 focus:border-[#E8C84A]/50 focus:outline-none"
+                                        placeholder="Search jobs by name, number, or customer…"
+                                        value={jobSearch[r.id] ?? ""}
+                                        onChange={(e) => {
+                                          setJobSearch((prev) => ({
+                                            ...prev,
+                                            [r.id]: e.target.value,
+                                          }));
+                                          setJobDropdownOpen((prev) => ({
+                                            ...prev,
+                                            [r.id]: true,
+                                          }));
+                                        }}
+                                        onFocus={() =>
+                                          setJobDropdownOpen((prev) => ({
+                                            ...prev,
+                                            [r.id]: true,
+                                          }))
+                                        }
+                                        onBlur={() =>
+                                          setTimeout(
+                                            () =>
+                                              setJobDropdownOpen((prev) => ({
+                                                ...prev,
+                                                [r.id]: false,
+                                              })),
+                                            150,
+                                          )
+                                        }
+                                      />
+                                      {jobDropdownOpen[r.id] &&
+                                        (() => {
+                                          const q = (
+                                            jobSearch[r.id] ?? ""
+                                          )
+                                            .toLowerCase()
+                                            .trim();
+                                          const filtered =
+                                            q.length < 1
+                                              ? []
+                                              : jobs
+                                                  .filter(
+                                                    (j) =>
+                                                      j.job_name
+                                                        .toLowerCase()
+                                                        .includes(q) ||
+                                                      j.job_number
+                                                        .toLowerCase()
+                                                        .includes(q) ||
+                                                      j.customer_name
+                                                        .toLowerCase()
+                                                        .includes(q),
+                                                  )
+                                                  .slice(0, 8);
+                                          return filtered.length > 0 ? (
+                                            <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-52 overflow-y-auto rounded-lg border border-white/15 bg-[#0a1628] shadow-xl">
+                                              {filtered.map((j) => (
+                                                <button
+                                                  key={j.id}
+                                                  type="button"
+                                                  className="w-full px-3 py-2 text-left hover:bg-white/[0.06] focus:outline-none"
+                                                  onMouseDown={(e) =>
+                                                    e.preventDefault()
+                                                  }
+                                                  onClick={async () => {
+                                                    setJobDropdownOpen(
+                                                      (prev) => ({
+                                                        ...prev,
+                                                        [r.id]: false,
+                                                      }),
+                                                    );
+                                                    setJobSearch((prev) => ({
+                                                      ...prev,
+                                                      [r.id]: "",
+                                                    }));
+                                                    const sb =
+                                                      createBrowserClient();
+                                                    await sb
+                                                      .from(
+                                                        "internal_requests",
+                                                      )
+                                                      .update({
+                                                        job_id: j.id,
+                                                        updated_at:
+                                                          new Date().toISOString(),
+                                                      })
+                                                      .eq("id", r.id);
+                                                    setRefreshTick((t) => t + 1);
+                                                  }}
+                                                >
+                                                  <p className="text-sm text-white">
+                                                    {j.job_number} ·{" "}
+                                                    {j.job_name}
+                                                  </p>
+                                                  {j.customer_name ? (
+                                                    <p className="text-xs text-white/50">
+                                                      {j.customer_name}
+                                                    </p>
+                                                  ) : null}
+                                                </button>
+                                              ))}
+                                            </div>
+                                          ) : null;
+                                        })()}
+                                    </div>
                                   )}
                                 </div>
                               ) : null;
@@ -940,29 +1046,34 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
                                 <span className="shrink-0 font-medium text-white/60">
                                   Status:
                                 </span>
-                                <select
-                                  value={
-                                    pendingStatusById[r.id] ?? r.status
-                                  }
-                                  disabled={statusBusyId === r.id}
-                                  className="min-w-0 flex-1 rounded-lg border border-white/15 bg-black/30 px-2 py-1.5 text-xs text-white/85 outline-none focus:border-[#E8C84A]/50 sm:max-w-[11rem]"
-                                  onClick={(e) => e.stopPropagation()}
-                                  onChange={(e) => {
-                                    e.stopPropagation();
-                                    const v = e.target
-                                      .value as InternalRequestRow["status"];
-                                    setPendingStatusById((p) => ({
-                                      ...p,
-                                      [r.id]: v,
-                                    }));
-                                  }}
-                                >
-                                  {ALL_REQUEST_STATUSES.map((st) => (
-                                    <option key={st} value={st}>
-                                      {statusLabel(st)}
-                                    </option>
-                                  ))}
-                                </select>
+                                <div className="relative flex-1">
+                                  <select
+                                    value={
+                                      pendingStatusById[r.id] ?? r.status
+                                    }
+                                    disabled={statusBusyId === r.id}
+                                    className="w-full rounded-lg border border-white/15 bg-[#071422] px-2 py-1.5 text-sm text-white focus:border-[#E8C84A]/50 focus:outline-none appearance-none cursor-pointer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      const v = e.target
+                                        .value as InternalRequestRow["status"];
+                                      setPendingStatusById((p) => ({
+                                        ...p,
+                                        [r.id]: v,
+                                      }));
+                                    }}
+                                  >
+                                    {ALL_REQUEST_STATUSES.map((st) => (
+                                      <option key={st} value={st}>
+                                        {statusLabel(st)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-white/40 text-xs">
+                                    ▾
+                                  </span>
+                                </div>
                                 <button
                                   type="button"
                                   disabled={statusBusyId === r.id}

@@ -31,36 +31,89 @@ export type DigestData = {
     expiry_date: string;
     holder_name: string;
   }[];
+  clockedInNow: {
+    employee_name: string;
+    job_name: string | null;
+    punch_in_at: string;
+    on_lunch: boolean;
+  }[];
+  incompletePunches: {
+    employee_name: string;
+    punch_in_at: string;
+    job_name: string | null;
+  }[];
+  dailyLogsToday: {
+    job_name: string;
+    crew_user: string;
+    log_date: string;
+  }[];
+  activeJobsMissingLogs: {
+    job_name: string;
+    job_number: string;
+  }[];
+  weeklySummary: {
+    weekRange: string;
+    requestsOpened: number;
+    requestsCompleted: number;
+    dailyLogsSubmitted: number;
+    activeJobCount: number;
+  };
 };
 
 export async function buildDigestData(): Promise<DigestData> {
   const supabase = createServiceRoleClient();
 
-  const [requestsRes, jobsRes, licensesRes] = await Promise.all([
-    supabase
-      .from("internal_requests")
-      .select("id, request_number, title, priority, status, request_type, submitted_by, created_at")
-      .not("status", "in", "(completed,declined,cancelled)")
-      .order("created_at", { ascending: false })
-      .limit(20),
-    supabase
-      .from("jobs")
-      .select("id, job_name, job_number, status, customers(company_name, contact_name)")
-      .eq("status", "Active")
-      .order("updated_at", { ascending: false })
-      .limit(10),
-    supabase
-      .from("licenses")
-      .select("id, license_name, expiry_date, holder_name")
-      .not("expiry_date", "is", null)
-      .gte("expiry_date", new Date().toISOString().slice(0, 10))
-      .lte(
-        "expiry_date",
-        new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-      )
-      .order("expiry_date", { ascending: true })
-      .limit(10),
-  ]);
+  const [requestsRes, jobsRes, licensesRes, clockedInRes, incompleteRes, logsRes] =
+    await Promise.all([
+      supabase
+        .from("internal_requests")
+        .select("id, request_number, title, priority, status, request_type, submitted_by, created_at")
+        .not("status", "in", "(completed,declined,cancelled)")
+        .order("created_at", { ascending: false })
+        .limit(20),
+      supabase
+        .from("jobs")
+        .select("id, job_name, job_number, status, customers(company_name, contact_name)")
+        .eq("status", "Active")
+        .order("updated_at", { ascending: false })
+        .limit(10),
+      supabase
+        .from("licenses")
+        .select("id, license_name, expiry_date, holder_name")
+        .not("expiry_date", "is", null)
+        .gte("expiry_date", new Date().toISOString().slice(0, 10))
+        .lte(
+          "expiry_date",
+          new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+        )
+        .order("expiry_date", { ascending: true })
+        .limit(10),
+      supabase
+        .from("time_punches")
+        .select("employee_name, job_name, punch_in_at, on_lunch")
+        .is("punch_out_at", null)
+        .order("punch_in_at", { ascending: false })
+        .limit(20),
+      supabase
+        .from("time_punches")
+        .select("employee_name, job_name, punch_in_at")
+        .is("punch_out_at", null)
+        .lt(
+          "punch_in_at",
+          new Date(Date.now() - 14 * 60 * 60 * 1000).toISOString(),
+        )
+        .order("punch_in_at", { ascending: true })
+        .limit(10),
+      supabase
+        .from("daily_logs")
+        .select("job_name, crew_user, log_date")
+        .eq(
+          "log_date",
+          new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" }),
+        )
+        .order("created_at", { ascending: false })
+        .limit(20),
+    ]);
 
   // Get submitter names for requests
   const submitterIds = [
@@ -125,7 +178,70 @@ export async function buildDigestData(): Promise<DigestData> {
     holder_name: l.holder_name as string,
   }));
 
-  return { openRequests, urgentRequests, activeJobs, expiringLicenses };
+  const clockedInNow = (clockedInRes.data ?? []).map((p) => ({
+    employee_name: String(p.employee_name ?? "Team member"),
+    job_name: (p.job_name as string | null) ?? null,
+    punch_in_at: String(p.punch_in_at ?? ""),
+    on_lunch: Boolean(p.on_lunch),
+  }));
+
+  const incompletePunches = (incompleteRes.data ?? []).map((p) => ({
+    employee_name: String(p.employee_name ?? "Team member"),
+    punch_in_at: String(p.punch_in_at ?? ""),
+    job_name: (p.job_name as string | null) ?? null,
+  }));
+
+  const dailyLogsToday = (logsRes.data ?? []).map((l) => ({
+    job_name: String(l.job_name ?? ""),
+    crew_user: String(l.crew_user ?? ""),
+    log_date: String(l.log_date ?? ""),
+  }));
+
+  const loggedJobNames = new Set(dailyLogsToday.map((l) => l.job_name));
+  const activeJobsMissingLogs = activeJobs.filter(
+    (j) => !loggedJobNames.has(j.job_name),
+  );
+
+  // Weekly summary — Mon through today
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((dayOfWeek + 6) % 7));
+  monday.setHours(0, 0, 0, 0);
+  const mondayIso = monday.toISOString();
+
+  const [weekRequestsRes, weekLogsRes] = await Promise.all([
+    supabase
+      .from("internal_requests")
+      .select("id, status")
+      .gte("created_at", mondayIso),
+    supabase
+      .from("daily_logs")
+      .select("id")
+      .gte("created_at", mondayIso),
+  ]);
+
+  const weekRequests = weekRequestsRes.data ?? [];
+  const weeklySummary = {
+    weekRange: `${monday.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${now.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`,
+    requestsOpened: weekRequests.length,
+    requestsCompleted: weekRequests.filter((r) => (r.status as string) === "completed")
+      .length,
+    dailyLogsSubmitted: (weekLogsRes.data ?? []).length,
+    activeJobCount: activeJobs.length,
+  };
+
+  return {
+    openRequests,
+    urgentRequests,
+    activeJobs,
+    expiringLicenses,
+    clockedInNow,
+    incompletePunches,
+    dailyLogsToday,
+    activeJobsMissingLogs,
+    weeklySummary,
+  };
 }
 
 export function buildDigestHtml(data: DigestData, sentAt: string): string {
@@ -270,6 +386,128 @@ export function buildDigestHtml(data: DigestData, sentAt: string): string {
       <span style="background:#E8C84A18;color:${countColor};font-size:12px;font-weight:700;padding:2px 10px;border-radius:999px;border:1px solid ${countColor}30;">${count}</span>
     </div>`;
 
+  const formatTime = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: "America/New_York",
+      });
+    } catch {
+      return iso;
+    }
+  };
+
+  const clockedInCards = data.clockedInNow
+    .map(
+      (p) => `
+    <div style="background:#0f1f3d;border:1px solid #1e3a5f;border-radius:10px;padding:14px 18px;margin-bottom:8px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div>
+          <p style="color:#f1f5f9;font-size:13px;font-weight:600;margin:0 0 3px;">
+            ${p.on_lunch ? "🍽️" : "🟢"} ${p.employee_name}
+          </p>
+          <p style="color:#64748b;font-size:12px;margin:0;">${p.job_name ?? "No job assigned"}</p>
+        </div>
+        <div style="text-align:right;">
+          <span style="color:#94a3b8;font-size:11px;">In since ${formatTime(p.punch_in_at)}</span>
+          ${p.on_lunch ? '<br><span style="color:#f97316;font-size:10px;font-weight:600;">ON LUNCH</span>' : ""}
+        </div>
+      </div>
+    </div>`,
+    )
+    .join("");
+
+  const incompletePunchCards = data.incompletePunches
+    .map(
+      (p) => `
+    <div style="background:#1a0a00;border:1px solid #f9731630;border-radius:10px;padding:14px 18px;margin-bottom:8px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div>
+          <p style="color:#fed7aa;font-size:13px;font-weight:600;margin:0 0 3px;">⚠️ ${p.employee_name}</p>
+          <p style="color:#64748b;font-size:12px;margin:0;">${p.job_name ?? "No job assigned"}</p>
+        </div>
+        <span style="color:#f97316;font-size:11px;font-weight:600;">Punched in ${formatTime(p.punch_in_at)} — no punch out</span>
+      </div>
+    </div>`,
+    )
+    .join("");
+
+  const timeAttendanceSection =
+    data.clockedInNow.length > 0 || data.incompletePunches.length > 0
+      ? `
+    <div style="margin-bottom:32px;">
+      ${sectionHeader("Time & Attendance", data.clockedInNow.length, "#34d399")}
+      ${data.incompletePunches.length > 0
+        ? `
+        <div style="margin-bottom:12px;">
+          <p style="color:#f97316;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 8px;">⚠️ ${data.incompletePunches.length} Incomplete Punch${data.incompletePunches.length > 1 ? "es" : ""}</p>
+          ${incompletePunchCards}
+        </div>`
+        : ""}
+      ${data.clockedInNow.length > 0
+        ? `
+        <p style="color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 8px;">Currently Clocked In</p>
+        ${clockedInCards}`
+        : ""}
+    </div>`
+      : "";
+
+  const dailyLogsSection = `
+    <div style="margin-bottom:32px;">
+      ${sectionHeader("Daily Logs", data.dailyLogsToday.length, "#60a5fa")}
+      ${data.dailyLogsToday.length > 0
+        ? data.dailyLogsToday
+            .map(
+              (l) => `
+        <div style="background:#0f1f3d;border:1px solid #1e3a5f;border-radius:10px;padding:14px 18px;margin-bottom:8px;">
+          <p style="color:#f1f5f9;font-size:13px;font-weight:600;margin:0 0 3px;">✅ ${l.job_name}</p>
+          <p style="color:#64748b;font-size:12px;margin:0;">by ${l.crew_user}</p>
+        </div>`,
+            )
+            .join("")
+        : `<div style="background:#0f1f3d;border:1px solid #1e3a5f;border-radius:10px;padding:20px;text-align:center;"><p style="color:#334155;font-size:13px;margin:0;">No logs submitted today</p></div>`}
+      ${data.activeJobsMissingLogs.length > 0
+        ? `
+        <div style="margin-top:12px;background:#0c1a0c;border:1px solid #16a34a30;border-radius:10px;padding:14px 18px;">
+          <p style="color:#86efac;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 8px;">Missing Logs (${data.activeJobsMissingLogs.length} Active Jobs)</p>
+          ${data.activeJobsMissingLogs
+            .map(
+              (j) => `
+            <p style="color:#4ade80;font-size:12px;margin:4px 0;">📋 ${j.job_name}</p>`,
+            )
+            .join("")}
+        </div>`
+        : ""}
+    </div>`;
+
+  const weeklySummarySection = `
+    <div style="margin-bottom:32px;background:linear-gradient(135deg,#0f1f3d,#0a1628);border:1px solid #1e3a5f;border-radius:12px;padding:20px 24px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+        <h2 style="color:#e2e8f0;font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin:0;">Weekly Summary</h2>
+        <span style="color:#475569;font-size:11px;">${data.weeklySummary.weekRange}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+        <div style="background:#060f1e;border-radius:8px;padding:12px 16px;">
+          <p style="color:#475569;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 4px;">Requests Opened</p>
+          <p style="color:#E8C84A;font-size:24px;font-weight:800;margin:0;">${data.weeklySummary.requestsOpened}</p>
+        </div>
+        <div style="background:#060f1e;border-radius:8px;padding:12px 16px;">
+          <p style="color:#475569;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 4px;">Requests Completed</p>
+          <p style="color:#34d399;font-size:24px;font-weight:800;margin:0;">${data.weeklySummary.requestsCompleted}</p>
+        </div>
+        <div style="background:#060f1e;border-radius:8px;padding:12px 16px;">
+          <p style="color:#475569;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 4px;">Daily Logs This Week</p>
+          <p style="color:#60a5fa;font-size:24px;font-weight:800;margin:0;">${data.weeklySummary.dailyLogsSubmitted}</p>
+        </div>
+        <div style="background:#060f1e;border-radius:8px;padding:12px 16px;">
+          <p style="color:#475569;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 4px;">Active Jobs</p>
+          <p style="color:#E8C84A;font-size:24px;font-weight:800;margin:0;">${data.weeklySummary.activeJobCount}</p>
+        </div>
+      </div>
+    </div>`;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -318,6 +556,10 @@ export function buildDigestHtml(data: DigestData, sentAt: string): string {
           ? jobCards
           : `<div style="background:#0f1f3d;border:1px solid #1e3a5f;border-radius:10px;padding:20px;text-align:center;"><p style="color:#334155;font-size:13px;margin:0;">No active jobs</p></div>`}
       </div>
+
+      ${timeAttendanceSection}
+      ${dailyLogsSection}
+      ${weeklySummarySection}
 
       ${data.expiringLicenses.length > 0
         ? `<div style="margin-bottom:32px;">

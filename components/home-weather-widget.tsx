@@ -387,7 +387,7 @@ export function HomeWeatherWidget({
         <div
           className={[
             "absolute top-[calc(100%+0.35rem)] z-[110] w-[min(100vw-2rem,20rem)] origin-top overflow-hidden rounded-xl border border-white/12 bg-[#071422] shadow-2xl ring-1 ring-[#E8C84A]/15 transition-[max-height,opacity] duration-200 ease-out",
-            "left-0 sm:left-1/2 sm:right-auto sm:-translate-x-1/2",
+            "left-1/2 -translate-x-1/2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2",
             expanded ? "max-h-[85vh] opacity-100" : "pointer-events-none max-h-0 opacity-0",
           ].join(" ")}
           role="dialog"
@@ -452,7 +452,7 @@ export function HomeWeatherWidget({
           role="region"
           aria-labelledby="weather-drawer-trigger"
           className={[
-            "mt-2 overflow-hidden rounded-xl border border-white/12 bg-[#071422] shadow-inner ring-1 ring-[#E8C84A]/10 transition-[max-height,opacity] duration-200",
+            "mt-2 w-full overflow-hidden rounded-xl border border-white/12 bg-[#071422] shadow-inner ring-1 ring-[#E8C84A]/10 transition-[max-height,opacity] duration-200",
             expanded ? "max-h-[min(55vh,28rem)] opacity-100" : "max-h-0 opacity-0",
           ].join(" ")}
           aria-hidden={!expanded}
@@ -545,7 +545,7 @@ export function HomeWeatherWidget({
           "absolute top-[calc(100%+0.35rem)] w-[min(100vw-2rem,20rem)] origin-top overflow-hidden rounded-xl border border-white/12 bg-[#071422] shadow-2xl ring-1 ring-[#E8C84A]/15 transition-[max-height,opacity] duration-200 ease-out",
           isHeader
             ? "left-1/2 right-auto -translate-x-1/2"
-            : "right-0",
+            : "right-0 left-auto",
           expanded ? "max-h-[85vh] opacity-100" : "pointer-events-none max-h-0 opacity-0",
         ].join(" ")}
         role="dialog"

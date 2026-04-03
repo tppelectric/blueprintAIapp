@@ -183,6 +183,21 @@ function MarketingRequestMiniStepper({
   );
 }
 
+function requestCardLeftBorderColor(r: InternalRequestRow): string {
+  if (r.priority === "emergency") return "border-l-red-500/70";
+  if (r.priority === "urgent") return "border-l-orange-400/70";
+  if (r.status === "completed") return "border-l-emerald-400/60";
+  if (r.status === "declined" || r.status === "cancelled") return "border-l-zinc-500/50";
+  if (
+    r.status === "in_review" ||
+    r.status === "approved" ||
+    r.status === "in_progress" ||
+    r.status === "waiting"
+  ) return "border-l-blue-400/60";
+  if (r.status === "new") return "border-l-white/40";
+  return "border-l-[#E8C84A]/40";
+}
+
 export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
   const { profile, loading, role } = useUserRole();
   const { showToast } = useAppToast();
@@ -447,7 +462,7 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
               return (
                 <li key={r.id}>
                   {isMarketing ? (
-                    <div className="rounded-lg border border-white/10 border-l-2 border-l-[#E8C84A]/40 bg-white/[0.04] px-3 py-2 text-left transition hover:border-[#E8C84A]/35">
+                    <div className={`rounded-lg border border-white/10 border-l-2 ${requestCardLeftBorderColor(r)} bg-white/[0.04] px-3 py-2 text-left transition hover:border-[#E8C84A]/35`}>
                       <button
                         type="button"
                         className="w-full cursor-pointer text-left"

@@ -132,145 +132,213 @@ export function buildDigestHtml(data: DigestData, sentAt: string): string {
   const priorityColor = (p: string) => {
     if (p === "emergency") return "#ef4444";
     if (p === "urgent") return "#f97316";
-    if (p === "low") return "#6b7280";
-    return "#3b82f6";
+    if (p === "low") return "#94a3b8";
+    return "#60a5fa";
   };
 
-  const statusLabel = (s: string) => s.replace(/_/g, " ");
+  const priorityBg = (p: string) => {
+    if (p === "emergency") return "#450a0a";
+    if (p === "urgent") return "#431407";
+    if (p === "low") return "#1e293b";
+    return "#0c1a2e";
+  };
 
-  const requestRows = data.openRequests
+  const statusLabel = (s: string) =>
+    s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+  const reqLabel = (r: { request_number: string | null; id: string }) =>
+    r.request_number?.trim() ? r.request_number : `REQ-${r.id.slice(0, 6).toUpperCase()}`;
+
+  const formatDate = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        timeZone: "America/New_York",
+      });
+    } catch {
+      return iso;
+    }
+  };
+
+  const typeIcon = (t: string) => {
+    const map: Record<string, string> = {
+      vehicle_maintenance: "🚛",
+      vehicle_request: "🚗",
+      tool_repair: "🔧",
+      tool_request: "🔑",
+      material_order: "📦",
+      document_request: "📄",
+      license_request: "🪪",
+      expense_reimbursement: "💰",
+      safety_incident: "⚠️",
+      hr_admin: "👷",
+      app_support: "💻",
+      other: "📋",
+    };
+    return map[t] ?? "📋";
+  };
+
+  const urgentBanner =
+    data.urgentRequests.length > 0
+      ? `
+    <div style="background:linear-gradient(135deg,#450a0a,#7f1d1d);border:1px solid #ef444460;border-radius:12px;padding:20px 24px;margin-bottom:28px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+        <span style="font-size:20px;">🚨</span>
+        <span style="color:#fca5a5;font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">
+          ${data.urgentRequests.length} Urgent / Emergency Request${data.urgentRequests.length > 1 ? "s" : ""} Require Attention
+        </span>
+      </div>
+      ${data.urgentRequests
+        .map(
+          (r) => `
+        <div style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-top:1px solid #ef444425;">
+          <span style="color:${priorityColor(r.priority)};font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;white-space:nowrap;padding-top:1px;">${r.priority}</span>
+          <span style="color:#fecaca;font-size:13px;line-height:1.5;">${r.title}</span>
+        </div>`
+        )
+        .join("")}
+    </div>`
+      : "";
+
+  const requestCards = data.openRequests
     .map(
       (r) => `
-      <tr>
-        <td style="padding:8px;border-bottom:1px solid #1e293b;color:#94a3b8;font-size:12px;">${r.request_number}</td>
-        <td style="padding:8px;border-bottom:1px solid #1e293b;color:#f1f5f9;font-size:13px;">${r.title}</td>
-        <td style="padding:8px;border-bottom:1px solid #1e293b;">
-          <span style="color:${priorityColor(r.priority)};font-size:12px;font-weight:600;text-transform:uppercase;">${r.priority}</span>
-        </td>
-        <td style="padding:8px;border-bottom:1px solid #1e293b;color:#94a3b8;font-size:12px;">${statusLabel(r.status)}</td>
-        <td style="padding:8px;border-bottom:1px solid #1e293b;color:#94a3b8;font-size:12px;">${r.submitted_by_name}</td>
-      </tr>`
+    <div style="background:#0f1f3d;border:1px solid #1e3a5f;border-radius:10px;padding:16px 20px;margin-bottom:10px;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+            <span style="font-size:15px;">${typeIcon(r.request_type)}</span>
+            <span style="color:#94a3b8;font-size:11px;font-family:monospace;letter-spacing:0.04em;">${reqLabel(r)}</span>
+            <span style="background:${priorityBg(r.priority)};color:${priorityColor(r.priority)};font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:2px 8px;border-radius:999px;border:1px solid ${priorityColor(r.priority)}40;">${r.priority}</span>
+          </div>
+          <p style="color:#f1f5f9;font-size:14px;font-weight:600;margin:0 0 6px;line-height:1.4;">${r.title}</p>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <span style="color:#64748b;font-size:11px;">by ${r.submitted_by_name}</span>
+            <span style="color:#334155;font-size:11px;">·</span>
+            <span style="color:#64748b;font-size:11px;">${formatDate(r.created_at)}</span>
+          </div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <span style="background:#1e293b;color:#94a3b8;font-size:11px;font-weight:600;padding:4px 10px;border-radius:6px;white-space:nowrap;">${statusLabel(r.status)}</span>
+        </div>
+      </div>
+    </div>`
     )
     .join("");
 
-  const jobRows = data.activeJobs
+  const jobCards = data.activeJobs
     .map(
       (j) => `
-      <tr>
-        <td style="padding:8px;border-bottom:1px solid #1e293b;color:#94a3b8;font-size:12px;">${j.job_number}</td>
-        <td style="padding:8px;border-bottom:1px solid #1e293b;color:#f1f5f9;font-size:13px;">${j.job_name}</td>
-        <td style="padding:8px;border-bottom:1px solid #1e293b;color:#94a3b8;font-size:12px;">${j.customer_name}</td>
-      </tr>`
+    <div style="background:#0f1f3d;border:1px solid #1e3a5f;border-radius:10px;padding:16px 20px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div>
+          <p style="color:#f1f5f9;font-size:14px;font-weight:600;margin:0 0 4px;">${j.job_name}</p>
+          ${j.customer_name ? `<p style="color:#64748b;font-size:12px;margin:0;">${j.customer_name}</p>` : ""}
+        </div>
+        <span style="background:#1e293b;color:#94a3b8;font-size:11px;font-weight:600;padding:4px 10px;border-radius:6px;white-space:nowrap;">${j.status}</span>
+      </div>
+    </div>`
     )
     .join("");
 
-  const licenseRows = data.expiringLicenses
+  const licenseCards = data.expiringLicenses
     .map((l) => {
       const days = Math.ceil(
         (new Date(l.expiry_date).getTime() - Date.now()) / 86400000
       );
       const color = days <= 30 ? "#ef4444" : "#f97316";
+      const bg = days <= 30 ? "#450a0a" : "#431407";
       return `
-      <tr>
-        <td style="padding:8px;border-bottom:1px solid #1e293b;color:#f1f5f9;font-size:13px;">${l.license_name}</td>
-        <td style="padding:8px;border-bottom:1px solid #1e293b;color:#94a3b8;font-size:12px;">${l.holder_name}</td>
-        <td style="padding:8px;border-bottom:1px solid #1e293b;">
-          <span style="color:${color};font-weight:600;font-size:12px;">${days}d (${l.expiry_date})</span>
-        </td>
-      </tr>`;
+    <div style="background:#0f1f3d;border:1px solid #1e3a5f;border-radius:10px;padding:16px 20px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div>
+          <p style="color:#f1f5f9;font-size:14px;font-weight:600;margin:0 0 4px;">🪪 ${l.license_name}</p>
+          <p style="color:#64748b;font-size:12px;margin:0;">${l.holder_name}</p>
+        </div>
+        <div style="text-align:right;">
+          <span style="background:${bg};color:${color};font-size:11px;font-weight:700;padding:4px 10px;border-radius:6px;white-space:nowrap;border:1px solid ${color}40;">${days}d left</span>
+          <p style="color:#475569;font-size:11px;margin:4px 0 0;text-align:right;">${l.expiry_date}</p>
+        </div>
+      </div>
+    </div>`;
     })
     .join("");
 
-  const urgentBanner =
-    data.urgentRequests.length > 0
-      ? `<div style="background:#7f1d1d;border:1px solid #ef4444;border-radius:8px;padding:12px 16px;margin-bottom:24px;">
-          <p style="color:#fca5a5;font-weight:700;margin:0 0 4px;">⚠️ ${data.urgentRequests.length} URGENT / EMERGENCY REQUEST${data.urgentRequests.length > 1 ? "S" : ""}</p>
-          ${data.urgentRequests.map((r) => `<p style="color:#fecaca;font-size:13px;margin:2px 0;">• ${r.request_number} — ${r.title}</p>`).join("")}
-        </div>`
-      : "";
+  const sectionHeader = (title: string, count: number, countColor = "#E8C84A") => `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <h2 style="color:#e2e8f0;font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin:0;">${title}</h2>
+      <span style="background:#E8C84A18;color:${countColor};font-size:12px;font-weight:700;padding:2px 10px;border-radius:999px;border:1px solid ${countColor}30;">${count}</span>
+    </div>`;
 
   return `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#0a1628;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-  <div style="max-width:680px;margin:0 auto;padding:32px 16px;">
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Blueprint AI Digest</title>
+</head>
+<body style="margin:0;padding:0;background:#060f1e;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+  <div style="max-width:640px;margin:0 auto;padding:0 0 48px;">
 
-    <div style="margin-bottom:24px;">
-      <h1 style="color:#E8C84A;font-size:22px;font-weight:700;margin:0 0 4px;">Blueprint AI</h1>
-      <p style="color:#64748b;font-size:13px;margin:0;">Daily digest · ${sentAt}</p>
+    <!-- Header -->
+    <div style="padding:36px 32px 28px;border-bottom:1px solid #0f2040;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <div style="width:8px;height:8px;border-radius:50%;background:#E8C84A;box-shadow:0 0 8px #E8C84A80;"></div>
+            <span style="color:#E8C84A;font-size:18px;font-weight:800;letter-spacing:-0.01em;">Blueprint AI</span>
+          </div>
+          <p style="color:#334155;font-size:12px;margin:0;letter-spacing:0.04em;text-transform:uppercase;">TPP Electrical Contractors</p>
+        </div>
+        <div style="text-align:right;">
+          <p style="color:#475569;font-size:11px;margin:0;letter-spacing:0.03em;">DAILY DIGEST</p>
+          <p style="color:#64748b;font-size:12px;margin:4px 0 0;">${sentAt}</p>
+        </div>
+      </div>
     </div>
 
-    ${urgentBanner}
+    <!-- Body -->
+    <div style="padding:28px 32px 0;">
 
-    <!-- Open Requests -->
-    <div style="background:#0f1f3d;border:1px solid #1e3a5f;border-radius:12px;padding:20px;margin-bottom:20px;">
-      <h2 style="color:#f1f5f9;font-size:15px;font-weight:600;margin:0 0 16px;">
-        Open Requests <span style="color:#E8C84A;">(${data.openRequests.length})</span>
-      </h2>
-      ${
-        data.openRequests.length > 0
-          ? `<table style="width:100%;border-collapse:collapse;">
-              <thead>
-                <tr>
-                  <th style="text-align:left;padding:6px 8px;color:#475569;font-size:11px;text-transform:uppercase;">#</th>
-                  <th style="text-align:left;padding:6px 8px;color:#475569;font-size:11px;text-transform:uppercase;">Title</th>
-                  <th style="text-align:left;padding:6px 8px;color:#475569;font-size:11px;text-transform:uppercase;">Priority</th>
-                  <th style="text-align:left;padding:6px 8px;color:#475569;font-size:11px;text-transform:uppercase;">Status</th>
-                  <th style="text-align:left;padding:6px 8px;color:#475569;font-size:11px;text-transform:uppercase;">Submitted by</th>
-                </tr>
-              </thead>
-              <tbody>${requestRows}</tbody>
-            </table>`
-          : `<p style="color:#475569;font-size:13px;margin:0;">No open requests.</p>`
-      }
-    </div>
+      ${urgentBanner}
 
-    <!-- Active Jobs -->
-    <div style="background:#0f1f3d;border:1px solid #1e3a5f;border-radius:12px;padding:20px;margin-bottom:20px;">
-      <h2 style="color:#f1f5f9;font-size:15px;font-weight:600;margin:0 0 16px;">
-        Active Jobs <span style="color:#E8C84A;">(${data.activeJobs.length})</span>
-      </h2>
-      ${
-        data.activeJobs.length > 0
-          ? `<table style="width:100%;border-collapse:collapse;">
-              <thead>
-                <tr>
-                  <th style="text-align:left;padding:6px 8px;color:#475569;font-size:11px;text-transform:uppercase;">#</th>
-                  <th style="text-align:left;padding:6px 8px;color:#475569;font-size:11px;text-transform:uppercase;">Job</th>
-                  <th style="text-align:left;padding:6px 8px;color:#475569;font-size:11px;text-transform:uppercase;">Customer</th>
-                </tr>
-              </thead>
-              <tbody>${jobRows}</tbody>
-            </table>`
-          : `<p style="color:#475569;font-size:13px;margin:0;">No active jobs.</p>`
-      }
-    </div>
+      <!-- Open Requests -->
+      <div style="margin-bottom:32px;">
+        ${sectionHeader("Open Requests", data.openRequests.length)}
+        ${data.openRequests.length > 0
+          ? requestCards
+          : `<div style="background:#0f1f3d;border:1px solid #1e3a5f;border-radius:10px;padding:20px;text-align:center;"><p style="color:#334155;font-size:13px;margin:0;">No open requests</p></div>`}
+      </div>
 
-    <!-- Expiring Licenses -->
-    ${
-      data.expiringLicenses.length > 0
-        ? `<div style="background:#0f1f3d;border:1px solid #1e3a5f;border-radius:12px;padding:20px;margin-bottom:20px;">
-            <h2 style="color:#f1f5f9;font-size:15px;font-weight:600;margin:0 0 16px;">
-              Expiring Licenses <span style="color:#f97316;">(${data.expiringLicenses.length})</span>
-            </h2>
-            <table style="width:100%;border-collapse:collapse;">
-              <thead>
-                <tr>
-                  <th style="text-align:left;padding:6px 8px;color:#475569;font-size:11px;text-transform:uppercase;">License</th>
-                  <th style="text-align:left;padding:6px 8px;color:#475569;font-size:11px;text-transform:uppercase;">Holder</th>
-                  <th style="text-align:left;padding:6px 8px;color:#475569;font-size:11px;text-transform:uppercase;">Expires</th>
-                </tr>
-              </thead>
-              <tbody>${licenseRows}</tbody>
-            </table>
+      <!-- Active Jobs -->
+      <div style="margin-bottom:32px;">
+        ${sectionHeader("Active Jobs", data.activeJobs.length)}
+        ${data.activeJobs.length > 0
+          ? jobCards
+          : `<div style="background:#0f1f3d;border:1px solid #1e3a5f;border-radius:10px;padding:20px;text-align:center;"><p style="color:#334155;font-size:13px;margin:0;">No active jobs</p></div>`}
+      </div>
+
+      ${data.expiringLicenses.length > 0
+        ? `<div style="margin-bottom:32px;">
+            ${sectionHeader("Expiring Licenses", data.expiringLicenses.length, "#f97316")}
+            ${licenseCards}
           </div>`
-        : ""
-    }
+        : ""}
 
-    <div style="margin-top:24px;padding-top:16px;border-top:1px solid #1e293b;">
-      <a href="https://blueprint-a-iapp.vercel.app" style="color:#E8C84A;font-size:13px;text-decoration:none;">Open Blueprint AI →</a>
+      <!-- Footer -->
+      <div style="border-top:1px solid #0f2040;padding-top:24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <a href="https://blueprint-a-iapp.vercel.app" style="color:#E8C84A;font-size:13px;font-weight:600;text-decoration:none;letter-spacing:0.02em;">
+          Open Blueprint AI →
+        </a>
+        <a href="https://blueprint-a-iapp.vercel.app/settings/integrations" style="color:#334155;font-size:11px;text-decoration:none;">
+          Manage digest recipients
+        </a>
+      </div>
+
     </div>
-
   </div>
 </body>
 </html>`;

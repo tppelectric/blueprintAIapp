@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { CSSProperties } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppToast } from "@/components/toast-provider";
 import { useUserRole } from "@/hooks/use-user-role";
 import { mapInternalRequestRow } from "@/lib/internal-request-mappers";
@@ -36,6 +36,40 @@ const PIPELINE_FILTER_STATUSES = new Set<InternalRequestRow["status"]>([
   "in_progress",
   "waiting",
 ]);
+
+const ALL_REQUEST_STATUSES: InternalRequestRow["status"][] = [
+  "new",
+  "in_review",
+  "approved",
+  "in_progress",
+  "waiting",
+  "completed",
+  "declined",
+  "cancelled",
+];
+
+function isImageStoragePath(path: string): boolean {
+  return /\.(jpe?g|png|gif|webp)$/i.test(path);
+}
+
+function isPdfStoragePath(path: string): boolean {
+  return path.toLowerCase().endsWith(".pdf");
+}
+
+function attachmentDisplayName(path: string): string {
+  const seg = path.split("/").pop() ?? path;
+  const dash = seg.indexOf("-");
+  return dash >= 0 ? seg.slice(dash + 1) : seg;
+}
+
+function acceptInternalRequestUploadFiles(files: File[]): File[] {
+  return files.filter((f) => {
+    if (f.type.startsWith("image/")) return true;
+    if (f.type === "application/pdf") return true;
+    if (!f.type && /\.(jpe?g|png|gif|webp|pdf)$/i.test(f.name)) return true;
+    return false;
+  });
+}
 
 const MARKETING_TABS: { id: string; label: string }[] = [
   { id: "all", label: "All" },
@@ -206,6 +240,39 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
   const [marketingFilter, setMarketingFilter] = useState<string>("all");
   const [refreshTick, setRefreshTick] = useState(0);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [jobs, setJobs] = useState<
+    { id: string; job_name: string; job_number: string }[]
+  >([]);
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>(
+    {},
+  );
+  const [expandedSignedUrls, setExpandedSignedUrls] = useState<
+    Record<string, string>
+  >({});
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
+  const [dragOverRequestId, setDragOverRequestId] = useState<string | null>(
+    null,
+  );
+  const [fileUploadTargetId, setFileUploadTargetId] = useState<string | null>(
+    null,
+  );
+  const [statusBusyId, setStatusBusyId] = useState<string | null>(null);
+  const [commentBusyId, setCommentBusyId] = useState<string | null>(null);
+  const [jobBusyId, setJobBusyId] = useState<string | null>(null);
+  const [pendingStatusById, setPendingStatusById] = useState<
+    Record<string, InternalRequestRow["status"]>
+  >({});
+  const [commentDraftById, setCommentDraftById] = useState<
+    Record<string, string>
+  >({});
+  const [commentInternalById, setCommentInternalById] = useState<
+    Record<string, boolean>
+  >({});
+  const hiddenFileInputRef = useRef<HTMLInputElement>(null);
 
   const isMarketing = surface === "marketing";
   const isAdminRole = role === "admin" || role === "super_admin";
@@ -242,6 +309,85 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
       cancelled = true;
     };
   }, [profile?.id, loading, surface, refreshTick]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const sb = createBrowserClient();
+        const { data, error } = await sb
+          .from("jobs")
+          .select("id,job_name,job_number")
+          .order("job_name")
+          .limit(300);
+        if (cancelled || error) return;
+        setJobs(
+          (data ?? []) as {
+            id: string;
+            job_name: string;
+            job_number: string;
+          }[],
+        );
+      } catch {
+        if (!cancelled) setJobs([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const next: Record<string, InternalRequestRow["status"]> = {};
+    for (const id of expandedIds) {
+      const row = rows.find((x) => x.id === id);
+      if (row) next[id] = row.status;
+    }
+    setPendingStatusById(next);
+  }, [expandedIds, rows]);
+
+  useEffect(() => {
+    if (expandedIds.size === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const sb = createBrowserClient();
+      for (const id of expandedIds) {
+        if (cancelled) return;
+        const row = rows.find((x) => x.id === id);
+        if (!row) continue;
+
+        const { count, error: cErr } = await sb
+          .from("request_comments")
+          .select("id", { count: "exact", head: true })
+          .eq("request_id", id);
+        if (!cancelled && !cErr) {
+          setCommentCounts((prev) => ({
+            ...prev,
+            [id]: count ?? 0,
+          }));
+        }
+
+        for (const path of row.photos ?? []) {
+          if (cancelled) return;
+          if (!isImageStoragePath(path) && !isPdfStoragePath(path)) continue;
+          if (expandedSignedUrls[path]) continue;
+          const { data, error: sErr } = await sb.storage
+            .from("internal-request-files")
+            .createSignedUrl(path, 3600);
+          if (!cancelled && !sErr && data?.signedUrl) {
+            setExpandedSignedUrls((prev) =>
+              prev[path] === data.signedUrl
+                ? prev
+                : { ...prev, [path]: data.signedUrl },
+            );
+          }
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [expandedIds, rows, refreshTick, expandedSignedUrls]);
 
   const tabCounts = useMemo(() => {
     return {
@@ -310,6 +456,156 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
       });
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const saveJobId = async (requestId: string, jobId: string | null) => {
+    setJobBusyId(requestId);
+    try {
+      const sb = createBrowserClient();
+      const { error } = await sb
+        .from("internal_requests")
+        .update({ job_id: jobId })
+        .eq("id", requestId);
+      if (error) throw error;
+      setRefreshTick((t) => t + 1);
+    } catch (e) {
+      showToast({
+        message: e instanceof Error ? e.message : "Could not update job link.",
+        variant: "error",
+      });
+    } finally {
+      setJobBusyId(null);
+    }
+  };
+
+  const applyStatusUpdate = async (
+    requestId: string,
+    newStatus: InternalRequestRow["status"],
+  ) => {
+    setStatusBusyId(requestId);
+    try {
+      const sb = createBrowserClient();
+      const row = rows.find((x) => x.id === requestId);
+      const wasTerminal = row ? isTerminalStatus(row.status) : false;
+      const nowTerminal = isTerminalStatus(newStatus);
+      const nowTerminalResolved =
+        newStatus === "completed" || newStatus === "declined";
+      const payload: {
+        status: InternalRequestRow["status"];
+        updated_at: string;
+        resolved_at?: string | null;
+      } = {
+        status: newStatus,
+        updated_at: new Date().toISOString(),
+      };
+      if (nowTerminalResolved) {
+        payload.resolved_at = new Date().toISOString();
+      } else if (wasTerminal && !nowTerminal) {
+        payload.resolved_at = null;
+      }
+      const { error } = await sb
+        .from("internal_requests")
+        .update(payload)
+        .eq("id", requestId);
+      if (error) throw error;
+      showToast({ message: "Status updated.", variant: "success" });
+      setRefreshTick((t) => t + 1);
+    } catch (e) {
+      showToast({
+        message: e instanceof Error ? e.message : "Status update failed.",
+        variant: "error",
+      });
+    } finally {
+      setStatusBusyId(null);
+    }
+  };
+
+  const postComment = async (requestId: string) => {
+    const text = (commentDraftById[requestId] ?? "").trim();
+    if (!text || !profile?.id) return;
+    setCommentBusyId(requestId);
+    try {
+      const sb = createBrowserClient();
+      const internal = Boolean(
+        isAdminRole && commentInternalById[requestId],
+      );
+      const { error } = await sb.from("request_comments").insert({
+        request_id: requestId,
+        author_id: profile.id,
+        comment: text,
+        is_internal: internal,
+      });
+      if (error) throw error;
+      setCommentDraftById((p) => ({ ...p, [requestId]: "" }));
+      showToast({ message: "Comment added.", variant: "success" });
+      setRefreshTick((t) => t + 1);
+    } catch (e) {
+      showToast({
+        message: e instanceof Error ? e.message : "Could not post comment.",
+        variant: "error",
+      });
+    } finally {
+      setCommentBusyId(null);
+    }
+  };
+
+  const openFilePickerForRequest = (requestId: string) => {
+    setFileUploadTargetId(requestId);
+    queueMicrotask(() => hiddenFileInputRef.current?.click());
+  };
+
+  const runUploadForRequest = async (requestId: string, files: FileList) => {
+    const allowed = acceptInternalRequestUploadFiles(Array.from(files));
+    if (allowed.length === 0) {
+      showToast({
+        message: "Only images and PDF files are allowed.",
+        variant: "error",
+      });
+      return;
+    }
+    setUploadingId(requestId);
+    setUploadProgress({ current: 0, total: allowed.length });
+    try {
+      const sb = createBrowserClient();
+      const newPaths: string[] = [];
+      for (let i = 0; i < allowed.length; i++) {
+        const file = allowed[i];
+        setUploadProgress({ current: i + 1, total: allowed.length });
+        const safe = file.name.replace(/[^\w.\-]+/g, "_").slice(0, 120);
+        const path = `requests/${requestId}/${crypto.randomUUID()}-${safe}`;
+        const { error: upErr } = await sb.storage
+          .from("internal-request-files")
+          .upload(path, file, {
+            contentType: file.type || "application/octet-stream",
+          });
+        if (upErr) throw upErr;
+        newPaths.push(path);
+      }
+      const { data: existing, error: fetchErr } = await sb
+        .from("internal_requests")
+        .select("photos")
+        .eq("id", requestId)
+        .single();
+      if (fetchErr) throw fetchErr;
+      const prevPhotos = Array.isArray(existing?.photos)
+        ? (existing!.photos as unknown[]).map((x) => String(x))
+        : [];
+      const { error: rowErr } = await sb
+        .from("internal_requests")
+        .update({ photos: [...prevPhotos, ...newPaths] })
+        .eq("id", requestId);
+      if (rowErr) throw rowErr;
+      showToast({ message: "Files attached.", variant: "success" });
+      setRefreshTick((t) => t + 1);
+    } catch (e) {
+      showToast({
+        message: e instanceof Error ? e.message : "Upload failed.",
+        variant: "error",
+      });
+    } finally {
+      setUploadingId(null);
+      setUploadProgress(null);
     }
   };
 
@@ -580,6 +876,301 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
                                 </button>
                               </div>
                             ) : null}
+                            {(() => {
+                              const canManageJobLink =
+                                isAdminRole ||
+                                (profile?.id === r.submitted_by &&
+                                  r.status === "new");
+                              const linkedJob = r.job_id
+                                ? jobs.find((j) => j.id === r.job_id)
+                                : null;
+                              return canManageJobLink ? (
+                                <div className="mt-2">
+                                  {r.job_id ? (
+                                    <div className="flex flex-wrap items-center gap-2 text-xs text-white/75">
+                                      <span className="min-w-0 truncate">
+                                        Job:{" "}
+                                        {linkedJob
+                                          ? `${linkedJob.job_name} (#${linkedJob.job_number})`
+                                          : r.job_id}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        disabled={jobBusyId === r.id}
+                                        className="shrink-0 rounded border border-white/15 px-1.5 py-0.5 text-[10px] font-bold text-white/70 transition hover:bg-white/10 disabled:opacity-50"
+                                        title="Clear job link"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          void saveJobId(r.id, null);
+                                        }}
+                                      >
+                                        ✕
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <select
+                                      key={`job-sel-${r.id}`}
+                                      disabled={jobBusyId === r.id}
+                                      defaultValue=""
+                                      className="w-full max-w-full rounded-lg border border-white/15 bg-black/30 px-2 py-1.5 text-xs text-white/85 outline-none focus:border-[#E8C84A]/50"
+                                      onClick={(e) => e.stopPropagation()}
+                                      onChange={(e) => {
+                                        e.stopPropagation();
+                                        const v = e.target.value;
+                                        if (!v) return;
+                                        void saveJobId(r.id, v);
+                                        e.target.value = "";
+                                      }}
+                                    >
+                                      <option value="" disabled>
+                                        Link to job…
+                                      </option>
+                                      {jobs.map((j) => (
+                                        <option key={j.id} value={j.id}>
+                                          {j.job_name} (#{j.job_number})
+                                        </option>
+                                      ))}
+                                    </select>
+                                  )}
+                                </div>
+                              ) : null;
+                            })()}
+                            {isAdminRole ? (
+                              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/75">
+                                <span className="shrink-0 font-medium text-white/60">
+                                  Status:
+                                </span>
+                                <select
+                                  value={
+                                    pendingStatusById[r.id] ?? r.status
+                                  }
+                                  disabled={statusBusyId === r.id}
+                                  className="min-w-0 flex-1 rounded-lg border border-white/15 bg-black/30 px-2 py-1.5 text-xs text-white/85 outline-none focus:border-[#E8C84A]/50 sm:max-w-[11rem]"
+                                  onClick={(e) => e.stopPropagation()}
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    const v = e.target
+                                      .value as InternalRequestRow["status"];
+                                    setPendingStatusById((p) => ({
+                                      ...p,
+                                      [r.id]: v,
+                                    }));
+                                  }}
+                                >
+                                  {ALL_REQUEST_STATUSES.map((st) => (
+                                    <option key={st} value={st}>
+                                      {statusLabel(st)}
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  disabled={statusBusyId === r.id}
+                                  className="shrink-0 rounded-lg bg-[#E8C84A] px-2.5 py-1.5 text-[10px] font-bold text-[#0a1628] transition hover:bg-[#f0d56e] disabled:opacity-50"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const next =
+                                      pendingStatusById[r.id] ?? r.status;
+                                    void applyStatusUpdate(r.id, next);
+                                  }}
+                                >
+                                  {statusBusyId === r.id
+                                    ? "…"
+                                    : "Update"}
+                                </button>
+                              </div>
+                            ) : null}
+                            <div className="mt-2">
+                              <div className="flex flex-wrap items-center gap-1.5 text-xs text-white/60">
+                                <span aria-hidden>💬</span>
+                                <span className="rounded-full border border-white/15 bg-white/5 px-1.5 py-0 text-[10px] font-bold tabular-nums text-white/70">
+                                  {commentCounts[r.id] ?? 0}
+                                </span>
+                                <span>comments</span>
+                              </div>
+                              <textarea
+                                rows={2}
+                                value={commentDraftById[r.id] ?? ""}
+                                disabled={commentBusyId === r.id}
+                                placeholder="Add a comment…"
+                                className="mt-1.5 w-full resize-none rounded-lg border border-white/15 bg-black/30 px-2 py-1.5 text-xs text-white/90 placeholder:text-white/35 outline-none focus:border-[#E8C84A]/50"
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  setCommentDraftById((p) => ({
+                                    ...p,
+                                    [r.id]: e.target.value,
+                                  }));
+                                }}
+                              />
+                              {isAdminRole ? (
+                                <label
+                                  className="mt-1.5 flex cursor-pointer items-center gap-2 text-[10px] text-white/55"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(
+                                      commentInternalById[r.id],
+                                    )}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      setCommentInternalById((p) => ({
+                                        ...p,
+                                        [r.id]: e.target.checked,
+                                      }));
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="rounded border-white/30"
+                                  />
+                                  Internal note (admins only)
+                                </label>
+                              ) : null}
+                              <button
+                                type="button"
+                                disabled={commentBusyId === r.id}
+                                className="mt-1.5 rounded-lg bg-[#E8C84A] px-2.5 py-1 text-[10px] font-bold text-[#0a1628] transition hover:bg-[#f0d56e] disabled:opacity-50"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void postComment(r.id);
+                                }}
+                              >
+                                {commentBusyId === r.id
+                                  ? "Posting…"
+                                  : "Post"}
+                              </button>
+                            </div>
+                            {r.photos?.length ? (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {r.photos.map((path) => {
+                                  const url = expandedSignedUrls[path];
+                                  if (isImageStoragePath(path)) {
+                                    return url ? (
+                                      <a
+                                        key={path}
+                                        href={url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="block shrink-0 overflow-hidden rounded border border-white/15"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img
+                                          src={url}
+                                          alt=""
+                                          className="h-14 w-14 object-cover"
+                                        />
+                                      </a>
+                                    ) : (
+                                      <span
+                                        key={path}
+                                        className="flex h-14 w-14 items-center justify-center rounded border border-white/10 bg-white/5 text-[9px] text-white/40"
+                                      >
+                                        …
+                                      </span>
+                                    );
+                                  }
+                                  if (isPdfStoragePath(path)) {
+                                    const name = attachmentDisplayName(path);
+                                    return url ? (
+                                      <a
+                                        key={path}
+                                        href={url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex max-w-full items-center truncate rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[10px] text-white/75 hover:bg-white/10"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        📄 {name}
+                                      </a>
+                                    ) : (
+                                      <span
+                                        key={path}
+                                        className="inline-flex max-w-full truncate rounded-full border border-white/10 px-2 py-1 text-[10px] text-white/45"
+                                      >
+                                        📄 {name}
+                                      </span>
+                                    );
+                                  }
+                                  return null;
+                                })}
+                              </div>
+                            ) : null}
+                            <div
+                              className={`mt-2 cursor-pointer rounded-lg border border-dashed p-3 text-center text-xs transition ${
+                                dragOverRequestId === r.id
+                                  ? "border-[#E8C84A]/60 bg-[#E8C84A]/5 text-white/70"
+                                  : "border-white/20 text-white/45"
+                              }`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (uploadingId === r.id) return;
+                                openFilePickerForRequest(r.id);
+                              }}
+                              onKeyDown={(e) => {
+                                if (
+                                  e.key === "Enter" ||
+                                  e.key === " "
+                                ) {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  if (uploadingId === r.id) return;
+                                  openFilePickerForRequest(r.id);
+                                }
+                              }}
+                              role="button"
+                              tabIndex={0}
+                              onDragEnter={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setDragOverRequestId(r.id);
+                              }}
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                              }}
+                              onDragLeave={(e) => {
+                                e.stopPropagation();
+                                const next = e.relatedTarget as Node | null;
+                                if (
+                                  next &&
+                                  e.currentTarget.contains(next)
+                                ) {
+                                  return;
+                                }
+                                setDragOverRequestId((cur) =>
+                                  cur === r.id ? null : cur,
+                                );
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setDragOverRequestId(null);
+                                if (uploadingId === r.id) return;
+                                void runUploadForRequest(
+                                  r.id,
+                                  e.dataTransfer.files,
+                                );
+                              }}
+                            >
+                              {uploadingId === r.id && uploadProgress ? (
+                                <span className="text-white/70">
+                                  Uploading {uploadProgress.current}/
+                                  {uploadProgress.total}…
+                                </span>
+                              ) : uploadingId === r.id ? (
+                                <span className="text-white/70">
+                                  Uploading…
+                                </span>
+                              ) : (
+                                <>
+                                  Drop files or tap to attach
+                                  <span className="mt-0.5 block text-[10px] text-white/35">
+                                    Images or PDF
+                                  </span>
+                                </>
+                              )}
+                            </div>
                             <div className="mt-3">
                               <Link
                                 href={`/requests/${r.id}`}
@@ -622,6 +1213,23 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
           ) : null}
         </>
       )}
+      <input
+        ref={hiddenFileInputRef}
+        type="file"
+        accept="image/*,application/pdf"
+        multiple
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden
+        onChange={(e) => {
+          const id = fileUploadTargetId;
+          const list = e.target.files;
+          e.target.value = "";
+          if (!id || !list?.length) return;
+          void runUploadForRequest(id, list);
+          setFileUploadTargetId(null);
+        }}
+      />
     </div>
   );
 }

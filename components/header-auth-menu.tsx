@@ -107,6 +107,8 @@ export function HeaderAuthMenu() {
   const roleLabel =
     !roleLoading && role ? ROLE_LABELS[role] : roleLoading ? "…" : null;
   const showUserManagement = !roleLoading && role === "super_admin";
+  const showCrewManagement =
+    !roleLoading && (role === "admin" || role === "super_admin");
   const showSettings = !roleLoading && canManageIntegrations(role);
 
   const displayName = fullName?.trim() || email || "";
@@ -194,6 +196,16 @@ export function HeaderAuthMenu() {
             onClick={() => setOpen(false)}
           >
             User Management
+          </Link>
+        ) : null}
+        {showCrewManagement ? (
+          <Link
+            href="/admin/crews"
+            role="menuitem"
+            className="block px-3 py-2.5 text-sm font-medium text-white/90 transition-colors hover:bg-white/10"
+            onClick={() => setOpen(false)}
+          >
+            Crews
           </Link>
         ) : null}
         <button

@@ -55,6 +55,8 @@ export function HeaderToolsMenu({
   const ref = useRef<HTMLDivElement>(null);
 
   const showUserManagement = !roleLoading && role === "super_admin";
+  const showCrewManagement =
+    !roleLoading && (role === "admin" || role === "super_admin");
   const showSettings = !roleLoading && canManageIntegrations(role);
   const showLicenses = !roleLoading && canManageLicenses(role);
   const showRequestsQueue = !roleLoading && canViewAdminRequestQueue(role);
@@ -285,7 +287,7 @@ export function HeaderToolsMenu({
           All tools hub →
         </Link>
 
-        {showUserManagement || showSettings ? (
+        {showUserManagement || showSettings || showCrewManagement ? (
           <>
             <div className="mx-2 my-1 border-t border-white/10" />
             <p className={SECTION}>Admin</p>
@@ -293,10 +295,20 @@ export function HeaderToolsMenu({
               <Link
                 href="/admin/users"
                 role="menuitem"
-                className={rowClass(pathname.startsWith("/admin"))}
+                className={rowClass(pathname.startsWith("/admin/users"))}
                 onClick={() => setOpen(false)}
               >
                 User management
+              </Link>
+            ) : null}
+            {showCrewManagement ? (
+              <Link
+                href="/admin/crews"
+                role="menuitem"
+                className={rowClass(pathname.startsWith("/admin/crews"))}
+                onClick={() => setOpen(false)}
+              >
+                Crews
               </Link>
             ) : null}
             {showSettings ? (

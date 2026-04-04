@@ -10,6 +10,7 @@ const STATUS_KEYS = [
   "quoted",
   "on_hold",
   "completed",
+  "complete",
   "cancelled",
 ] as const;
 
@@ -22,6 +23,7 @@ function emptyCounts(): Record<StatusKey, number> {
     quoted: 0,
     on_hold: 0,
     completed: 0,
+    complete: 0,
     cancelled: 0,
   };
 }
@@ -76,8 +78,10 @@ export async function GET(request: NextRequest) {
   const counts = emptyCounts();
   for (const row of rows ?? []) {
     const s = (row as { status: string | null }).status;
-    if (s && s in counts) {
-      counts[s as StatusKey] += 1;
+    if (!s) continue;
+    const key = s.toLowerCase().replace(/\s+/g, "_") as StatusKey;
+    if (key in counts) {
+      counts[key] += 1;
     }
   }
 

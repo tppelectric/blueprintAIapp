@@ -538,7 +538,7 @@ export function CrewsAdminClient() {
     const filtered = filterAssignees(q, available);
 
     return (
-      <div className="relative mt-3" onClick={(e) => e.stopPropagation()}>
+      <div className="relative" onClick={(e) => e.stopPropagation()}>
         <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-white/40">
           Add technician
         </p>
@@ -850,6 +850,9 @@ export function CrewsAdminClient() {
                                 </span>
                               </div>
                             </label>
+                            <div className="sm:col-span-2">
+                              {renderMemberAddCombobox(c)}
+                            </div>
                             <label className="block text-xs text-white/60 sm:col-span-2">
                               Notes
                               <textarea
@@ -931,7 +934,6 @@ export function CrewsAdminClient() {
                                 );
                               })}
                             </ul>
-                            {renderMemberAddCombobox(c)}
                           </div>
                         </div>
                       ) : null}

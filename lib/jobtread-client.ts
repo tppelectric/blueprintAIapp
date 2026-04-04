@@ -360,7 +360,7 @@ export async function fetchJobtreadJobs(
 ): Promise<{ nodes: JobtreadJob[]; nextPage: string | null }> {
   try {
     const jobsArgs: Record<string, unknown> = {
-      size: 100,
+      size: 25,
       ...(page ? { page } : {}),
     };
 

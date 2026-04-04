@@ -248,6 +248,8 @@ function MobileMenuPortal({
   const [mounted, setMounted] = useState(false);
   const { role, loading: roleLoading, profile } = useUserRole();
   const showUserManagement = !roleLoading && role === "super_admin";
+  const showCrewManagement =
+    !roleLoading && (role === "admin" || role === "super_admin");
   const showIntegrations = !roleLoading && canManageIntegrations(role);
   const showLicenses = !roleLoading && canManageLicenses(role);
   const showRequestsQueue = !roleLoading && canViewAdminRequestQueue(role);
@@ -383,7 +385,10 @@ function MobileMenuPortal({
           <p className="mt-3 border-t border-white/10 px-3 pb-2 pt-3 text-[10px] font-bold uppercase tracking-wide text-[#E8C84A]/80">
             Team
           </p>
-          {showIntegrations || showUserManagement || showLicenses ? (
+          {showIntegrations ||
+          showUserManagement ||
+          showLicenses ||
+          showCrewManagement ? (
             <p className="mt-2 px-3 pb-1 text-[10px] font-bold uppercase tracking-wide text-white/45">
               Admin
             </p>
@@ -422,6 +427,18 @@ function MobileMenuPortal({
               <span className="inline-flex items-center gap-1.5">
                 <span aria-hidden>⚙️</span>
                 User Management
+              </span>
+            </Link>
+          ) : null}
+          {showCrewManagement ? (
+            <Link
+              href="/admin/crews"
+              className={linkClass(pathname.startsWith("/admin/crews"))}
+              onClick={onClose}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <span aria-hidden>👷</span>
+                Crews
               </span>
             </Link>
           ) : null}

@@ -242,6 +242,8 @@ export function DashboardClient() {
   const showReceiptsAdminCard =
     !roleLoading && canManageReceiptsAdmin(role);
   const showAdminUsersQuick = !roleLoading && role === "super_admin";
+  const showCrewManagementQuick =
+    !roleLoading && (role === "admin" || role === "super_admin");
   const showInternalRequestsAdmin =
     !roleLoading && canViewAdminRequestQueue(role);
   const [projects, setProjects] = useState<ProjectRow[]>([]);
@@ -678,6 +680,14 @@ export function DashboardClient() {
                           className="btn-secondary btn-h-11 w-full border-[#E8C84A]/35 text-[#E8C84A]"
                         >
                           User management
+                        </Link>
+                      ) : null}
+                      {showCrewManagementQuick ? (
+                        <Link
+                          href="/admin/crews"
+                          className="btn-secondary btn-h-11 w-full border-[#E8C84A]/35 text-[#E8C84A]"
+                        >
+                          Crew management
                         </Link>
                       ) : null}
                       <Link

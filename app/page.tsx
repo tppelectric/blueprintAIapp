@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { DashboardMyWorkCard } from "@/components/dashboard-my-work-card";
 import { HomeJobStatusSnapshot } from "@/components/home-job-status-snapshot";
+import { HomepageSyncWidget } from "@/components/homepage-sync-widget";
 import { HomeMarketingCommandCenter } from "@/components/home-marketing-command-center";
 import { HomeMarketingHeroToolsSection } from "@/components/home-marketing-hero-tools";
 import { HomeIntegrationsSettingsLink } from "@/components/home-integrations-settings-link";
@@ -227,6 +228,9 @@ export default function Home() {
         </div>
 
         <div className="mt-6 flex w-full max-w-6xl flex-col gap-6 self-stretch text-left">
+          <section aria-label="Quick sync">
+            <HomepageSyncWidget />
+          </section>
           <HomeMarketingCommandCenter />
           <section aria-label="My work">
             <DashboardMyWorkCard />

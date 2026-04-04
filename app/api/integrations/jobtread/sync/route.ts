@@ -1,8 +1,13 @@
 // V2
 import { NextResponse } from "next/server";
-import type { JobtreadCustomer, JobtreadJob } from "@/lib/jobtread-client";
+import type {
+  JobtreadCustomer,
+  JobtreadDailyLog,
+  JobtreadJob,
+} from "@/lib/jobtread-client";
 import {
   fetchJobtreadCustomers,
+  fetchJobtreadDailyLogs,
   fetchJobtreadJobs,
 } from "@/lib/jobtread-client";
 import { fetchJobtreadRow, getStoredJobtreadApiKey } from "@/lib/jobtread-server-store";
@@ -143,6 +148,22 @@ async function syncCustomersImport(
   return { count: total };
 }
 
+async function loadJobtreadJobIdMap(
+  admin: ServiceAdmin,
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const { data, error } = await admin
+    .from("jobs")
+    .select("id,jobtread_id")
+    .not("jobtread_id", "is", null);
+  if (error) return map;
+  for (const r of data ?? []) {
+    const rec = r as { id: string; jobtread_id: string | null };
+    if (rec.jobtread_id) map.set(rec.jobtread_id, rec.id);
+  }
+  return map;
+}
+
 async function loadJobtreadCustomerIdMap(
   admin: ServiceAdmin,
 ): Promise<Map<string, string>> {
@@ -241,23 +262,100 @@ async function syncJobsImport(
   return { count: total };
 }
 
+function jobtreadDailyLogJobLabel(job: JobtreadDailyLog["job"]): string {
+  const num = (job.number ?? "").trim();
+  const n = (job.name ?? "").trim();
+  if (num && n) return `${num} · ${n}`;
+  return num || n || "Job";
+}
+
+async function upsertDailyLogChunk(
+  admin: ServiceAdmin,
+  slice: Record<string, unknown>[],
+): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await admin.from("daily_logs").upsert(slice, {
+    onConflict: "jobtread_id",
+    ignoreDuplicates: false,
+  });
+  if (!error) return { ok: true };
+  return { ok: false, error: error.message };
+}
+
+async function syncDailyLogsImport(
+  admin: ServiceAdmin,
+  logs: JobtreadDailyLog[],
+  jobtreadToJobId: Map<string, string>,
+): Promise<{ count: number; error?: string }> {
+  const rows = logs.map((dl) => {
+    const notesParts = [dl.notes, dl.work_completed].filter(
+      (x): x is string => typeof x === "string" && x.trim().length > 0,
+    );
+    const notesMerged =
+      notesParts.length > 0 ? notesParts.join("\n\n") : null;
+    return {
+    jobtread_id: dl.id,
+    log_date: dl.date,
+    job_name: jobtreadDailyLogJobLabel(dl.job),
+    job_id: dl.job.id ? jobtreadToJobId.get(dl.job.id) ?? null : null,
+    crew_user: null,
+    notes: notesMerged,
+    employees_onsite: dl.employees_onsite,
+    check_in: null,
+    check_out: null,
+    job_status: dl.job_status,
+    trades_onsite: dl.trades_onsite,
+    visitors_onsite: dl.visitors_onsite,
+    additional_notes: dl.additional_notes,
+    materials_used: dl.materials_used,
+    materials_needed: null,
+    materials_left_onsite: dl.materials_left_onsite,
+    equipment_left_onsite: dl.equipment_left_onsite,
+    tpp_equipment_left: dl.tpp_equipment_left,
+    anticipated_delays: dl.anticipated_delays,
+    all_breakers_on: true,
+    breakers_off_reason: null,
+    supply_receipts: null,
+    card_type: null,
+    store_receipts: null,
+    internal_notes: null,
+    };
+  });
+
+  let total = 0;
+  const chunkSize = 80;
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const slice = rows.slice(i, i + chunkSize) as Record<string, unknown>[];
+    const res = await upsertDailyLogChunk(admin, slice);
+    if (res.ok) {
+      total += slice.length;
+      continue;
+    }
+    return {
+      count: total,
+      error: `${res.error ?? "Daily log upsert failed."} ${JOBTREAD_SCHEMA_HINT}`,
+    };
+  }
+  return { count: total };
+}
+
 async function updateIntegrationAfterSuccess(
   admin: ServiceAdmin,
   row: JobtreadIntegrationRow,
-  target: "customers" | "jobs",
+  target: "customers" | "jobs" | "daily_logs",
   count: number,
   syncedAt: string,
 ) {
   const patch: Record<string, unknown> = {
     last_sync_at: syncedAt,
     updated_at: syncedAt,
-    connection_message: `Last ${target} sync: ${count} record(s).`,
+    connection_message: `Last ${target.replace("_", " ")} sync: ${count} record(s).`,
   };
   if (target === "customers") {
-    patch.customers_synced_count =
-      Number(row.customers_synced_count) + count;
+    patch.customers_synced_count = count;
+  } else if (target === "jobs") {
+    patch.jobs_synced_count = count;
   } else {
-    patch.jobs_synced_count = Number(row.jobs_synced_count) + count;
+    patch.daily_logs_synced_count = count;
   }
   const { error } = await admin
     .from("integration_settings")
@@ -296,16 +394,6 @@ export async function GET(request: Request) {
       },
       { status: 400 },
     );
-  }
-
-  if (target === "daily_logs") {
-    const syncedAt = new Date().toISOString();
-    return NextResponse.json({
-      ok: true,
-      target,
-      syncedAt,
-      message: "Daily log export coming soon",
-    });
   }
 
   let apiKey: string | null;
@@ -420,6 +508,56 @@ export async function GET(request: Request) {
         count,
         syncedAt,
         message: `Imported ${count} job(s) from JobTread.`,
+      });
+    }
+
+    if (target === "daily_logs") {
+      const all: JobtreadDailyLog[] = [];
+      let page: string | undefined = undefined;
+      for (;;) {
+        const { nodes, nextPage } = await fetchJobtreadDailyLogs(
+          apiKey,
+          companyId,
+          page,
+        );
+        all.push(...nodes);
+        if (!nextPage) break;
+        page = nextPage ?? undefined;
+      }
+
+      const jobtreadToJobId = await loadJobtreadJobIdMap(admin);
+      const { count, error: importErr } = await syncDailyLogsImport(
+        admin,
+        all,
+        jobtreadToJobId,
+      );
+      if (importErr) {
+        await finishSyncLog(admin, logId, "failed", count, importErr);
+        return NextResponse.json({
+          ok: false,
+          target,
+          count,
+          syncedAt,
+          error: importErr,
+        });
+      }
+
+      await finishSyncLog(admin, logId, "success", count, null);
+      if (row) {
+        await updateIntegrationAfterSuccess(
+          admin,
+          row,
+          "daily_logs",
+          count,
+          syncedAt,
+        );
+      }
+      return NextResponse.json({
+        ok: true,
+        target,
+        count,
+        syncedAt,
+        message: `Imported ${count} daily log(s) from JobTread.`,
       });
     }
   } catch (e) {

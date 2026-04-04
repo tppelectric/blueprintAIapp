@@ -218,6 +218,19 @@ async function fallbackUpsertJobs(
   return n;
 }
 
+function mapJobtreadStatus(jtStatus: string | null | undefined): string {
+  switch (jtStatus?.toLowerCase()) {
+    case "created":
+      return "Lead";
+    case "approved":
+      return "Active";
+    case "closed":
+      return "Complete";
+    default:
+      return "Lead";
+  }
+}
+
 async function syncJobsImport(
   admin: ServiceAdmin,
   jobs: JobtreadJob[],
@@ -234,7 +247,7 @@ async function syncJobsImport(
       job_name: j.name?.trim() || "Job",
       job_number: j.number?.trim() || "",
       jobtread_id: j.id,
-      status: "Active",
+      status: mapJobtreadStatus(j.status),
       address: j.location?.address?.trim() || null,
       customer_id: customerId,
       updated_at: now,

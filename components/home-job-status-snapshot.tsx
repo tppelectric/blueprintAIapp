@@ -84,7 +84,10 @@ export function HomeJobStatusSnapshot() {
         setCounts(
           STATUS_CONFIG.map((c) => ({
             status: c.status,
-            count: byStatus[c.status] ?? 0,
+            count:
+              c.status === "completed"
+                ? (byStatus["completed"] ?? 0) + (byStatus["complete"] ?? 0)
+                : (byStatus[c.status] ?? 0),
           })),
         );
       } catch {

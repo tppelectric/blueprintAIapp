@@ -32,6 +32,8 @@ export type JobtreadJob = {
     id: string;
     name?: string | null;
   } | null;
+  job_status_custom: string | null;
+  need_ready_to_invoice: string | null;
 };
 
 export type JobtreadDailyLogCustomFieldValueNode = {
@@ -329,6 +331,7 @@ export async function fetchJobtreadCustomers(
 
 function parseJobNode(n: Record<string, unknown>): JobtreadJob {
   const loc = asRecord(n.location);
+  const byName = customFieldMapFromNode(n);
   return {
     id: str(n.id),
     name: str(n.name),
@@ -342,6 +345,8 @@ function parseJobNode(n: Record<string, unknown>): JobtreadJob {
           address: loc.address != null ? str(loc.address) : undefined,
         }
       : null,
+    job_status_custom: byName.get("STATUS OF JOB") ?? null,
+    need_ready_to_invoice: byName.get("NEED/READY TO INVOICE") ?? null,
   };
 }
 
@@ -376,6 +381,16 @@ export async function fetchJobtreadJobs(
               id: {},
               name: {},
               address: {},
+            },
+            customFieldValues: {
+              nodes: {
+                id: {},
+                value: {},
+                customField: {
+                  id: {},
+                  name: {},
+                },
+              },
             },
           },
         },

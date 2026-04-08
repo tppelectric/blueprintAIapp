@@ -293,41 +293,68 @@ export function CustomersClient() {
                   className="app-card app-card-pad-lg w-full"
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
-                    <Link
-                      href={`/customers/${c.id}`}
-                      className="min-w-0 flex-1 rounded-lg outline-none ring-[#E8C84A]/40 ring-offset-2 ring-offset-[#0a1628] focus-visible:ring-2"
-                    >
-                      <p className="text-xl font-bold text-white">
-                        {company}
-                      </p>
-                      {showContact ? (
-                        <p className="mt-1 text-sm text-white/70">
-                          {contact}
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        href={`/customers/${c.id}`}
+                        className="block rounded-lg outline-none ring-[#E8C84A]/40 ring-offset-2 ring-offset-[#0a1628] focus-visible:ring-2"
+                      >
+                        <p className="text-xl font-bold text-white">
+                          {company}
                         </p>
-                      ) : null}
+                        {showContact ? (
+                          <p className="mt-1 text-sm text-white/70">
+                            {contact}
+                          </p>
+                        ) : null}
+                      </Link>
                       <p className="mt-2 text-sm text-white/45">
                         <span className="inline sm:mr-0">
-                          {c.phone?.trim() || "—"}
+                          {c.phone?.trim() ? (
+                            <a
+                              href={`tel:${c.phone.trim()}`}
+                              className="hover:text-white transition-colors"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {c.phone.trim()}
+                            </a>
+                          ) : (
+                            "—"
+                          )}
                         </span>
                         <span className="mx-1.5 hidden text-white/30 sm:inline">
                           ·
                         </span>
                         <span className="block sm:inline">
-                          {c.email?.trim() || "—"}
+                          {c.email?.trim() ? (
+                            <a
+                              href={`mailto:${c.email.trim()}`}
+                              className="hover:text-white transition-colors"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {c.email.trim()}
+                            </a>
+                          ) : (
+                            "—"
+                          )}
                         </span>
                       </p>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <span className="inline-flex rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-white/80 ring-1 ring-white/15">
-                          {c.job_count ?? 0} job
-                          {(c.job_count ?? 0) === 1 ? "" : "s"}
-                        </span>
-                        {c.jobtread_id?.trim() ? (
-                          <span className="inline-flex rounded-full border border-[#E8C84A]/35 bg-[#E8C84A]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#E8C84A]">
-                            JobTread
+                      <Link
+                        href={`/customers/${c.id}`}
+                        className="mt-2 block rounded-lg outline-none ring-[#E8C84A]/40 ring-offset-2 ring-offset-[#0a1628] focus-visible:ring-2"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="inline-flex rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-white/80 ring-1 ring-white/15">
+                            {c.job_count ?? 0} job
+                            {(c.job_count ?? 0) === 1 ? "" : "s"}
                           </span>
-                        ) : null}
-                      </div>
-                    </Link>
+                          {c.jobtread_id?.trim() ? (
+                            <span className="inline-flex rounded-full border border-[#E8C84A]/35 bg-[#E8C84A]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#E8C84A]">
+                              JobTread
+                            </span>
+                          ) : null}
+                        </div>
+                      </Link>
+                    </div>
                     <div className="flex w-full shrink-0 flex-wrap gap-2 sm:w-auto">
                       <button
                         type="button"

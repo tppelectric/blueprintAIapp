@@ -216,6 +216,7 @@ export function DailyLogsNewClient() {
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const [weatherLoading, setWeatherLoading] = useState(false);
+  const [jobZip, setJobZip] = useState<string | null>(null);
   const [savedLogBanner, setSavedLogBanner] = useState<{
     logId: string;
     jobId: string | null;
@@ -440,10 +441,42 @@ export function DailyLogsNewClient() {
     }));
   }, [form.job_id, jobs]);
 
+  useEffect(() => {
+    const id = form.job_id?.trim();
+    if (!id) {
+      setJobZip(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const sb = createBrowserClient();
+        const { data, error } = await sb
+          .from("jobs")
+          .select("zip, address")
+          .eq("id", id)
+          .maybeSingle();
+        if (cancelled) return;
+        if (error || !data) {
+          setJobZip(null);
+          return;
+        }
+        const row = data as { zip: string | null; address: string | null };
+        const z = row.zip?.trim();
+        setJobZip(z && z.length > 0 ? z : null);
+      } catch {
+        if (!cancelled) setJobZip(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [form.job_id]);
+
   const fetchWeather = useCallback(async () => {
     setWeatherLoading(true);
     try {
-      const zip = readActiveZip();
+      const zip = jobZip ?? readActiveZip();
       const r = await fetch(`/api/weather?zip=${encodeURIComponent(zip)}`, {
         credentials: "include",
       });
@@ -467,7 +500,7 @@ export function DailyLogsNewClient() {
     } finally {
       setWeatherLoading(false);
     }
-  }, [showToast]);
+  }, [showToast, jobZip]);
 
   useEffect(() => {
     void fetchWeather();
@@ -1934,7 +1967,7 @@ export function DailyLogsNewClient() {
                 <label className="text-xs font-semibold text-white/50">
                   Weather
                 </label>
-                <div className="mt-1 flex flex-wrap gap-2">
+                <div className="mt-1 flex flex-wrap items-center gap-2">
                   <input
                     type="text"
                     className="app-input min-w-[12rem] flex-1 text-sm"
@@ -1952,6 +1985,11 @@ export function DailyLogsNewClient() {
                   >
                     {weatherLoading ? "Loading…" : "Refresh weather"}
                   </button>
+                  {jobZip ? (
+                    <span className="text-xs text-white/40">
+                      Using job address zip: {jobZip}
+                    </span>
+                  ) : null}
                 </div>
               </div>
               <div id="daily-log-shift-times">

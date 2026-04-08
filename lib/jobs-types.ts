@@ -8,12 +8,19 @@ export const JOB_TYPES = [
 ] as const;
 
 export const JOB_STATUSES = [
-  "Lead",
-  "Quoted",
-  "Active",
-  "Complete",
-  "On Hold",
-  "Cancelled",
+  "YES READY TO BE INVOICED",
+  "NO JOB STILL IN PROGRESS",
+  "INVOICED/SENT",
+  "PAID",
+  "ON HOLD/WAITING FOR MATERIAL",
+  "ON HOLD/WAITING FOR APPROVAL",
+  "IN PROGRESS",
+  "ESTIMATING",
+  "NEW JOB/JUST STARTED",
+  "DOCUMENT MADE/NEEDS REVIEW BEFORE SENDING",
+  "PARTIAL/PROGRESS PAYMENT RECEIVED",
+  "JOB CLOSED/NOT PROCEEDING",
+  "NO ACTION NEEDED AT THIS TIME",
 ] as const;
 
 export type JobAttachmentType =
@@ -71,6 +78,7 @@ export type JobListRow = {
   job_name: string;
   job_number: string;
   status: string;
+  need_ready_to_invoice?: string | null;
   job_type: string;
   updated_at: string;
   created_at?: string;

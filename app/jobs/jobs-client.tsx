@@ -155,7 +155,7 @@ export function JobsClient() {
       const { data, error: qe } = await sb
         .from("jobs")
         .select(
-          "id,job_name,job_number,status,job_type,address,city,state,zip,description,notes,created_at,updated_at,customer_id,assigned_user_id, customers(company_name,contact_name)",
+          "id,job_name,job_number,status,job_type,address,city,state,zip,description,notes,created_at,updated_at,customer_id,assigned_user_id,need_ready_to_invoice, customers(company_name,contact_name)",
         )
         .order("updated_at", { ascending: false });
       if (qe) throw qe;
@@ -237,7 +237,7 @@ export function JobsClient() {
       result = result.filter((j) => j.assigned_user_id === currentUserId);
     }
     if (statusFilter) {
-      result = result.filter((j) => j.status === statusFilter);
+      result = result.filter((j) => j.need_ready_to_invoice === statusFilter);
     }
     const q = jobSearch.trim().toLowerCase();
     if (q) {

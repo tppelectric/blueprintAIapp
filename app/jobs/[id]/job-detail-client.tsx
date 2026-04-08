@@ -510,20 +510,38 @@ export function JobDetailClient({
                     Status history
                   </h2>
                   {invoiceStatusHistory.length === 0 ? (
-                    <p className="mt-3 text-sm text-white/45">
-                      No history yet
-                    </p>
+                    <p className="mt-3 text-sm text-white/45">No history yet.</p>
                   ) : (
-                    <ul className="mt-4 space-y-2">
-                      {invoiceStatusHistory.map((row) => (
-                        <li
-                          key={row.id}
-                          className="text-sm leading-relaxed text-white/85"
-                        >
-                          {row.changerName} changed invoice status from{" "}
-                          {formatInvoiceHistValue(row.old_value)} to{" "}
-                          {formatInvoiceHistValue(row.new_value)} on{" "}
-                          {new Date(row.changed_at).toLocaleString()}
+                    <ul className="mt-4 space-y-0">
+                      {invoiceStatusHistory.map((row, i) => (
+                        <li key={row.id} className="relative flex gap-3">
+                          <div className="flex flex-col items-center">
+                            <div className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-[#E8C84A] ring-2 ring-[#E8C84A]/20" />
+                            {i < invoiceStatusHistory.length - 1 ? (
+                              <div className="w-px flex-1 bg-white/10" />
+                            ) : null}
+                          </div>
+                          <div className="pb-5 min-w-0">
+                            <p className="text-xs text-white/40">
+                              {new Date(row.changed_at).toLocaleString()}
+                            </p>
+                            <p className="mt-0.5 text-sm font-medium text-white">
+                              {row.changerName}
+                            </p>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+                              {row.old_value ? (
+                                <span className="rounded-full bg-white/10 px-2 py-0.5 text-white/60 line-through">
+                                  {formatInvoiceHistValue(row.old_value)}
+                                </span>
+                              ) : (
+                                <span className="text-white/30">—</span>
+                              )}
+                              <span className="text-white/30">→</span>
+                              <span className="rounded-full bg-[#E8C84A]/15 px-2 py-0.5 text-[#E8C84A]">
+                                {formatInvoiceHistValue(row.new_value)}
+                              </span>
+                            </div>
+                          </div>
                         </li>
                       ))}
                     </ul>

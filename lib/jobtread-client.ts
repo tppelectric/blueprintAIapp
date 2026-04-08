@@ -329,6 +329,7 @@ export async function fetchJobtreadCustomers(
 
 function parseJobNode(n: Record<string, unknown>): JobtreadJob {
   const loc = asRecord(n.location);
+  const locAccount = loc ? asRecord(loc.account) : null;
   return {
     id: str(n.id),
     name: str(n.name),
@@ -342,6 +343,7 @@ function parseJobNode(n: Record<string, unknown>): JobtreadJob {
           address: loc.address != null ? str(loc.address) : undefined,
         }
       : null,
+    account: locAccount ? { id: str(locAccount.id), name: strOrNull(locAccount.name) } : null,
   };
 }
 
@@ -376,6 +378,7 @@ export async function fetchJobtreadJobs(
               id: {},
               name: {},
               address: {},
+              account: { id: {} },
             },
           },
         },

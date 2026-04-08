@@ -9,6 +9,7 @@ import {
   fetchJobtreadCustomers,
   fetchJobtreadDailyLogs,
   fetchJobtreadJobs,
+  fetchJobtreadLocationAccountMap,
 } from "@/lib/jobtread-client";
 import { fetchJobtreadRow, getStoredJobtreadApiKey } from "@/lib/jobtread-server-store";
 import type { JobtreadIntegrationRow } from "@/lib/jobtread-settings";
@@ -249,11 +250,16 @@ function mapJobtreadStatus(
 async function syncJobsImport(
   admin: ServiceAdmin,
   jobs: JobtreadJob[],
+  locationToAccountId: Map<string, string>,
   accountToCustomerId: Map<string, string>,
 ): Promise<{ count: number; error?: string }> {
   const now = new Date().toISOString();
   const rows = jobs.map((j) => {
-    const accountId = j.account?.id;
+    const accountId =
+      j.account?.id ??
+      (j.location?.id
+        ? locationToAccountId.get(j.location.id) ?? null
+        : null);
     const customerId =
       accountId && accountToCustomerId.has(accountId)
         ? accountToCustomerId.get(accountId)!
@@ -511,10 +517,15 @@ export async function GET(request: Request) {
         page = nextPage ?? undefined;
       }
 
+      const locationToAccountId = await fetchJobtreadLocationAccountMap(
+        apiKey,
+        companyId,
+      );
       const accountToCustomerId = await loadJobtreadCustomerIdMap(admin);
       const { count, error: importErr } = await syncJobsImport(
         admin,
         all,
+        locationToAccountId,
         accountToCustomerId,
       );
       if (importErr) {

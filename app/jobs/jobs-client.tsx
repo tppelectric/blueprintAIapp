@@ -132,6 +132,9 @@ export function JobsClient() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<JobListRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [massStatus, setMassStatus] = useState("");
+  const [massUpdating, setMassUpdating] = useState(false);
 
   const loadCustomers = useCallback(async () => {
     try {
@@ -224,6 +227,12 @@ export function JobsClient() {
     };
   }, [canAssignJobs]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const s = params.get("status");
+    if (s) setStatusFilter(s);
+  }, []);
+
   const customerLabel = (j: JobListRow) => {
     const raw = j.customers;
     const c = Array.isArray(raw) ? raw[0] : raw;
@@ -284,6 +293,49 @@ export function JobsClient() {
         message: e instanceof Error ? e.message : "Update failed.",
         variant: "error",
       });
+    }
+  };
+
+  const updateInvoiceStatus = async (jobId: string, value: string) => {
+    try {
+      const sb = createBrowserClient();
+      const { error: ue } = await sb
+        .from("jobs")
+        .update({ need_ready_to_invoice: value.trim() || null })
+        .eq("id", jobId);
+      if (ue) throw ue;
+      showToast({ message: "Invoice status updated.", variant: "success" });
+      void load();
+    } catch (e) {
+      showToast({
+        message: e instanceof Error ? e.message : "Update failed.",
+        variant: "error",
+      });
+    }
+  };
+
+  const applyMassInvoiceStatus = async () => {
+    if (!massStatus.trim() || selectedIds.size === 0) return;
+    setMassUpdating(true);
+    try {
+      const sb = createBrowserClient();
+      const ids = [...selectedIds];
+      const { error: ue } = await sb
+        .from("jobs")
+        .update({ need_ready_to_invoice: massStatus })
+        .in("id", ids);
+      if (ue) throw ue;
+      setSelectedIds(new Set());
+      setMassStatus("");
+      showToast({ message: "Invoice status applied.", variant: "success" });
+      void load();
+    } catch (e) {
+      showToast({
+        message: e instanceof Error ? e.message : "Bulk update failed.",
+        variant: "error",
+      });
+    } finally {
+      setMassUpdating(false);
     }
   };
 
@@ -431,9 +483,41 @@ export function JobsClient() {
     }
   };
 
+  function invoiceBadgeClass(status: string): string {
+    if (status === "YES READY TO BE INVOICED") return "bg-[#E8C84A]/20 text-[#E8C84A]";
+    if (status === "PAID") return "bg-emerald-500/20 text-emerald-300";
+    if (status === "INVOICED/SENT") return "bg-sky-500/20 text-sky-300";
+    if (status === "NO JOB STILL IN PROGRESS" || status === "IN PROGRESS") return "bg-blue-500/20 text-blue-300";
+    if (status.startsWith("ON HOLD")) return "bg-amber-500/20 text-amber-300";
+    return "bg-rose-500/20 text-rose-300";
+  }
+
+  const invoiceSelectClass =
+    "bg-[#0a1628] border border-white/15 text-white text-xs rounded-lg px-2 py-1 max-w-full";
+
   const JobCard = ({ j }: { j: JobListRow }) => (
-    <div className="app-card w-full !p-0 text-sm transition-colors hover:border-[#E8C84A]/45">
-      <Link href={`/jobs/${j.id}`} className="block p-4">
+    <div className="relative app-card w-full !p-0 text-sm transition-colors hover:border-[#E8C84A]/45">
+      <label className="absolute left-3 top-3 z-10 flex cursor-pointer items-center">
+        <input
+          type="checkbox"
+          checked={selectedIds.has(j.id)}
+          onChange={(e) => {
+            const checked = e.target.checked;
+            setSelectedIds((prev) => {
+              const next = new Set(prev);
+              if (checked) next.add(j.id);
+              else next.delete(j.id);
+              return next;
+            });
+          }}
+          className="rounded border-white/30"
+          aria-label={`Select job ${j.job_number}`}
+        />
+      </label>
+      <Link
+        href={`/jobs/${j.id}`}
+        className="block p-4 pl-10 pt-10 sm:pl-11 sm:pt-11"
+      >
         <p className="text-base font-semibold text-white">
           {j.job_number} · {j.job_name}
         </p>
@@ -447,6 +531,11 @@ export function JobsClient() {
           <span className="rounded-full bg-[#E8C84A]/15 px-2 py-0.5 text-[10px] text-[#E8C84A]">
             {j.status}
           </span>
+          {j.need_ready_to_invoice ? (
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${invoiceBadgeClass(j.need_ready_to_invoice)}`}>
+              {j.need_ready_to_invoice}
+            </span>
+          ) : null}
         </div>
         {[j.address, j.city, j.state].filter(Boolean).length ? (
           <p className="app-muted mt-1.5 sm:mt-2">
@@ -491,6 +580,24 @@ export function JobsClient() {
             Link customer
           </Link>
         )}
+        <select
+          className={invoiceSelectClass}
+          value={
+            j.need_ready_to_invoice &&
+            (JOB_STATUSES as readonly string[]).includes(j.need_ready_to_invoice)
+              ? j.need_ready_to_invoice
+              : ""
+          }
+          onChange={(e) => void updateInvoiceStatus(j.id, e.target.value)}
+          aria-label="Invoice status"
+        >
+          <option value="">— Invoice status —</option>
+          {JOB_STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
       </div>
     </div>
   );
@@ -646,15 +753,45 @@ export function JobsClient() {
             actionLabel={canCreateOrEditJobs ? "Add job" : undefined}
             onAction={canCreateOrEditJobs ? openCreate : undefined}
           />
-        ) : view === "list" ? (
-          <ul className="space-y-3">
-            {visibleJobs.map((j) => (
-              <li key={j.id}>
-                <JobCard j={j} />
-              </li>
-            ))}
-          </ul>
-        ) : view === "board" ? (
+        ) : (
+          <>
+            {selectedIds.size > 0 ? (
+              <div className="app-card mb-3 mt-4 flex flex-col gap-3 p-3 sm:mt-4 sm:flex-row sm:flex-wrap sm:items-center">
+                <span className="text-sm text-white">
+                  {selectedIds.size} selected
+                </span>
+                <select
+                  className={`${invoiceSelectClass} min-w-0 sm:max-w-md sm:flex-1`}
+                  value={massStatus}
+                  onChange={(e) => setMassStatus(e.target.value)}
+                  aria-label="Invoice status for selected jobs"
+                >
+                  <option value="">— Invoice status —</option>
+                  {JOB_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={massUpdating || !massStatus.trim()}
+                  onClick={() => void applyMassInvoiceStatus()}
+                  className="btn-primary !h-9 min-h-0 !px-4 !text-xs"
+                >
+                  {massUpdating ? "Applying…" : "Apply to selected"}
+                </button>
+              </div>
+            ) : null}
+            {view === "list" ? (
+              <ul className="space-y-3">
+                {visibleJobs.map((j) => (
+                  <li key={j.id}>
+                    <JobCard j={j} />
+                  </li>
+                ))}
+              </ul>
+            ) : view === "board" ? (
           <>
             <div className="app-card mt-4 overflow-x-auto p-0">
               <table className="w-full min-w-[640px] text-left text-sm">
@@ -723,26 +860,28 @@ export function JobsClient() {
               </p>
             ) : null}
           </>
-        ) : (
-          <div className="flex gap-4 overflow-x-auto pb-4 [-webkit-overflow-scrolling:touch]">
-            {KANBAN_STATUSES.map((st) => (
-              <div
-                key={st}
-                className="app-card app-card-pad-lg w-[min(100vw-2rem,18rem)] shrink-0 sm:w-72"
-              >
-                <h2 className="app-muted mb-3 font-semibold uppercase tracking-wide text-[#E8C84A]/90">
-                  {st}
-                </h2>
-                <div className="space-y-2">
-                  {visibleJobs
-                    .filter((j) => j.status === st)
-                    .map((j) => (
-                      <JobCard key={j.id} j={j} />
-                    ))}
-                </div>
+            ) : (
+              <div className="flex gap-4 overflow-x-auto pb-4 [-webkit-overflow-scrolling:touch]">
+                {KANBAN_STATUSES.map((st) => (
+                  <div
+                    key={st}
+                    className="app-card app-card-pad-lg w-[min(100vw-2rem,18rem)] shrink-0 sm:w-72"
+                  >
+                    <h2 className="app-muted mb-3 font-semibold uppercase tracking-wide text-[#E8C84A]/90">
+                      {st}
+                    </h2>
+                    <div className="space-y-2">
+                      {visibleJobs
+                        .filter((j) => j.status === st)
+                        .map((j) => (
+                          <JobCard key={j.id} j={j} />
+                        ))}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </main>
 

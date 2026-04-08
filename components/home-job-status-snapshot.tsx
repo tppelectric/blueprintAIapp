@@ -11,42 +11,50 @@ const STATUS_CONFIG: {
   label: string;
   color: string;
   border: string;
+  /** Representative `need_ready_to_invoice` for /jobs?status=…; null → /jobs */
+  jobsNeedReadyParam: string | null;
 }[] = [
   {
     status: "ready_to_invoice",
     label: "Ready to Invoice",
     color: "text-[#E8C84A]",
     border: "border-[#E8C84A]/30",
+    jobsNeedReadyParam: "YES READY TO BE INVOICED",
   },
   {
     status: "in_progress",
     label: "In Progress",
     color: "text-blue-300",
     border: "border-blue-500/30",
+    jobsNeedReadyParam: "IN PROGRESS",
   },
   {
     status: "invoiced",
     label: "Invoiced",
     color: "text-sky-200",
     border: "border-sky-500/30",
+    jobsNeedReadyParam: "INVOICED/SENT",
   },
   {
     status: "paid",
     label: "Paid",
     color: "text-emerald-300",
     border: "border-emerald-500/30",
+    jobsNeedReadyParam: "PAID",
   },
   {
     status: "on_hold",
     label: "On Hold",
     color: "text-amber-200",
     border: "border-amber-500/30",
+    jobsNeedReadyParam: "ON HOLD/WAITING FOR MATERIAL",
   },
   {
     status: "needs_update",
     label: "Needs Update",
     color: "text-rose-300",
     border: "border-rose-500/20",
+    jobsNeedReadyParam: null,
   },
 ];
 
@@ -136,7 +144,11 @@ export function HomeJobStatusSnapshot() {
             return (
               <Link
                 key={cfg.status}
-                href={`/jobs?status=${encodeURIComponent(cfg.status)}`}
+                href={
+                  cfg.jobsNeedReadyParam
+                    ? `/jobs?status=${encodeURIComponent(cfg.jobsNeedReadyParam)}`
+                    : "/jobs"
+                }
                 className={`flex flex-col rounded-xl border bg-white/[0.04] p-3 text-left transition-colors hover:bg-white/[0.07] ${cfg.border}`}
               >
                 <span

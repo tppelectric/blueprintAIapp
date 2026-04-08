@@ -65,6 +65,22 @@ function formatInvoiceHistValue(v: string | null): string {
   return v != null && String(v).trim() ? v : "—";
 }
 
+function invoiceHeaderBadgeClass(status: string): string {
+  if (status === "YES, READY TO BE INVOICED")
+    return "bg-[#E8C84A]/20 text-[#E8C84A]";
+  if (status === "PAID") return "bg-emerald-500/20 text-emerald-300";
+  if (status === "INVOICED/SENT")
+    return "bg-sky-500/20 text-sky-300";
+  if (
+    status === "NO, JOB STILL IN PROGRESS" ||
+    status === "IN PROGRESS"
+  )
+    return "bg-blue-500/20 text-blue-300";
+  if (status.startsWith("ON HOLD"))
+    return "bg-amber-500/20 text-amber-300";
+  return "bg-rose-500/20 text-rose-300";
+}
+
 const FINANCIAL_ATTACHMENT_TYPES = new Set([
   "project_breakdown",
   "wifi_calculation",
@@ -373,6 +389,13 @@ export function JobDetailClient({
           <span className="rounded-full bg-[#E8C84A]/15 px-3 py-0.5 text-[#E8C84A]">
             {job.status}
           </span>
+          {job.need_ready_to_invoice ? (
+            <span
+              className={`rounded-full px-3 py-0.5 text-sm font-medium ${invoiceHeaderBadgeClass(job.need_ready_to_invoice)}`}
+            >
+              {job.need_ready_to_invoice}
+            </span>
+          ) : null}
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">

@@ -162,6 +162,72 @@ function formatAgeLabel(r: InternalRequestRow): string {
   return `${d} days`;
 }
 
+type MaterialLineRow = {
+  item: string;
+  qty: string;
+  unit: string;
+  notes: string;
+};
+
+function emptyMaterialLine(): MaterialLineRow {
+  return { item: "", qty: "", unit: "", notes: "" };
+}
+
+function linesFromDetailsMaterial(
+  details: InternalRequestRow["details"],
+): MaterialLineRow[] {
+  const raw = (details as { material_lines?: unknown }).material_lines;
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return [emptyMaterialLine()];
+  }
+  return raw.map((x) => {
+    const o = x as Record<string, unknown>;
+    return {
+      item: String(o.item ?? ""),
+      qty: String(o.qty ?? ""),
+      unit: String(o.unit ?? ""),
+      notes: String(o.notes ?? ""),
+    };
+  });
+}
+
+function savedMaterialSummaryLines(
+  details: InternalRequestRow["details"],
+): MaterialLineRow[] {
+  return linesFromDetailsMaterial(details).filter((l) => l.item.trim());
+}
+
+function hasSavedMaterialLines(r: InternalRequestRow): boolean {
+  return (
+    r.request_type === "material_order" &&
+    savedMaterialSummaryLines(r.details).length > 0
+  );
+}
+
+function buildSupplyHouseMailto(
+  to: string,
+  title: string,
+  lines: MaterialLineRow[],
+): string {
+  const bodyLines = lines
+    .filter((l) => l.item.trim())
+    .map((l) => {
+      const parts = [l.item.trim()];
+      if (l.qty.trim()) parts.push(`Qty: ${l.qty.trim()}`);
+      if (l.unit.trim()) parts.push(`Unit: ${l.unit.trim()}`);
+      if (l.notes.trim()) parts.push(`Notes: ${l.notes.trim()}`);
+      return parts.join(" · ");
+    });
+  const body =
+    (bodyLines.length ? bodyLines.join("\n") + "\n\n" : "") +
+    "Please confirm availability and pricing. Thank you, TPP Electrical Contractors Inc.";
+  const subject = `Material Order Request - ${title} - TPP Electrical Contractors`;
+  return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+const MATERIAL_INPUT_CLASS =
+  "bg-[#071422] border border-white/15 rounded px-2 py-1 text-xs text-white";
+
 function MarketingRequestMiniStepper({
   status,
 }: {
@@ -283,6 +349,10 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
   const [commentInternalById, setCommentInternalById] = useState<
     Record<string, boolean>
   >({});
+  const [materialLinesByRequestId, setMaterialLinesByRequestId] = useState<
+    Record<string, MaterialLineRow[]>
+  >({});
+  const [materialsBusyId, setMaterialsBusyId] = useState<string | null>(null);
   const hiddenFileInputRef = useRef<HTMLInputElement>(null);
 
   const isMarketing = surface === "marketing";
@@ -364,6 +434,18 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
       if (row) next[id] = row.status;
     }
     setPendingStatus(next);
+  }, [expandedIds, rows]);
+
+  useEffect(() => {
+    setMaterialLinesByRequestId((prev) => {
+      const next: Record<string, MaterialLineRow[]> = {};
+      for (const id of expandedIds) {
+        const row = rows.find((x) => x.id === id);
+        if (row?.request_type !== "material_order") continue;
+        next[id] = prev[id] ?? linesFromDetailsMaterial(row.details);
+      }
+      return next;
+    });
   }, [expandedIds, rows]);
 
   useEffect(() => {
@@ -587,6 +669,46 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
     }
   };
 
+  const saveMaterialLines = async (requestId: string) => {
+    const lines = materialLinesByRequestId[requestId];
+    if (!lines?.length) return;
+    setMaterialsBusyId(requestId);
+    try {
+      const sb = createBrowserClient();
+      const { data: cur, error: fe } = await sb
+        .from("internal_requests")
+        .select("details")
+        .eq("id", requestId)
+        .single();
+      if (fe) throw fe;
+      const base =
+        typeof cur?.details === "object" &&
+        cur.details !== null &&
+        !Array.isArray(cur.details)
+          ? (cur.details as Record<string, unknown>)
+          : {};
+      const details = { ...base, material_lines: lines };
+      const { error } = await sb
+        .from("internal_requests")
+        .update({
+          details,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", requestId);
+      if (error) throw error;
+      showToast({ message: "Materials saved.", variant: "success" });
+      setMaterialLinesByRequestId((p) => ({ ...p, [requestId]: lines }));
+      setRefreshTick((t) => t + 1);
+    } catch (e) {
+      showToast({
+        message: e instanceof Error ? e.message : "Save failed.",
+        variant: "error",
+      });
+    } finally {
+      setMaterialsBusyId(null);
+    }
+  };
+
   const displayRows = isMarketing ? filteredRows : rows;
 
   const newShortcutClass =
@@ -785,6 +907,25 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
                               </svg>
                             </div>
                             <MarketingRequestMiniStepper status={r.status} />
+                            {r.request_type === "material_order" ? (
+                              (() => {
+                                const summ = savedMaterialSummaryLines(
+                                  r.details,
+                                );
+                                return summ.length ? (
+                                  <ul className="mt-1.5 list-inside list-disc space-y-0.5 text-[10px] text-white/50">
+                                    {summ.map((l, i) => (
+                                      <li key={i} className="truncate">
+                                        {l.item}
+                                        {l.qty.trim() || l.unit.trim()
+                                          ? ` — ${[l.qty.trim(), l.unit.trim()].filter(Boolean).join(" ")}`
+                                          : ""}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                ) : null;
+                              })()
+                            ) : null}
                           </div>
                           <div className="flex shrink-0 flex-col items-end gap-1 pt-0.5">
                             {r.priority === "urgent" || r.priority === "emergency" ? (
@@ -838,6 +979,207 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
                             >
                               {r.priority}
                             </span>
+                            {r.request_type === "material_order" ? (
+                              <div
+                                className="mt-3 border-t border-white/10 pt-3"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <h4 className="text-xs font-bold uppercase tracking-wide text-white/50">
+                                  Materials
+                                </h4>
+                                <div className="mt-2 space-y-2">
+                                  {(
+                                    materialLinesByRequestId[r.id] ??
+                                    linesFromDetailsMaterial(r.details)
+                                  ).map((line, idx) => (
+                                    <div
+                                      key={idx}
+                                      className="flex flex-wrap items-center gap-1.5"
+                                    >
+                                      <input
+                                        type="text"
+                                        className={`min-w-0 flex-1 ${MATERIAL_INPUT_CLASS}`}
+                                        placeholder="Item"
+                                        value={line.item}
+                                        onChange={(e) => {
+                                          const v = e.target.value;
+                                          setMaterialLinesByRequestId(
+                                            (p) => ({
+                                              ...p,
+                                              [r.id]: (p[r.id] ??
+                                                linesFromDetailsMaterial(
+                                                  r.details,
+                                                )
+                                              ).map((row, i) =>
+                                                i === idx
+                                                  ? { ...row, item: v }
+                                                  : row,
+                                              ),
+                                            }),
+                                          );
+                                        }}
+                                      />
+                                      <input
+                                        type="text"
+                                        className={`w-16 shrink-0 ${MATERIAL_INPUT_CLASS}`}
+                                        placeholder="Qty"
+                                        value={line.qty}
+                                        onChange={(e) => {
+                                          const v = e.target.value;
+                                          setMaterialLinesByRequestId(
+                                            (p) => ({
+                                              ...p,
+                                              [r.id]: (p[r.id] ??
+                                                linesFromDetailsMaterial(
+                                                  r.details,
+                                                )
+                                              ).map((row, i) =>
+                                                i === idx
+                                                  ? { ...row, qty: v }
+                                                  : row,
+                                              ),
+                                            }),
+                                          );
+                                        }}
+                                      />
+                                      <input
+                                        type="text"
+                                        className={`w-16 shrink-0 ${MATERIAL_INPUT_CLASS}`}
+                                        placeholder="Unit"
+                                        value={line.unit}
+                                        onChange={(e) => {
+                                          const v = e.target.value;
+                                          setMaterialLinesByRequestId(
+                                            (p) => ({
+                                              ...p,
+                                              [r.id]: (p[r.id] ??
+                                                linesFromDetailsMaterial(
+                                                  r.details,
+                                                )
+                                              ).map((row, i) =>
+                                                i === idx
+                                                  ? { ...row, unit: v }
+                                                  : row,
+                                              ),
+                                            }),
+                                          );
+                                        }}
+                                      />
+                                      <input
+                                        type="text"
+                                        className={`min-w-0 flex-1 basis-full sm:basis-auto ${MATERIAL_INPUT_CLASS}`}
+                                        placeholder="Notes"
+                                        value={line.notes}
+                                        onChange={(e) => {
+                                          const v = e.target.value;
+                                          setMaterialLinesByRequestId(
+                                            (p) => ({
+                                              ...p,
+                                              [r.id]: (p[r.id] ??
+                                                linesFromDetailsMaterial(
+                                                  r.details,
+                                                )
+                                              ).map((row, i) =>
+                                                i === idx
+                                                  ? { ...row, notes: v }
+                                                  : row,
+                                              ),
+                                            }),
+                                          );
+                                        }}
+                                      />
+                                      <button
+                                        type="button"
+                                        className="shrink-0 rounded border border-white/20 px-2 py-1 text-[10px] font-semibold text-white/70 hover:bg-white/10"
+                                        onClick={() => {
+                                          setMaterialLinesByRequestId(
+                                            (p) => {
+                                              const cur =
+                                                p[r.id] ??
+                                                linesFromDetailsMaterial(
+                                                  r.details,
+                                                );
+                                              if (cur.length <= 1) {
+                                                return {
+                                                  ...p,
+                                                  [r.id]: [emptyMaterialLine()],
+                                                };
+                                              }
+                                              return {
+                                                ...p,
+                                                [r.id]: cur.filter(
+                                                  (_, i) => i !== idx,
+                                                ),
+                                              };
+                                            },
+                                          );
+                                        }}
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                                <button
+                                  type="button"
+                                  className="mt-2 text-[10px] font-semibold text-[#E8C84A] hover:underline"
+                                  onClick={() => {
+                                    setMaterialLinesByRequestId((p) => ({
+                                      ...p,
+                                      [r.id]: [
+                                        ...(p[r.id] ??
+                                          linesFromDetailsMaterial(
+                                            r.details,
+                                          )),
+                                        emptyMaterialLine(),
+                                      ],
+                                    }));
+                                  }}
+                                >
+                                  + Add line
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={materialsBusyId === r.id}
+                                  className="mt-2 ml-3 rounded-lg border border-[#E8C84A]/45 bg-[#E8C84A]/15 px-3 py-1.5 text-[10px] font-bold text-[#E8C84A] hover:bg-[#E8C84A]/25 disabled:opacity-50"
+                                  onClick={() =>
+                                    void saveMaterialLines(r.id)
+                                  }
+                                >
+                                  {materialsBusyId === r.id
+                                    ? "Saving…"
+                                    : "Save materials"}
+                                </button>
+                                {isAdminRole && hasSavedMaterialLines(r) ? (
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    <a
+                                      href={buildSupplyHouseMailto(
+                                        "sean.obrien@cooper-electric.com",
+                                        r.title,
+                                        savedMaterialSummaryLines(
+                                          r.details,
+                                        ),
+                                      )}
+                                      className="inline-flex rounded-lg border border-sky-400/40 px-3 py-1.5 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/10"
+                                    >
+                                      Email to Cooper Electric
+                                    </a>
+                                    <a
+                                      href={buildSupplyHouseMailto(
+                                        "orders@gerrie.com",
+                                        r.title,
+                                        savedMaterialSummaryLines(
+                                          r.details,
+                                        ),
+                                      )}
+                                      className="inline-flex rounded-lg border border-sky-400/40 px-3 py-1.5 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/10"
+                                    >
+                                      Email to Gerrie Electric
+                                    </a>
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : null}
                             {isAdminRole && r.status === "new" ? (
                               <div className="mt-2">
                                 <button

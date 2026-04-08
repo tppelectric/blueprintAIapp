@@ -1227,15 +1227,23 @@ export function DailyLogsNewClient() {
         const { error: insAtt } = await sb.from("daily_log_attachments").insert({
           daily_log_id: logId,
           file_path: path,
+          file_name: file.name,
           original_name: file.name,
+          file_type: file.type || "application/octet-stream",
           mime_type: file.type || "application/octet-stream",
-          size_bytes: file.size,
+          file_size: file.size,
           kind,
           category: meta.category ?? null,
           caption: meta.caption?.trim() || null,
           uploaded_by: user?.id ?? null,
         });
-        if (insAtt) throw insAtt;
+        if (insAtt) {
+          console.error(
+            "[daily-log upload] attachment insert failed:",
+            insAtt.message,
+          );
+          throw new Error(`Attachment DB insert failed: ${insAtt.message}`);
+        }
       };
 
       for (const p of pendingPhotos) {

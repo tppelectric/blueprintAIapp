@@ -297,14 +297,32 @@ export function JobsClient() {
   };
 
   const updateInvoiceStatus = async (jobId: string, value: string) => {
+    const prevRow = jobs.find((j) => j.id === jobId);
+    const old_value = prevRow?.need_ready_to_invoice ?? null;
+    const new_value = value.trim() || null;
     try {
       const sb = createBrowserClient();
       const { error: ue } = await sb
         .from("jobs")
-        .update({ need_ready_to_invoice: value.trim() || null })
+        .update({ need_ready_to_invoice: new_value })
         .eq("id", jobId);
       if (ue) throw ue;
-      showToast({ message: "Invoice status updated.", variant: "success" });
+      const { error: histErr } = await sb.from("job_status_history").insert({
+        job_id: jobId,
+        changed_by: profile?.id ?? null,
+        field_changed: "need_ready_to_invoice",
+        old_value,
+        new_value,
+        changed_at: new Date().toISOString(),
+      });
+      if (histErr) {
+        showToast({
+          message: `Invoice status updated; history log failed: ${histErr.message}`,
+          variant: "error",
+        });
+      } else {
+        showToast({ message: "Invoice status updated.", variant: "success" });
+      }
       void load();
     } catch (e) {
       showToast({
@@ -316,18 +334,42 @@ export function JobsClient() {
 
   const applyMassInvoiceStatus = async () => {
     if (!massStatus.trim() || selectedIds.size === 0) return;
+    const ids = [...selectedIds];
+    const oldById = new Map(
+      ids.map((id) => {
+        const row = jobs.find((j) => j.id === id);
+        return [id, row?.need_ready_to_invoice ?? null] as const;
+      }),
+    );
     setMassUpdating(true);
     try {
       const sb = createBrowserClient();
-      const ids = [...selectedIds];
       const { error: ue } = await sb
         .from("jobs")
         .update({ need_ready_to_invoice: massStatus })
         .in("id", ids);
       if (ue) throw ue;
+      const histRows = ids.map((id) => ({
+        job_id: id,
+        changed_by: profile?.id ?? null,
+        field_changed: "need_ready_to_invoice",
+        old_value: oldById.get(id) ?? null,
+        new_value: massStatus,
+        changed_at: new Date().toISOString(),
+      }));
+      const { error: histErr } = await sb
+        .from("job_status_history")
+        .insert(histRows);
+      if (histErr) {
+        showToast({
+          message: `Applied; history log failed: ${histErr.message}`,
+          variant: "error",
+        });
+      } else {
+        showToast({ message: "Invoice status applied.", variant: "success" });
+      }
       setSelectedIds(new Set());
       setMassStatus("");
-      showToast({ message: "Invoice status applied.", variant: "success" });
       void load();
     } catch (e) {
       showToast({

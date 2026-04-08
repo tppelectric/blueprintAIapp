@@ -53,6 +53,18 @@ type CrewAssignmentUserOption = {
   role: string | null;
 };
 
+type JobInvoiceStatusHistoryEntry = {
+  id: string;
+  old_value: string | null;
+  new_value: string | null;
+  changed_at: string;
+  changerName: string;
+};
+
+function formatInvoiceHistValue(v: string | null): string {
+  return v != null && String(v).trim() ? v : "—";
+}
+
 const FINANCIAL_ATTACHMENT_TYPES = new Set([
   "project_breakdown",
   "wifi_calculation",
@@ -102,6 +114,9 @@ export function JobDetailClient({
   const [selectedCrewUserId, setSelectedCrewUserId] = useState("");
   const [crewAssigning, setCrewAssigning] = useState(false);
   const [crewAssignError, setCrewAssignError] = useState<string | null>(null);
+  const [invoiceStatusHistory, setInvoiceStatusHistory] = useState<
+    JobInvoiceStatusHistoryEntry[]
+  >([]);
 
   useEffect(() => {
     setCrewAssignments([...initialCrewAssignments]);
@@ -126,6 +141,7 @@ export function JobDetailClient({
         .maybeSingle();
       if (je || !j) {
         setError("Job not found.");
+        setInvoiceStatusHistory([]);
         return;
       }
       setJob(j as JobRow);
@@ -145,7 +161,78 @@ export function JobDetailClient({
         .eq("job_id", jobId)
         .order("created_at", { ascending: false });
       setAttachments((a ?? []) as JobAttachmentRow[]);
+
+      const { data: histRaw, error: histErr } = await sb
+        .from("job_status_history")
+        .select("id, old_value, new_value, changed_at, changed_by")
+        .eq("job_id", jobId)
+        .eq("field_changed", "need_ready_to_invoice")
+        .order("changed_at", { ascending: false });
+      if (histErr || !histRaw?.length) {
+        setInvoiceStatusHistory([]);
+      } else {
+        const raw = histRaw as {
+          id: string;
+          old_value: string | null;
+          new_value: string | null;
+          changed_at: string;
+          changed_by: string | null;
+        }[];
+        const changerIds = [
+          ...new Set(
+            raw.map((r) => r.changed_by).filter((x): x is string => !!x),
+          ),
+        ];
+        const profileMap = new Map<
+          string,
+          {
+            first_name: string | null;
+            last_name: string | null;
+            full_name: string | null;
+            email: string | null;
+          }
+        >();
+        if (changerIds.length) {
+          const { data: profs } = await sb
+            .from("user_profiles")
+            .select("id, first_name, last_name, full_name, email")
+            .in("id", changerIds);
+          for (const p of profs ?? []) {
+            const row = p as {
+              id: string;
+              first_name: string | null;
+              last_name: string | null;
+              full_name: string | null;
+              email: string | null;
+            };
+            profileMap.set(row.id, row);
+          }
+        }
+        setInvoiceStatusHistory(
+          raw.map((r) => {
+            const prof = r.changed_by
+              ? profileMap.get(r.changed_by)
+              : undefined;
+            const changerName = prof
+              ? userDisplayName({
+                  first_name: prof.first_name,
+                  last_name: prof.last_name,
+                  full_name: prof.full_name,
+                  email: prof.email,
+                })
+              : "—";
+            return {
+              id: r.id,
+              old_value: r.old_value,
+              new_value: r.new_value,
+              changed_at: r.changed_at,
+              changerName,
+            };
+          }),
+        );
+      }
     } catch (e) {
+      setInvoiceStatusHistory([]);
       setError(e instanceof Error ? e.message : "Load failed.");
     }
   }, [jobId]);
@@ -416,6 +503,31 @@ export function JobDetailClient({
                       </div>
                     ) : null}
                   </dl>
+                </section>
+
+                <section className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
+                  <h2 className="text-sm font-bold uppercase tracking-wide text-white/60">
+                    Status history
+                  </h2>
+                  {invoiceStatusHistory.length === 0 ? (
+                    <p className="mt-3 text-sm text-white/45">
+                      No history yet
+                    </p>
+                  ) : (
+                    <ul className="mt-4 space-y-2">
+                      {invoiceStatusHistory.map((row) => (
+                        <li
+                          key={row.id}
+                          className="text-sm leading-relaxed text-white/85"
+                        >
+                          {row.changerName} changed invoice status from{" "}
+                          {formatInvoiceHistValue(row.old_value)} to{" "}
+                          {formatInvoiceHistValue(row.new_value)} on{" "}
+                          {new Date(row.changed_at).toLocaleString()}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </section>
 
                 <section className="rounded-xl border border-white/10 bg-white/[0.04] p-5">

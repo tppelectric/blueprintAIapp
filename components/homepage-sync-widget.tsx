@@ -51,13 +51,31 @@ function SpinIcon({ className }: { className?: string }) {
   );
 }
 
+const EXPECTED_SYNC_MS: Record<SyncTarget, number> = {
+  customers: 15_000,
+  jobs: 45_000,
+  daily_logs: 60_000,
+};
+
 export function HomepageSyncWidget() {
   const { role, loading: roleLoading } = useUserRole();
   const [collapsed, setCollapsed] = useState(true);
   const [syncing, setSyncing] = useState<SyncTarget | null>(null);
+  const [syncProgress, setSyncProgress] = useState<Record<SyncTarget, number>>(
+    { customers: 0, jobs: 0, daily_logs: 0 },
+  );
+  const [syncStartTime, setSyncStartTime] = useState<
+    Record<SyncTarget, number | null>
+  >({ customers: null, jobs: null, daily_logs: null });
   const [results, setResults] =
     useState<Record<SyncTarget, RowResult>>(INITIAL_RESULTS);
   const successTimers = useRef<Partial<Record<SyncTarget, ReturnType<typeof setTimeout>>>>({});
+  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
+  const progressCompleteTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
 
   const clearSuccessTimer = useCallback((type: SyncTarget) => {
     const t = successTimers.current[type];
@@ -166,16 +184,44 @@ export function HomepageSyncWidget() {
       (Object.keys(successTimers.current) as SyncTarget[]).forEach((k) =>
         clearSuccessTimer(k),
       );
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
+      if (progressCompleteTimerRef.current) {
+        clearTimeout(progressCompleteTimerRef.current);
+        progressCompleteTimerRef.current = null;
+      }
     };
   }, [clearSuccessTimer]);
 
   const runSync = async (type: SyncTarget) => {
     clearSuccessTimer(type);
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+    if (progressCompleteTimerRef.current) {
+      clearTimeout(progressCompleteTimerRef.current);
+      progressCompleteTimerRef.current = null;
+    }
     setSyncing(type);
+    setSyncProgress((p) => ({ ...p, [type]: 0 }));
+    setSyncStartTime((p) => ({ ...p, [type]: Date.now() }));
     setResults((prev) => ({
       ...prev,
       [type]: { ...prev[type], status: "idle" },
     }));
+
+    progressIntervalRef.current = setInterval(() => {
+      setSyncProgress((prev) => {
+        const cur = prev[type];
+        if (cur >= 85) return { ...prev };
+        const inc = 1 + Math.floor(Math.random() * 4);
+        return { ...prev, [type]: Math.min(85, cur + inc) };
+      });
+    }, 400);
+
     try {
       const res = await fetch(
         `/api/integrations/jobtread/sync?target=${encodeURIComponent(type)}`,
@@ -186,6 +232,10 @@ export function HomepageSyncWidget() {
         count?: number;
         synced?: number;
       };
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
       if (!res.ok) throw new Error(data.error ?? "Sync failed");
       const count =
         typeof data.count === "number"
@@ -194,6 +244,7 @@ export function HomepageSyncWidget() {
             ? data.synced
             : undefined;
       const nowStr = new Date().toLocaleString();
+      setSyncProgress((p) => ({ ...p, [type]: 100 }));
       setResults((prev) => ({
         ...prev,
         [type]: {
@@ -210,13 +261,24 @@ export function HomepageSyncWidget() {
         }));
         delete successTimers.current[type];
       }, 3000);
+      progressCompleteTimerRef.current = setTimeout(() => {
+        progressCompleteTimerRef.current = null;
+        setSyncProgress((p) => ({ ...p, [type]: 0 }));
+        setSyncing(null);
+        setSyncStartTime((p) => ({ ...p, [type]: null }));
+      }, 1500);
     } catch {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
+      setSyncProgress((p) => ({ ...p, [type]: 0 }));
+      setSyncing(null);
+      setSyncStartTime((p) => ({ ...p, [type]: null }));
       setResults((prev) => ({
         ...prev,
         [type]: { ...prev[type], status: "error" },
       }));
-    } finally {
-      setSyncing(null);
     }
   };
 
@@ -281,13 +343,36 @@ export function HomepageSyncWidget() {
               {rows.map(({ type, label }) => {
                 const r = results[type];
                 const busy = syncing === type;
+                const pct = syncProgress[type];
+                const start = syncStartTime[type];
+                const expectedMs = EXPECTED_SYNC_MS[type];
+                const elapsedMs = start != null ? Date.now() - start : 0;
+                const remainingSec = Math.max(
+                  0,
+                  Math.ceil((expectedMs - elapsedMs) / 1000),
+                );
                 return (
                   <li
                     key={type}
                     className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
                   >
-                    <div className="min-w-0 shrink-0 text-sm font-medium text-white/90">
-                      {label}
+                    <div className="min-w-0 shrink-0 sm:max-w-[min(100%,14rem)]">
+                      <div className="text-sm font-medium text-white/90">
+                        {label}
+                      </div>
+                      {busy ? (
+                        <>
+                          <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-white/10">
+                            <div
+                              className="h-full rounded-full bg-[#E8C84A] transition-all duration-300"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <p className="mt-1 text-[10px] text-white/40">
+                            ~{remainingSec}s remaining
+                          </p>
+                        </>
+                      ) : null}
                     </div>
                     <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:justify-center">
                       <span className="rounded-full border border-[#E8C84A]/35 bg-[#E8C84A]/10 px-2 py-0.5 text-xs font-semibold tabular-nums text-[#E8C84A]">
@@ -325,7 +410,7 @@ export function HomepageSyncWidget() {
                           {busy ? (
                             <>
                               <SpinIcon className="h-3.5 w-3.5 animate-spin" />
-                              Syncing…
+                              Syncing… {pct}%
                             </>
                           ) : (
                             <>Sync ↻</>

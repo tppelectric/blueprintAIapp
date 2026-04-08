@@ -235,40 +235,14 @@ function buildSupplyHouseMailto(
   return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
-const SUPPLY_HOUSE_MAIL_BUTTONS: {
-  to: string;
-  label: string;
-  activityName: string;
-  mailtoOptions?: (title: string) => {
-    subject: string;
-    bodyClosing: string;
-  };
-}[] = [
-  {
-    to: "Sean.Obrien@cooper-electric.com",
-    label: "Email Cooper Electric",
-    activityName: "Cooper Electric Supply",
-  },
-  {
-    to: "squackenbush@hzelectric.com",
-    label: "Email HZ Electric",
-    activityName: "HZ Electric Supply",
-  },
-  {
-    to: "Calvin.Rembert@ADIGlobal.com",
-    label: "Email Snap AV",
-    activityName: "Snap AV / ADI Global",
-  },
-  {
-    to: "info@tppelectric.com",
-    label: "Email TPP Office",
-    activityName: "TPP Office Staff",
-    mailtoOptions: (title) => ({
-      subject: `Material Order Request - ${title} - Field Team`,
-      bodyClosing: "Please process this material order. Thank you.",
-    }),
-  },
-];
+type SupplyHouseContactLite = {
+  id: string;
+  name: string;
+  contact_name: string | null;
+  email: string;
+  subject_override: string | null;
+  body_closing_override: string | null;
+};
 
 const MATERIAL_INPUT_CLASS =
   "bg-[#071422] border border-white/15 rounded px-2 py-1 text-xs text-white";
@@ -478,6 +452,9 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
   const [activityByRequestId, setActivityByRequestId] = useState<
     Record<string, ActivityEventRow[]>
   >({});
+  const [supplyHouses, setSupplyHouses] = useState<SupplyHouseContactLite[]>(
+    [],
+  );
   const hiddenFileInputRef = useRef<HTMLInputElement>(null);
 
   const isMarketing = surface === "marketing";
@@ -515,6 +492,32 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
       cancelled = true;
     };
   }, [profile?.id, loading, surface, refreshTick]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const sb = createBrowserClient();
+      const { data, error } = await sb
+        .from("supply_house_contacts")
+        .select(
+          "id, name, contact_name, email, subject_override, body_closing_override",
+        )
+        .eq("active", true)
+        .order("sort_order", { ascending: true });
+      if (cancelled) return;
+      if (error) {
+        console.error("[supply_house_contacts]", error.message);
+        setSupplyHouses([]);
+        return;
+      }
+      setSupplyHouses(
+        (data ?? []) as unknown as SupplyHouseContactLite[],
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1305,9 +1308,9 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
                                 </button>
                                 {isAdminRole && hasSavedMaterialLines(r) ? (
                                   <div className="mt-2 grid grid-cols-2 gap-2">
-                                    {SUPPLY_HOUSE_MAIL_BUTTONS.map((cfg) => (
+                                    {supplyHouses.map((house) => (
                                       <button
-                                        key={cfg.to}
+                                        key={house.id}
                                         type="button"
                                         className="border border-sky-400/40 text-sky-300 hover:bg-sky-500/10 rounded-lg px-3 py-1.5 text-xs font-semibold"
                                         onClick={(e) => {
@@ -1318,11 +1321,27 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
                                                 r.details,
                                               );
                                             const n = matLines.length;
+                                            const subRaw =
+                                              house.subject_override?.trim() ??
+                                              "";
+                                            const bodyRaw =
+                                              house.body_closing_override?.trim() ??
+                                              "";
                                             const href = buildSupplyHouseMailto(
-                                              cfg.to,
+                                              house.email,
                                               r.title,
                                               matLines,
-                                              cfg.mailtoOptions?.(r.title),
+                                              {
+                                                subject: subRaw
+                                                  ? subRaw.replaceAll(
+                                                      "{title}",
+                                                      r.title,
+                                                    )
+                                                  : undefined,
+                                                bodyClosing: bodyRaw
+                                                  ? bodyRaw
+                                                  : undefined,
+                                              },
                                             );
                                             window.open(
                                               href,
@@ -1334,7 +1353,7 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
                                                 r.id,
                                                 profile.id,
                                                 "email_sent",
-                                                `Email sent to ${cfg.activityName} with ${n} material line items`,
+                                                `Email sent to ${house.name} with ${n} material line items`,
                                               );
                                               setRefreshTick((t) => t + 1);
                                             }
@@ -1346,7 +1365,7 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
                                           })();
                                         }}
                                       >
-                                        {cfg.label}
+                                        Email {house.name}
                                       </button>
                                     ))}
                                   </div>

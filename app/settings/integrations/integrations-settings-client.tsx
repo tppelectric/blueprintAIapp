@@ -10,6 +10,7 @@ import {
   type JobtreadSettingsPublic,
   type SyncInterval,
 } from "@/lib/jobtread-settings";
+import { SupplyHouseSettings } from "@/components/supply-house-settings";
 import { canManageIntegrations } from "@/lib/user-roles";
 
 type JobtreadSyncLogEntry = {
@@ -615,6 +616,7 @@ export function IntegrationsSettingsClient() {
         {loading ? (
           <div className="mt-8 h-64 animate-pulse rounded-xl bg-white/10" />
         ) : (
+          <>
           <section className="mt-8 min-w-0 rounded-xl border border-white/10 bg-white/[0.04] p-4 sm:p-6">
             <h2 className="text-lg font-semibold text-white">
               JobTread Integration
@@ -1252,6 +1254,10 @@ export function IntegrationsSettingsClient() {
               </div>
             </div>
           </section>
+          <section className="mt-8 min-w-0">
+            <SupplyHouseSettings />
+          </section>
+          </>
         )}
       </main>
     </div>

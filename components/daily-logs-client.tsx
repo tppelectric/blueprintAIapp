@@ -59,6 +59,30 @@ function logSearchHaystack(l: DailyLogRow): string {
     .toLowerCase();
 }
 
+/** Resolve number + title from linked job row or `job_name` stored as "number · name". */
+function dailyLogJobDisplay(
+  l: DailyLogRow,
+  jobsById: Map<string, JobMatch>,
+): { jobNumber: string | null; jobTitle: string | null } {
+  if (l.job_id) {
+    const j = jobsById.get(l.job_id);
+    if (j) {
+      const num = j.job_number?.trim() || null;
+      const name = j.job_name?.trim() || null;
+      return { jobNumber: num, jobTitle: name };
+    }
+  }
+  const raw = l.job_name?.trim() ?? "";
+  if (!raw) return { jobNumber: null, jobTitle: null };
+  const sep = " · ";
+  const i = raw.indexOf(sep);
+  if (i <= 0) return { jobNumber: null, jobTitle: raw };
+  return {
+    jobNumber: raw.slice(0, i).trim() || null,
+    jobTitle: raw.slice(i + sep.length).trim() || null,
+  };
+}
+
 function timeInputValue(t: string | null | undefined): string {
   if (!t?.trim()) return "";
   const s = t.trim();
@@ -296,6 +320,12 @@ export function DailyLogsClient() {
     setPreviewRows(rows);
     setParseErrors(errors);
   }, [csvText, jobs]);
+
+  const jobsById = useMemo(() => {
+    const m = new Map<string, JobMatch>();
+    for (const j of jobs) m.set(j.id, j);
+    return m;
+  }, [jobs]);
 
   const filteredLogs = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -728,6 +758,14 @@ export function DailyLogsClient() {
                             ? `${l.employees_onsite.slice(0, 30)}…`
                             : l.employees_onsite
                           : "—";
+                      const { jobNumber, jobTitle } = dailyLogJobDisplay(
+                        l,
+                        jobsById,
+                      );
+                      const jobTableLine =
+                        jobNumber && jobTitle
+                          ? `${jobNumber} · ${jobTitle}`
+                          : jobTitle || jobNumber || l.job_name || "—";
                       return (
                         <tr
                           key={l.id}
@@ -743,18 +781,22 @@ export function DailyLogsClient() {
                               </p>
                             ) : null}
                           </td>
-                          <td className="p-3 align-top">
-                            <div className="flex flex-col gap-1.5">
+                          <td className="max-w-[18rem] p-3 align-top">
+                            <div className="flex min-w-0 flex-col gap-1.5">
                               {l.job_id ? (
                                 <Link
                                   href={`/jobs/${l.job_id}`}
-                                  className="font-semibold text-white hover:text-[#E8C84A] hover:underline"
+                                  className="min-w-0 truncate font-semibold text-white hover:text-[#E8C84A] hover:underline"
+                                  title={jobTableLine}
                                 >
-                                  {l.job_name ?? "View job"}
+                                  {jobTableLine}
                                 </Link>
                               ) : (
-                                <span className="font-semibold text-white">
-                                  {l.job_name ?? "—"}
+                                <span
+                                  className="min-w-0 truncate font-semibold text-white"
+                                  title={jobTableLine}
+                                >
+                                  {jobTableLine}
                                 </span>
                               )}
                               {l.job_status?.trim() ? (
@@ -937,6 +979,10 @@ export function DailyLogsClient() {
                 ) : null}
                 {filteredLogs.map((l) => {
                   const h = hoursWorked(l.check_in, l.check_out);
+                  const { jobNumber, jobTitle } = dailyLogJobDisplay(
+                    l,
+                    jobsById,
+                  );
                   return (
                     <li
                       key={l.id}
@@ -953,16 +999,23 @@ export function DailyLogsClient() {
                           <span className="text-sm text-[#E8C84A]">{h}h</span>
                         ) : null}
                       </div>
-                      <p className="mt-1 text-sm text-white">
+                      <p className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-sm text-white">
+                        {jobNumber ? (
+                          <span className="font-mono text-xs text-[#E8C84A]/80">
+                            {jobNumber}
+                          </span>
+                        ) : null}
                         {l.job_id ? (
                           <Link
                             href={`/jobs/${l.job_id}`}
-                            className="text-[#E8C84A] hover:underline"
+                            className="min-w-0 text-[#E8C84A] hover:underline"
                           >
-                            {l.job_name ?? "Job"}
+                            {jobTitle ?? l.job_name ?? "Job"}
                           </Link>
                         ) : (
-                          l.job_name ?? "—"
+                          <span className="min-w-0">
+                            {jobTitle ?? l.job_name ?? "—"}
+                          </span>
                         )}
                       </p>
                       <p className="mt-1 text-xs text-white/50">

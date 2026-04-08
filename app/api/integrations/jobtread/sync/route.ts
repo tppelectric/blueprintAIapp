@@ -219,32 +219,12 @@ async function fallbackUpsertJobs(
   return n;
 }
 
-function mapJobtreadStatus(
-  jtStatus: string | null | undefined,
-  needReady: string | null | undefined,
-): string {
-  const nr = (needReady ?? "").toUpperCase();
-  if (
-    nr.includes("CLOSED") ||
-    nr.includes("NOT PROCEEDING") ||
-    nr.includes("PLEASE CLOSE") ||
-    nr.includes("DELETE")
-  ) {
-    return "Complete";
-  }
-  if (nr.includes("PAID")) {
-    return "Complete";
-  }
-  switch (jtStatus?.toLowerCase()) {
-    case "created":
-      return "Lead";
-    case "approved":
-      return "Active";
-    case "closed":
-      return "Complete";
-    default:
-      return "Lead";
-  }
+function mapJobtreadStatus(raw: string | null | undefined): string {
+  const s = (raw ?? "").trim().toLowerCase();
+  if (s === "closed") return "Complete";
+  if (s === "approved") return "Active";
+  if (s === "created") return "Lead";
+  return "Active";
 }
 
 async function syncJobsImport(
@@ -268,7 +248,7 @@ async function syncJobsImport(
       job_name: j.name?.trim() || "Job",
       job_number: j.number?.trim() || "",
       jobtread_id: j.id,
-      status: mapJobtreadStatus(j.status, j.need_ready_to_invoice),
+      status: mapJobtreadStatus(j.status),
       address: j.location?.address?.trim() || null,
       customer_id: customerId,
       job_status_custom: j.job_status_custom ?? null,

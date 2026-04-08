@@ -48,6 +48,8 @@ const ALL_STATUSES = [
   "cancelled",
 ] as const;
 
+const REQUEST_STATUS_VALUES = new Set<string>(ALL_STATUSES);
+
 function isImageStoragePath(path: string): boolean {
   return /\.(jpe?g|png|gif|webp)$/i.test(path);
 }
@@ -228,6 +230,83 @@ function buildSupplyHouseMailto(
 const MATERIAL_INPUT_CLASS =
   "bg-[#071422] border border-white/15 rounded px-2 py-1 text-xs text-white";
 
+type ActivityEventRow = {
+  id: string;
+  event_type: string;
+  notes: string | null;
+  created_at: string;
+  created_by: string | null;
+  status: string;
+};
+
+function formatRelativeTime(iso: string): string {
+  const d = new Date(iso);
+  const t = d.getTime();
+  if (Number.isNaN(t)) return "—";
+  const diffMs = Date.now() - t;
+  const sec = Math.floor(diffMs / 1000);
+  const min = Math.floor(sec / 60);
+  const hr = Math.floor(min / 60);
+  const day = Math.floor(hr / 24);
+  if (sec < 45) return "Just now";
+  if (min < 60) return `${min} minute${min === 1 ? "" : "s"} ago`;
+  if (hr < 24) return `${hr} hour${hr === 1 ? "" : "s"} ago`;
+  if (day === 1) return "Yesterday";
+  if (day < 7) return `${day} days ago`;
+  return d.toLocaleDateString();
+}
+
+function activityDotClass(eventType: string): string {
+  const et = eventType.toLowerCase();
+  if (et === "email_sent") return "bg-sky-400";
+  if (et === "materials_updated") return "bg-amber-400";
+  if (et === "comment") return "bg-zinc-400";
+  if (et === "status_change" || REQUEST_STATUS_VALUES.has(et)) {
+    return "bg-blue-400";
+  }
+  return "bg-white";
+}
+
+function mapActivityRows(raw: unknown[] | null): ActivityEventRow[] {
+  return (raw ?? []).map((row) => {
+    const r = row as Record<string, unknown>;
+    const status = String(r.status ?? "");
+    const eventTypeRaw = r.event_type;
+    const eventType =
+      eventTypeRaw != null && String(eventTypeRaw).trim() !== ""
+        ? String(eventTypeRaw)
+        : status;
+    return {
+      id: String(r.id ?? ""),
+      event_type: eventType,
+      notes: r.notes == null || r.notes === "" ? null : String(r.notes),
+      created_at: String(r.created_at ?? ""),
+      created_by: r.created_by ? String(r.created_by) : null,
+      status,
+    };
+  });
+}
+
+async function logRequestEvent(
+  requestId: string,
+  userId: string,
+  eventType: string,
+  notes: string | null,
+) {
+  const sb = createBrowserClient();
+  const { error } = await sb.from("internal_request_status_events").insert({
+    request_id: requestId,
+    created_by: userId,
+    event_type: eventType,
+    status: eventType,
+    notes,
+    created_at: new Date().toISOString(),
+  });
+  if (error) {
+    console.error("[request event]", error.message);
+  }
+}
+
 function MarketingRequestMiniStepper({
   status,
 }: {
@@ -353,6 +432,9 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
     Record<string, MaterialLineRow[]>
   >({});
   const [materialsBusyId, setMaterialsBusyId] = useState<string | null>(null);
+  const [activityByRequestId, setActivityByRequestId] = useState<
+    Record<string, ActivityEventRow[]>
+  >({});
   const hiddenFileInputRef = useRef<HTMLInputElement>(null);
 
   const isMarketing = surface === "marketing";
@@ -453,6 +535,13 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
     let cancelled = false;
     void (async () => {
       const sb = createBrowserClient();
+      setActivityByRequestId((prev) => {
+        const next: Record<string, ActivityEventRow[]> = {};
+        for (const id of expandedIds) {
+          next[id] = prev[id] ?? [];
+        }
+        return next;
+      });
       for (const id of expandedIds) {
         if (cancelled) return;
         const row = rows.find((x) => x.id === id);
@@ -466,6 +555,18 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
           setCommentCounts((prev) => ({
             ...prev,
             [id]: count ?? 0,
+          }));
+        }
+
+        const { data: evData, error: evErr } = await sb
+          .from("internal_request_status_events")
+          .select("*")
+          .eq("request_id", id)
+          .order("created_at", { ascending: false });
+        if (!cancelled && !evErr) {
+          setActivityByRequestId((prev) => ({
+            ...prev,
+            [id]: mapActivityRows(evData),
           }));
         }
 
@@ -696,6 +797,15 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
         })
         .eq("id", requestId);
       if (error) throw error;
+      const n = lines.filter((l) => l.item.trim()).length;
+      if (profile?.id) {
+        await logRequestEvent(
+          requestId,
+          profile.id,
+          "materials_updated",
+          `${n} material line items saved`,
+        );
+      }
       showToast({ message: "Materials saved.", variant: "success" });
       setMaterialLinesByRequestId((p) => ({ ...p, [requestId]: lines }));
       setRefreshTick((t) => t + 1);
@@ -1152,34 +1262,131 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
                                 </button>
                                 {isAdminRole && hasSavedMaterialLines(r) ? (
                                   <div className="mt-3 flex flex-wrap gap-2">
-                                    <a
-                                      href={buildSupplyHouseMailto(
-                                        "sean.obrien@cooper-electric.com",
-                                        r.title,
-                                        savedMaterialSummaryLines(
-                                          r.details,
-                                        ),
-                                      )}
+                                    <button
+                                      type="button"
                                       className="inline-flex rounded-lg border border-sky-400/40 px-3 py-1.5 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/10"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void (async () => {
+                                          const matLines =
+                                            savedMaterialSummaryLines(
+                                              r.details,
+                                            );
+                                          const n = matLines.length;
+                                          const href = buildSupplyHouseMailto(
+                                            "sean.obrien@cooper-electric.com",
+                                            r.title,
+                                            matLines,
+                                          );
+                                          window.open(
+                                            href,
+                                            "_blank",
+                                            "noopener,noreferrer",
+                                          );
+                                          if (profile?.id) {
+                                            await logRequestEvent(
+                                              r.id,
+                                              profile.id,
+                                              "email_sent",
+                                              `Email sent to Cooper Electric with ${n} material line items`,
+                                            );
+                                            setRefreshTick((t) => t + 1);
+                                          }
+                                          showToast({
+                                            message:
+                                              "Email opened and activity logged.",
+                                            variant: "success",
+                                          });
+                                        })();
+                                      }}
                                     >
                                       Email to Cooper Electric
-                                    </a>
-                                    <a
-                                      href={buildSupplyHouseMailto(
-                                        "orders@gerrie.com",
-                                        r.title,
-                                        savedMaterialSummaryLines(
-                                          r.details,
-                                        ),
-                                      )}
+                                    </button>
+                                    <button
+                                      type="button"
                                       className="inline-flex rounded-lg border border-sky-400/40 px-3 py-1.5 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/10"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void (async () => {
+                                          const matLines =
+                                            savedMaterialSummaryLines(
+                                              r.details,
+                                            );
+                                          const n = matLines.length;
+                                          const href = buildSupplyHouseMailto(
+                                            "orders@gerrie.com",
+                                            r.title,
+                                            matLines,
+                                          );
+                                          window.open(
+                                            href,
+                                            "_blank",
+                                            "noopener,noreferrer",
+                                          );
+                                          if (profile?.id) {
+                                            await logRequestEvent(
+                                              r.id,
+                                              profile.id,
+                                              "email_sent",
+                                              `Email sent to Gerrie Electric with ${n} material line items`,
+                                            );
+                                            setRefreshTick((t) => t + 1);
+                                          }
+                                          showToast({
+                                            message:
+                                              "Email opened and activity logged.",
+                                            variant: "success",
+                                          });
+                                        })();
+                                      }}
                                     >
                                       Email to Gerrie Electric
-                                    </a>
+                                    </button>
                                   </div>
                                 ) : null}
                               </div>
                             ) : null}
+                            <div
+                              className="mt-4 border-t border-white/10 pt-3"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <h4 className="text-xs font-bold uppercase tracking-wide text-white/50">
+                                Activity
+                              </h4>
+                              {(activityByRequestId[r.id] ?? []).length ===
+                              0 ? (
+                                <p className="mt-2 text-xs text-white/45">
+                                  No activity yet
+                                </p>
+                              ) : (
+                                <div className="ml-2 mt-3 space-y-3 border-l-2 border-white/10 pl-4">
+                                  {(activityByRequestId[r.id] ?? []).map(
+                                    (ev) => (
+                                      <div
+                                        key={ev.id}
+                                        className="relative pl-1"
+                                      >
+                                        <span
+                                          className={`absolute -left-[calc(1rem+5px)] top-1.5 h-2 w-2 rounded-full ${activityDotClass(ev.event_type)}`}
+                                          aria-hidden
+                                        />
+                                        <p className="text-[11px] font-semibold capitalize text-white/85">
+                                          {ev.event_type.replace(/_/g, " ")}
+                                        </p>
+                                        {ev.notes ? (
+                                          <p className="mt-0.5 text-[10px] text-white/55">
+                                            {ev.notes}
+                                          </p>
+                                        ) : null}
+                                        <p className="mt-0.5 text-[10px] text-white/40">
+                                          {formatRelativeTime(ev.created_at)}
+                                        </p>
+                                      </div>
+                                    ),
+                                  )}
+                                </div>
+                              )}
+                            </div>
                             {isAdminRole && r.status === "new" ? (
                               <div className="mt-2">
                                 <button

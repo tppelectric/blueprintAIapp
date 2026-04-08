@@ -502,7 +502,7 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
         .select(
           "id, name, contact_name, email, subject_override, body_closing_override",
         )
-        .eq("active", true)
+        .eq("is_active", true)
         .order("sort_order", { ascending: true });
       if (cancelled) return;
       if (error) {

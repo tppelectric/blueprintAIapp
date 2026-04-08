@@ -12,7 +12,7 @@ type SupplyHouseContactRow = {
   email: string;
   subject_override: string | null;
   body_closing_override: string | null;
-  active: boolean;
+  is_active: boolean;
   sort_order: number;
 };
 
@@ -23,7 +23,7 @@ type FormDraft = {
   email: string;
   subject_override: string;
   body_closing_override: string;
-  active: boolean;
+  is_active: boolean;
   sort_order: number;
 };
 
@@ -34,7 +34,7 @@ function emptyDraft(): FormDraft {
     email: "",
     subject_override: "",
     body_closing_override: "",
-    active: true,
+    is_active: true,
     sort_order: 0,
   };
 }
@@ -47,7 +47,7 @@ function draftFromRow(row: SupplyHouseContactRow): FormDraft {
     email: row.email,
     subject_override: row.subject_override ?? "",
     body_closing_override: row.body_closing_override ?? "",
-    active: row.active,
+    is_active: row.is_active,
     sort_order: row.sort_order,
   };
 }
@@ -119,7 +119,7 @@ export function SupplyHouseSettings() {
         email,
         subject_override: draft.subject_override.trim() || null,
         body_closing_override: draft.body_closing_override.trim() || null,
-        active: draft.active,
+        is_active: draft.is_active,
         sort_order: Number.isFinite(draft.sort_order)
           ? Math.trunc(draft.sort_order)
           : 0,
@@ -154,14 +154,17 @@ export function SupplyHouseSettings() {
     }
   };
 
-  const toggleActive = async (row: SupplyHouseContactRow, active: boolean) => {
+  const toggleActive = async (
+    row: SupplyHouseContactRow,
+    is_active: boolean,
+  ) => {
     setTogglingId(row.id);
     try {
       const sb = createBrowserClient();
       const { error } = await sb
         .from("supply_house_contacts")
         .update({
-          active,
+          is_active,
           updated_at: new Date().toISOString(),
         })
         .eq("id", row.id);
@@ -253,9 +256,9 @@ export function SupplyHouseSettings() {
         <input
           type="checkbox"
           className="rounded border-white/30"
-          checked={draft.active}
+          checked={draft.is_active}
           onChange={(e) =>
-            setDraft((d) => ({ ...d, active: e.target.checked }))
+            setDraft((d) => ({ ...d, is_active: e.target.checked }))
           }
         />
         Active
@@ -340,7 +343,7 @@ export function SupplyHouseSettings() {
                     <input
                       type="checkbox"
                       className="rounded border-white/30"
-                      checked={row.active}
+                      checked={row.is_active}
                       disabled={togglingId === row.id}
                       onChange={(e) =>
                         void toggleActive(row, e.target.checked)

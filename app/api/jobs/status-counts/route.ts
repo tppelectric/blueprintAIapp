@@ -1,12 +1,25 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createSupabaseRouteClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
+import {
+  bucketForValue,
+  normalizeInvoiceStatus,
+  PIPELINE_BUCKET_OPTIONS,
+  type PipelineCountBucket,
+} from "@/lib/pipeline-bucket-config";
 
 export const dynamic = "force-dynamic";
 
+const VALID_BUCKETS = new Set<PipelineCountBucket>(
+  PIPELINE_BUCKET_OPTIONS.map((o) => o.id),
+);
+
 export async function GET(request: NextRequest) {
   const supabase = createSupabaseRouteClient(request);
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
   if (authError || !user?.id) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
@@ -15,7 +28,10 @@ export async function GET(request: NextRequest) {
   try {
     admin = createServiceRoleClient();
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Server error." }, { status: 500 });
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Server error." },
+      { status: 500 },
+    );
   }
 
   const { data: profile } = await admin
@@ -28,6 +44,28 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
+  const overrideNormToBucket = new Map<string, PipelineCountBucket>();
+
+  const { data: overrideRows, error: overrideError } = await admin
+    .from("pipeline_bucket_overrides")
+    .select("need_ready_to_invoice_value, bucket");
+
+  if (overrideError) {
+    console.error("[status-counts] pipeline_bucket_overrides:", overrideError.message);
+  } else {
+    for (const r of overrideRows ?? []) {
+      const row = r as {
+        need_ready_to_invoice_value: string;
+        bucket: string;
+      };
+      const v = row.need_ready_to_invoice_value?.trim();
+      if (!v) continue;
+      const b = row.bucket as PipelineCountBucket;
+      if (!VALID_BUCKETS.has(b)) continue;
+      overrideNormToBucket.set(normalizeInvoiceStatus(v), b);
+    }
+  }
+
   const { data: rows, error: jobsError } = await admin
     .from("jobs")
     .select("need_ready_to_invoice");
@@ -36,7 +74,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: jobsError.message }, { status: 500 });
   }
 
-  const counts = {
+  const counts: Record<PipelineCountBucket, number> = {
     ready_to_invoice: 0,
     in_progress: 0,
     invoiced: 0,
@@ -45,34 +83,11 @@ export async function GET(request: NextRequest) {
     needs_update: 0,
   };
 
-  const READY = new Set(["YES, READY TO BE INVOICED"]);
-  const IN_PROGRESS = new Set([
-    "NEW JOB/JUST STARTED",
-    "NO, JOB STILL IN PROGRESS",
-    "IN PROGRESS",
-    "ESTIMATING",
-  ]);
-  const INVOICED = new Set([
-    "INVOICED/SENT",
-    "PARTIAL/PROGRESS PAYMENT RECEIVED",
-    "DOCUMENT MADE/NEEDS REVIEW BEFORE SENDING",
-  ]);
-  const PAID = new Set(["PAID", "BARTERED WORK"]);
-  const ON_HOLD = new Set([
-    "ON HOLD/WAITING FOR MATERIAL",
-    "ON HOLD/WAITING FOR APPROVAL",
-  ]);
-
   for (const row of rows ?? []) {
-    const v = (row as { need_ready_to_invoice: string | null }).need_ready_to_invoice;
-    if (!v) { counts.needs_update++; continue; }
-    const u = v.trim().toUpperCase();
-    if (READY.has(u)) counts.ready_to_invoice++;
-    else if (IN_PROGRESS.has(u)) counts.in_progress++;
-    else if (INVOICED.has(u)) counts.invoiced++;
-    else if (PAID.has(u)) counts.paid++;
-    else if (ON_HOLD.has(u)) counts.on_hold++;
-    else counts.needs_update++;
+    const v = (row as { need_ready_to_invoice: string | null })
+      .need_ready_to_invoice;
+    const bucket = bucketForValue(v, overrideNormToBucket);
+    counts[bucket] += 1;
   }
 
   return NextResponse.json({ ok: true, counts });

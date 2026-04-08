@@ -246,7 +246,15 @@ export function JobsClient() {
       result = result.filter((j) => j.assigned_user_id === currentUserId);
     }
     if (statusFilter) {
-      result = result.filter((j) => j.need_ready_to_invoice === statusFilter);
+      const filterValues = statusFilter.includes("|")
+        ? statusFilter
+            .split("|")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [statusFilter.trim()].filter(Boolean);
+      result = result.filter((j) =>
+        filterValues.includes(j.need_ready_to_invoice ?? ""),
+      );
     }
     const q = jobSearch.trim().toLowerCase();
     if (q) {
@@ -526,10 +534,10 @@ export function JobsClient() {
   };
 
   function invoiceBadgeClass(status: string): string {
-    if (status === "YES READY TO BE INVOICED") return "bg-[#E8C84A]/20 text-[#E8C84A]";
+    if (status === "YES, READY TO BE INVOICED") return "bg-[#E8C84A]/20 text-[#E8C84A]";
     if (status === "PAID") return "bg-emerald-500/20 text-emerald-300";
     if (status === "INVOICED/SENT") return "bg-sky-500/20 text-sky-300";
-    if (status === "NO JOB STILL IN PROGRESS" || status === "IN PROGRESS") return "bg-blue-500/20 text-blue-300";
+    if (status === "NO, JOB STILL IN PROGRESS" || status === "IN PROGRESS") return "bg-blue-500/20 text-blue-300";
     if (status.startsWith("ON HOLD")) return "bg-amber-500/20 text-amber-300";
     return "bg-rose-500/20 text-rose-300";
   }

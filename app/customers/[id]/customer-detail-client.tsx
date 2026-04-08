@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { WideAppHeader } from "@/components/wide-app-header";
 import { createBrowserClient } from "@/lib/supabase/client";
 import type { CustomerRow, JobRow } from "@/lib/jobs-types";
+import { bucketForValue } from "@/lib/pipeline-bucket-config";
+import type { PipelineCountBucket } from "@/lib/pipeline-bucket-config";
 
 function formatStatus(status: string | null): string {
   if (status == null || !String(status).trim()) return "—";
@@ -60,6 +62,55 @@ function isOpenJobStatus(status: string): boolean {
   return s !== "complete" && s !== "cancelled";
 }
 
+function isQuickStatOpenJob(status: string): boolean {
+  const s = status.trim().toLowerCase();
+  return (
+    s === "lead" ||
+    s === "active" ||
+    s === "quoted" ||
+    s === "on hold"
+  );
+}
+
+function invoiceBadgeClass(status: string): string {
+  if (status === "YES, READY TO BE INVOICED") return "bg-[#E8C84A]/20 text-[#E8C84A]";
+  if (status === "PAID") return "bg-emerald-500/20 text-emerald-300";
+  if (status === "INVOICED/SENT") return "bg-sky-500/20 text-sky-300";
+  if (status === "NO, JOB STILL IN PROGRESS" || status === "IN PROGRESS") return "bg-blue-500/20 text-blue-300";
+  if (status.startsWith("ON HOLD")) return "bg-amber-500/20 text-amber-300";
+  return "bg-rose-500/20 text-rose-300";
+}
+
+function jobAddressLine(j: JobRow): string {
+  return [j.address, j.city, j.state, j.zip].filter(Boolean).join(", ");
+}
+
+const PIPELINE_SNAPSHOT_ROWS: {
+  bucket: PipelineCountBucket;
+  label: string;
+  colorClass: string;
+}[] = [
+  {
+    bucket: "ready_to_invoice",
+    label: "Ready to Invoice",
+    colorClass: "text-[#E8C84A]",
+  },
+  { bucket: "in_progress", label: "In Progress", colorClass: "text-blue-300" },
+  { bucket: "invoiced", label: "Invoiced", colorClass: "text-sky-300" },
+  { bucket: "paid", label: "Paid", colorClass: "text-emerald-300" },
+  { bucket: "on_hold", label: "On Hold", colorClass: "text-amber-200" },
+  {
+    bucket: "needs_update",
+    label: "Needs Update",
+    colorClass: "text-rose-300",
+  },
+];
+
+function telHref(phone: string): string {
+  const digits = phone.replace(/[^\d+]/g, "");
+  return digits ? `tel:${digits}` : `tel:${phone.trim()}`;
+}
+
 export function CustomerDetailClient({ id }: { id: string }) {
   const [c, setC] = useState<CustomerRow | null>(null);
   const [jobs, setJobs] = useState<JobRow[]>([]);
@@ -80,7 +131,9 @@ export function CustomerDetailClient({ id }: { id: string }) {
       setC(cust as CustomerRow);
       const { data: j } = await sb
         .from("jobs")
-        .select("*")
+        .select(
+          "id,customer_id,assigned_user_id,job_name,job_number,job_type,status,need_ready_to_invoice,address,city,state,zip,description,notes,created_at,updated_at",
+        )
         .eq("customer_id", id)
         .order("updated_at", { ascending: false });
       setJobs((j ?? []) as JobRow[]);
@@ -105,9 +158,87 @@ export function CustomerDetailClient({ id }: { id: string }) {
     [jobs],
   );
 
+  const quickStatOpenCount = useMemo(
+    () => jobs.filter((j) => isQuickStatOpenJob(j.status)).length,
+    [jobs],
+  );
+
+  const readyToInvoiceCount = useMemo(
+    () =>
+      jobs.filter((j) => j.need_ready_to_invoice === "YES, READY TO BE INVOICED")
+        .length,
+    [jobs],
+  );
+
+  const paidInvoiceCount = useMemo(
+    () => jobs.filter((j) => j.need_ready_to_invoice === "PAID").length,
+    [jobs],
+  );
+
+  const pipelineCounts = useMemo(() => {
+    const emptyOverrides = new Map<string, PipelineCountBucket>();
+    const out: Record<PipelineCountBucket, number> = {
+      ready_to_invoice: 0,
+      in_progress: 0,
+      invoiced: 0,
+      paid: 0,
+      on_hold: 0,
+      needs_update: 0,
+    };
+    for (const j of jobs) {
+      const b = bucketForValue(j.need_ready_to_invoice, emptyOverrides);
+      out[b] += 1;
+    }
+    return out;
+  }, [jobs]);
+
   const addressLine = [c?.address, c?.city, c?.state, c?.zip]
     .filter(Boolean)
     .join(", ");
+
+  const renderJobCard = (j: JobRow) => {
+    const addr = jobAddressLine(j);
+    const nri = j.need_ready_to_invoice?.trim();
+    return (
+      <li key={j.id}>
+        <Link
+          href={`/jobs/${j.id}`}
+          className="block rounded-xl border border-white/10 bg-white/[0.04] p-4 transition-colors hover:border-[#E8C84A]/35"
+        >
+          <p className="text-sm font-semibold text-white">
+            {j.job_number} · {j.job_name}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/70 ring-1 ring-white/15">
+              {j.job_type}
+            </span>
+            <span
+              className={
+                j.status.trim().toLowerCase() === "complete"
+                  ? jobCompletedStatusBadgeClass()
+                  : jobOpenSectionStatusBadgeClass(j.status)
+              }
+            >
+              {formatStatus(j.status)}
+            </span>
+            {nri ? (
+              <span
+                className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${invoiceBadgeClass(nri)}`}
+              >
+                {nri}
+              </span>
+            ) : null}
+          </div>
+          {addr ? (
+            <p className="mt-2 text-xs text-white/55">{addr}</p>
+          ) : null}
+          <p className="mt-2 text-xs text-white/45">
+            Updated {formatJobUpdated(j.updated_at)}
+          </p>
+        </Link>
+      </li>
+    );
+  };
 
   if (error || !c) {
     return (
@@ -145,29 +276,50 @@ export function CustomerDetailClient({ id }: { id: string }) {
               {c.contact_name}
             </p>
           ) : null}
-          <div className="mt-5 flex flex-wrap gap-2">
+
+          <div className="mt-5 space-y-3 text-sm">
             {c.phone?.trim() ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-[#0a1628]/60 px-3 py-1 text-xs text-white/90">
-                <span aria-hidden>📞</span>
-                {c.phone}
-              </span>
+              <div>
+                <span className="text-xs font-semibold uppercase tracking-wide text-white/40">
+                  Phone
+                </span>
+                <a
+                  href={telHref(c.phone)}
+                  className="mt-0.5 block text-white/90 hover:text-[#E8C84A] hover:underline"
+                >
+                  {c.phone.trim()}
+                </a>
+              </div>
             ) : null}
             {c.email?.trim() ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-[#0a1628]/60 px-3 py-1 text-xs text-white/90">
-                <span aria-hidden>✉</span>
-                {c.email}
-              </span>
+              <div>
+                <span className="text-xs font-semibold uppercase tracking-wide text-white/40">
+                  Email
+                </span>
+                <a
+                  href={`mailto:${encodeURIComponent(c.email.trim())}`}
+                  className="mt-0.5 block text-white/90 hover:text-[#E8C84A] hover:underline"
+                >
+                  {c.email.trim()}
+                </a>
+              </div>
             ) : null}
             {addressLine ? (
-              <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-white/10 bg-[#0a1628]/60 px-3 py-1 text-xs text-white/90">
-                <span aria-hidden>📍</span>
-                <span className="truncate">{addressLine}</span>
-              </span>
+              <div>
+                <span className="text-xs font-semibold uppercase tracking-wide text-white/40">
+                  Address
+                </span>
+                <p className="mt-0.5 text-white/85">{addressLine}</p>
+              </div>
             ) : null}
           </div>
+
           {c.notes?.trim() ? (
-            <div className="mt-6 rounded-lg border border-white/5 bg-white/[0.03] p-4 text-sm text-white/50">
-              {c.notes}
+            <div className="mt-6 border-t border-white/10 pt-5">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-white/50">
+                Notes
+              </h3>
+              <p className="mt-2 text-sm text-white/70">{c.notes.trim()}</p>
             </div>
           ) : null}
         </div>
@@ -182,32 +334,7 @@ export function CustomerDetailClient({ id }: { id: string }) {
                 <p className="mt-3 text-sm text-white/45">No open jobs.</p>
               ) : (
                 <ul className="mt-4 space-y-3">
-                  {openJobs.map((j) => (
-                    <li
-                      key={j.id}
-                      className="rounded-xl border border-white/10 bg-white/[0.04] p-4"
-                    >
-                      <Link
-                        href={`/jobs/${j.id}`}
-                        className="text-sm font-semibold text-white hover:text-[#E8C84A] hover:underline"
-                      >
-                        {j.job_number} · {j.job_name}
-                      </Link>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/70 ring-1 ring-white/15">
-                          {j.job_type}
-                        </span>
-                        <span
-                          className={jobOpenSectionStatusBadgeClass(j.status)}
-                        >
-                          {formatStatus(j.status)}
-                        </span>
-                      </div>
-                      <p className="mt-2 text-xs text-white/45">
-                        Updated {formatJobUpdated(j.updated_at)}
-                      </p>
-                    </li>
-                  ))}
+                  {openJobs.map((j) => renderJobCard(j))}
                 </ul>
               )}
             </section>
@@ -222,30 +349,7 @@ export function CustomerDetailClient({ id }: { id: string }) {
                 </p>
               ) : (
                 <ul className="mt-4 space-y-3">
-                  {completedJobs.map((j) => (
-                    <li
-                      key={j.id}
-                      className="rounded-xl border border-white/10 bg-white/[0.04] p-4"
-                    >
-                      <Link
-                        href={`/jobs/${j.id}`}
-                        className="text-sm font-semibold text-white hover:text-[#E8C84A] hover:underline"
-                      >
-                        {j.job_number} · {j.job_name}
-                      </Link>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/70 ring-1 ring-white/15">
-                          {j.job_type}
-                        </span>
-                        <span className={jobCompletedStatusBadgeClass()}>
-                          {formatStatus(j.status)}
-                        </span>
-                      </div>
-                      <p className="mt-2 text-xs text-white/45">
-                        Updated {formatJobUpdated(j.updated_at)}
-                      </p>
-                    </li>
-                  ))}
+                  {completedJobs.map((j) => renderJobCard(j))}
                 </ul>
               )}
             </section>
@@ -266,11 +370,23 @@ export function CustomerDetailClient({ id }: { id: string }) {
                 <div className="flex justify-between gap-2 text-white/80">
                   <dt className="text-white/50">Open jobs</dt>
                   <dd className="font-semibold tabular-nums text-white">
-                    {openJobs.length}
+                    {quickStatOpenCount}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-2 text-white/80">
-                  <dt className="text-white/50">Completed</dt>
+                  <dt className="text-white/50">Ready to invoice</dt>
+                  <dd className="font-semibold tabular-nums text-white">
+                    {readyToInvoiceCount}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-2 text-white/80">
+                  <dt className="text-white/50">Paid jobs</dt>
+                  <dd className="font-semibold tabular-nums text-white">
+                    {paidInvoiceCount}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-2 text-white/80">
+                  <dt className="text-white/50">Completed jobs</dt>
                   <dd className="font-semibold tabular-nums text-white">
                     {completedJobs.length}
                   </dd>
@@ -283,6 +399,35 @@ export function CustomerDetailClient({ id }: { id: string }) {
                 </div>
               </dl>
             </div>
+
+            <div className="rounded-xl border border-white/10 bg-white/[0.04] p-5">
+              <h3 className="text-sm font-bold uppercase tracking-wide text-white/60">
+                Pipeline snapshot
+              </h3>
+              <p className="mt-1 text-xs text-white/40">
+                Invoice status buckets for this customer&apos;s jobs
+              </p>
+              <ul className="mt-4 space-y-2">
+                {PIPELINE_SNAPSHOT_ROWS.map((row) => {
+                  const n = pipelineCounts[row.bucket];
+                  if (n <= 0) return null;
+                  return (
+                    <li
+                      key={row.bucket}
+                      className="flex items-center justify-between gap-2 rounded-lg border border-white/8 bg-[#0a1628]/50 px-3 py-2"
+                    >
+                      <span className={`text-xs font-medium ${row.colorClass}`}>
+                        {row.label}
+                      </span>
+                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs font-bold tabular-nums text-white">
+                        {n}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+
             <Link
               href={`/jobs?customer_id=${encodeURIComponent(id)}`}
               className="inline-flex h-11 items-center justify-center rounded-lg bg-[#E8C84A] px-4 text-sm font-bold text-[#0a1628] hover:brightness-110"

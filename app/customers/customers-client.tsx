@@ -280,48 +280,74 @@ export function CustomersClient() {
           />
         ) : (
           <ul className="space-y-3">
-            {filteredRows.map((c) => (
-              <li
-                key={c.id}
-                className="app-card app-card-pad-lg w-full"
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
-                  <Link
-                    href={`/customers/${c.id}`}
-                    className="min-w-0 flex-1 hover:text-[#E8C84A]"
-                  >
-                    <p className="text-base font-semibold text-white">
-                      {c.company_name || c.contact_name || "Customer"}
-                    </p>
-                    <p className="app-body mt-0.5">
-                      <span className="block sm:inline">{c.phone}</span>
-                      <span className="hidden sm:inline"> · </span>
-                      <span className="block sm:inline">{c.email}</span>
-                    </p>
-                    <p className="app-muted mt-0.5 sm:mt-1">
-                      {c.job_count ?? 0} job
-                      {(c.job_count ?? 0) === 1 ? "" : "s"}
-                    </p>
-                  </Link>
-                  <div className="flex w-full shrink-0 flex-wrap gap-2 sm:w-auto">
-                    <button
-                      type="button"
-                      onClick={() => openEdit(c)}
-                      className="btn-secondary !h-9 min-h-0 !px-3 !text-xs"
+            {filteredRows.map((c) => {
+              const company =
+                c.company_name?.trim() || c.contact_name?.trim() || "Customer";
+              const contact = c.contact_name?.trim();
+              const showContact =
+                !!contact &&
+                contact.toLowerCase() !== company.toLowerCase();
+              return (
+                <li
+                  key={c.id}
+                  className="app-card app-card-pad-lg w-full"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+                    <Link
+                      href={`/customers/${c.id}`}
+                      className="min-w-0 flex-1 rounded-lg outline-none ring-[#E8C84A]/40 ring-offset-2 ring-offset-[#0a1628] focus-visible:ring-2"
                     >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeleteTarget(c)}
-                      className="btn-danger-outline !h-9 min-h-0 !px-3 !text-xs"
-                    >
-                      Delete
-                    </button>
+                      <p className="text-xl font-bold text-white">
+                        {company}
+                      </p>
+                      {showContact ? (
+                        <p className="mt-1 text-sm text-white/70">
+                          {contact}
+                        </p>
+                      ) : null}
+                      <p className="mt-2 text-sm text-white/45">
+                        <span className="inline sm:mr-0">
+                          {c.phone?.trim() || "—"}
+                        </span>
+                        <span className="mx-1.5 hidden text-white/30 sm:inline">
+                          ·
+                        </span>
+                        <span className="block sm:inline">
+                          {c.email?.trim() || "—"}
+                        </span>
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span className="inline-flex rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-white/80 ring-1 ring-white/15">
+                          {c.job_count ?? 0} job
+                          {(c.job_count ?? 0) === 1 ? "" : "s"}
+                        </span>
+                        {c.jobtread_id?.trim() ? (
+                          <span className="inline-flex rounded-full border border-[#E8C84A]/35 bg-[#E8C84A]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#E8C84A]">
+                            JobTread
+                          </span>
+                        ) : null}
+                      </div>
+                    </Link>
+                    <div className="flex w-full shrink-0 flex-wrap gap-2 sm:w-auto">
+                      <button
+                        type="button"
+                        onClick={() => openEdit(c)}
+                        className="btn-secondary !h-9 min-h-0 !px-3 !text-xs"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTarget(c)}
+                        className="btn-danger-outline !h-9 min-h-0 !px-3 !text-xs"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         )}
       </main>

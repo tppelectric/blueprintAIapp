@@ -63,6 +63,7 @@ export type JobRow = {
   job_number: string;
   job_type: string;
   status: string;
+  need_ready_to_invoice?: string | null;
   address: string | null;
   city: string | null;
   state: string | null;

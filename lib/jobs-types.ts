@@ -79,6 +79,7 @@ export type JobRow = {
 export type JobListRow = {
   id: string;
   assigned_user_id?: string | null;
+  assigned_crew_id?: string | null;
   job_name: string;
   job_number: string;
   status: string;

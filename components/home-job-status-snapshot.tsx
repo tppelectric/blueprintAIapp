@@ -250,12 +250,20 @@ export function HomeJobStatusSnapshot() {
             </button>
           ) : null}
         </div>
-        <Link
-          href="/jobs"
-          className="text-xs text-[#E8C84A] hover:underline"
-        >
-          View all jobs →
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link
+            href="/customers"
+            className="text-xs text-white/40 hover:text-white/70 hover:underline"
+          >
+            View all customers →
+          </Link>
+          <Link
+            href="/jobs"
+            className="text-xs text-[#E8C84A] hover:underline"
+          >
+            View all jobs →
+          </Link>
+        </div>
       </div>
       {loading ? (
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">

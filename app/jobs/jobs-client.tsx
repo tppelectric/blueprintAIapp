@@ -135,6 +135,7 @@ export function JobsClient() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [massStatus, setMassStatus] = useState("");
   const [massUpdating, setMassUpdating] = useState(false);
+  const [crewNames, setCrewNames] = useState<Record<string, string>>({});
 
   const loadCustomers = useCallback(async () => {
     try {
@@ -158,7 +159,7 @@ export function JobsClient() {
       const { data, error: qe } = await sb
         .from("jobs")
         .select(
-          "id,job_name,job_number,status,job_type,address,city,state,zip,description,notes,created_at,updated_at,customer_id,assigned_user_id,need_ready_to_invoice, customers(company_name,contact_name)",
+          "id,job_name,job_number,status,job_type,address,city,state,zip,description,notes,created_at,updated_at,customer_id,assigned_user_id,assigned_crew_id,need_ready_to_invoice, customers(company_name,contact_name)",
         )
         .order("updated_at", { ascending: false });
       if (qe) throw qe;
@@ -187,6 +188,46 @@ export function JobsClient() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const ids = [
+      ...new Set(
+        jobs
+          .map((j) => j.assigned_crew_id)
+          .filter((x): x is string => Boolean(x?.trim())),
+      ),
+    ];
+    if (ids.length === 0) {
+      setCrewNames({});
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const sb = createBrowserClient();
+        const { data, error } = await sb
+          .from("crews")
+          .select("id,name")
+          .in("id", ids);
+        if (cancelled) return;
+        if (error) {
+          setCrewNames({});
+          return;
+        }
+        const map: Record<string, string> = {};
+        for (const row of data ?? []) {
+          const r = row as { id: string; name: string | null };
+          if (r.id && r.name?.trim()) map[r.id] = r.name.trim();
+        }
+        if (!cancelled) setCrewNames(map);
+      } catch {
+        if (!cancelled) setCrewNames({});
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [jobs]);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 767px)");
@@ -574,6 +615,11 @@ export function JobsClient() {
         <p className="app-muted mt-0.5 sm:mt-1">
           {customerLabel(j)}
         </p>
+        {j.assigned_crew_id && crewNames[j.assigned_crew_id] ? (
+          <p className="mt-0.5 text-xs text-[#E8C84A]/70">
+            Crew: {crewNames[j.assigned_crew_id]}
+          </p>
+        ) : null}
         <div className="mt-1.5 flex flex-wrap gap-1 sm:mt-2">
           <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] text-sky-200">
             {j.job_type}

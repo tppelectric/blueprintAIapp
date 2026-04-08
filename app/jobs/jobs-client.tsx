@@ -120,7 +120,7 @@ export function JobsClient() {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<"kanban" | "list" | "board">("kanban");
+  const [view, setView] = useState<"kanban" | "list" | "board">("list");
   const [boardActiveOnly, setBoardActiveOnly] = useState(true);
   const [assignedToMeOnly, setAssignedToMeOnly] = useState(false);
   const [jobSearch, setJobSearch] = useState("");

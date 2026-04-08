@@ -13,22 +13,28 @@ const STATUS_CONFIG: {
   border: string;
 }[] = [
   {
-    status: "active",
-    label: "Active",
-    color: "text-emerald-200",
-    border: "border-emerald-500/30",
+    status: "ready_to_invoice",
+    label: "Ready to Invoice",
+    color: "text-[#E8C84A]",
+    border: "border-[#E8C84A]/30",
   },
   {
-    status: "lead",
-    label: "Lead",
+    status: "in_progress",
+    label: "In Progress",
+    color: "text-blue-300",
+    border: "border-blue-500/30",
+  },
+  {
+    status: "invoiced",
+    label: "Invoiced",
     color: "text-sky-200",
     border: "border-sky-500/30",
   },
   {
-    status: "quoted",
-    label: "Quoted",
-    color: "text-[#E8C84A]",
-    border: "border-[#E8C84A]/30",
+    status: "paid",
+    label: "Paid",
+    color: "text-emerald-300",
+    border: "border-emerald-500/30",
   },
   {
     status: "on_hold",
@@ -37,16 +43,10 @@ const STATUS_CONFIG: {
     border: "border-amber-500/30",
   },
   {
-    status: "completed",
-    label: "Complete",
-    color: "text-white/60",
-    border: "border-white/15",
-  },
-  {
-    status: "cancelled",
-    label: "Cancelled",
-    color: "text-red-300/70",
-    border: "border-red-500/20",
+    status: "needs_update",
+    label: "Needs Update",
+    color: "text-rose-300",
+    border: "border-rose-500/20",
   },
 ];
 
@@ -84,7 +84,10 @@ export function HomeJobStatusSnapshot() {
         setCounts(
           STATUS_CONFIG.map((c) => ({
             status: c.status,
-            count: byStatus[c.status] ?? 0,
+            count:
+              c.status === "completed"
+                ? (byStatus["completed"] ?? 0) + (byStatus["complete"] ?? 0)
+                : (byStatus[c.status] ?? 0),
           })),
         );
       } catch {

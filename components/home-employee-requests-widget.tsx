@@ -210,6 +210,10 @@ function buildSupplyHouseMailto(
   to: string,
   title: string,
   lines: MaterialLineRow[],
+  options?: {
+    subject?: string;
+    bodyClosing?: string;
+  },
 ): string {
   const bodyLines = lines
     .filter((l) => l.item.trim())
@@ -220,12 +224,51 @@ function buildSupplyHouseMailto(
       if (l.notes.trim()) parts.push(`Notes: ${l.notes.trim()}`);
       return parts.join(" · ");
     });
-  const body =
-    (bodyLines.length ? bodyLines.join("\n") + "\n\n" : "") +
+  const bodyClosing =
+    options?.bodyClosing ??
     "Please confirm availability and pricing. Thank you, TPP Electrical Contractors Inc.";
-  const subject = `Material Order Request - ${title} - TPP Electrical Contractors`;
+  const body =
+    (bodyLines.length ? bodyLines.join("\n") + "\n\n" : "") + bodyClosing;
+  const subject =
+    options?.subject ??
+    `Material Order Request - ${title} - TPP Electrical Contractors`;
   return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
+
+const SUPPLY_HOUSE_MAIL_BUTTONS: {
+  to: string;
+  label: string;
+  activityName: string;
+  mailtoOptions?: (title: string) => {
+    subject: string;
+    bodyClosing: string;
+  };
+}[] = [
+  {
+    to: "Sean.Obrien@cooper-electric.com",
+    label: "Email Cooper Electric",
+    activityName: "Cooper Electric Supply",
+  },
+  {
+    to: "squackenbush@hzelectric.com",
+    label: "Email HZ Electric",
+    activityName: "HZ Electric Supply",
+  },
+  {
+    to: "Calvin.Rembert@ADIGlobal.com",
+    label: "Email Snap AV",
+    activityName: "Snap AV / ADI Global",
+  },
+  {
+    to: "info@tppelectric.com",
+    label: "Email TPP Office",
+    activityName: "TPP Office Staff",
+    mailtoOptions: (title) => ({
+      subject: `Material Order Request - ${title} - Field Team`,
+      bodyClosing: "Please process this material order. Thank you.",
+    }),
+  },
+];
 
 const MATERIAL_INPUT_CLASS =
   "bg-[#071422] border border-white/15 rounded px-2 py-1 text-xs text-white";
@@ -1261,87 +1304,51 @@ export function HomeEmployeeRequestsWidget({ surface }: { surface: Surface }) {
                                     : "Save materials"}
                                 </button>
                                 {isAdminRole && hasSavedMaterialLines(r) ? (
-                                  <div className="mt-3 flex flex-wrap gap-2">
-                                    <button
-                                      type="button"
-                                      className="inline-flex rounded-lg border border-sky-400/40 px-3 py-1.5 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/10"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        void (async () => {
-                                          const matLines =
-                                            savedMaterialSummaryLines(
-                                              r.details,
+                                  <div className="mt-2 grid grid-cols-2 gap-2">
+                                    {SUPPLY_HOUSE_MAIL_BUTTONS.map((cfg) => (
+                                      <button
+                                        key={cfg.to}
+                                        type="button"
+                                        className="border border-sky-400/40 text-sky-300 hover:bg-sky-500/10 rounded-lg px-3 py-1.5 text-xs font-semibold"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          void (async () => {
+                                            const matLines =
+                                              savedMaterialSummaryLines(
+                                                r.details,
+                                              );
+                                            const n = matLines.length;
+                                            const href = buildSupplyHouseMailto(
+                                              cfg.to,
+                                              r.title,
+                                              matLines,
+                                              cfg.mailtoOptions?.(r.title),
                                             );
-                                          const n = matLines.length;
-                                          const href = buildSupplyHouseMailto(
-                                            "sean.obrien@cooper-electric.com",
-                                            r.title,
-                                            matLines,
-                                          );
-                                          window.open(
-                                            href,
-                                            "_blank",
-                                            "noopener,noreferrer",
-                                          );
-                                          if (profile?.id) {
-                                            await logRequestEvent(
-                                              r.id,
-                                              profile.id,
-                                              "email_sent",
-                                              `Email sent to Cooper Electric with ${n} material line items`,
+                                            window.open(
+                                              href,
+                                              "_blank",
+                                              "noopener,noreferrer",
                                             );
-                                            setRefreshTick((t) => t + 1);
-                                          }
-                                          showToast({
-                                            message:
-                                              "Email opened and activity logged.",
-                                            variant: "success",
-                                          });
-                                        })();
-                                      }}
-                                    >
-                                      Email to Cooper Electric
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="inline-flex rounded-lg border border-sky-400/40 px-3 py-1.5 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/10"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        void (async () => {
-                                          const matLines =
-                                            savedMaterialSummaryLines(
-                                              r.details,
-                                            );
-                                          const n = matLines.length;
-                                          const href = buildSupplyHouseMailto(
-                                            "orders@gerrie.com",
-                                            r.title,
-                                            matLines,
-                                          );
-                                          window.open(
-                                            href,
-                                            "_blank",
-                                            "noopener,noreferrer",
-                                          );
-                                          if (profile?.id) {
-                                            await logRequestEvent(
-                                              r.id,
-                                              profile.id,
-                                              "email_sent",
-                                              `Email sent to Gerrie Electric with ${n} material line items`,
-                                            );
-                                            setRefreshTick((t) => t + 1);
-                                          }
-                                          showToast({
-                                            message:
-                                              "Email opened and activity logged.",
-                                            variant: "success",
-                                          });
-                                        })();
-                                      }}
-                                    >
-                                      Email to Gerrie Electric
-                                    </button>
+                                            if (profile?.id) {
+                                              await logRequestEvent(
+                                                r.id,
+                                                profile.id,
+                                                "email_sent",
+                                                `Email sent to ${cfg.activityName} with ${n} material line items`,
+                                              );
+                                              setRefreshTick((t) => t + 1);
+                                            }
+                                            showToast({
+                                              message:
+                                                "Email opened and activity logged.",
+                                              variant: "success",
+                                            });
+                                          })();
+                                        }}
+                                      >
+                                        {cfg.label}
+                                      </button>
+                                    ))}
                                   </div>
                                 ) : null}
                               </div>

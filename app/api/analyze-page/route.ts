@@ -538,7 +538,7 @@ No project-specific symbol legend is on file for this project — use standard N
     const msg = await withClaudeOverloadRetries(() =>
       anthropic.messages.create({
         model: MODEL,
-        max_tokens: 16384,
+        max_tokens: 8192,
         stream: false,
         system: systemPromptUsed,
         messages: [
@@ -717,34 +717,8 @@ No project-specific symbol legend is on file for this project — use standard N
       : null;
 
     if (!retryPayload) {
-      let assistantRetry2: string;
-      try {
-        assistantRetry2 = await runClaudeTurn(
-          aggressiveUser + STRICT_JSON_USER_ADDENDUM,
-          imageBase64,
-          claudeMediaType,
-          "aggressive-strict-json",
-        );
-        claudeTurnsUsed += 1;
-      } catch (e) {
-        console.error("[analyze-page] aggressive strict-json failed:", {
-          pageNumber,
-          error: e instanceof Error ? e.message : String(e),
-        });
-        const message =
-          e instanceof Error ? e.message : "Claude API request failed.";
-        const status =
-          message === CLAUDE_OVERLOADED_USER_MESSAGE ? 503 : 502;
-        return NextResponse.json({ error: message }, { status });
-      }
-      console.log("[analyze-page] aggressive strict raw (first 500 chars):", {
-        pageNumber,
-        preview: assistantRetry2.slice(0, 500),
-      });
-      const cleanedRetry2 = stripMarkdownCodeFences(assistantRetry2);
-      if (claudeTextLooksLikeJson(cleanedRetry2)) {
-        retryPayload = tryExtractAnalyzePayload(cleanedRetry2);
-      }
+      // 4th call removed — stays within 180s maxDuration budget.
+      console.log("[analyze-page] aggressive retry failed JSON parse, using fallback:", { pageNumber });
     }
 
     if (retryPayload) {

@@ -9,6 +9,8 @@ export type IncomingItem = {
   confidence?: number;
   raw_note?: string | null;
   which_room?: string | null;
+  location_nx?: number | null;
+  location_ny?: number | null;
 };
 
 export const ANALYSIS_CATEGORIES = new Set([
@@ -79,6 +81,16 @@ export function extractRoomScanPayload(text: string): {
   return { rooms, floor_count };
 }
 
+function clamp01(n: number): number {
+  return Math.min(1, Math.max(0, n));
+}
+
+function optionalNormCoord(v: unknown): number | null {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return clamp01(n);
+}
+
 export function normalizeAnalysisItem(raw: IncomingItem): {
   category: string;
   description: string;
@@ -88,6 +100,8 @@ export function normalizeAnalysisItem(raw: IncomingItem): {
   confidence: number;
   raw_note: string | null;
   which_room: string;
+  location_nx: number | null;
+  location_ny: number | null;
 } | null {
   const cat = String(raw.category ?? "").toLowerCase().trim();
   if (!ANALYSIS_CATEGORIES.has(cat)) return null;
@@ -106,6 +120,8 @@ export function normalizeAnalysisItem(raw: IncomingItem): {
   if (which.toUpperCase() === "UNASSIGNED" || which.toUpperCase() === "N/A") {
     which = "UNASSIGNED";
   }
+  const nx = optionalNormCoord(raw.location_nx);
+  const ny = optionalNormCoord(raw.location_ny);
   return {
     category: cat,
     description,
@@ -118,6 +134,8 @@ export function normalizeAnalysisItem(raw: IncomingItem): {
         ? null
         : String(raw.raw_note),
     which_room: which,
+    location_nx: nx,
+    location_ny: ny,
   };
 }
 

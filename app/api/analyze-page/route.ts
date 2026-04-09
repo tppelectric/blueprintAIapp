@@ -73,6 +73,8 @@ type ElectricalItemInsertRow = {
   confidence: number;
   which_room: string;
   raw_note: string | null;
+  location_nx: number | null;
+  location_ny: number | null;
   gpt_count: null;
   final_count: null;
   verified_by: null;
@@ -166,6 +168,8 @@ function fallbackUnclearPlanNoteRow(
     confidence: 0.5,
     which_room: "UNASSIGNED",
     raw_note: null,
+    location_nx: null,
+    location_ny: null,
     gpt_count: null,
     final_count: null,
     verified_by: null,
@@ -183,7 +187,9 @@ For each item found return a JSON array with objects:
   unit: EA or LF or LOT or NOTE,
   confidence: number between 0.0 and 1.0,
   raw_note: verbatim plan note text or null,
-  which_room: string (see ROOM ASSIGNMENT RULES below)
+  which_room: string (see ROOM ASSIGNMENT RULES below),
+  location_nx: number 0.0-1.0 left-to-right position on the page (centroid if multiple instances spread across page),
+  location_ny: number 0.0-1.0 top-to-bottom position on the page (centroid if multiple instances spread across page)
 }
 
 ROOM ASSIGNMENT RULES — CRITICAL:
@@ -218,6 +224,8 @@ Every single electrical item MUST be assigned to a room. Follow these rules exac
    If a room shows zero items scan it again.
 
 Match which_room to room labels visible on the drawing when possible. Use the same spelling style as the sheet (you may use ALL CAPS for consistency).
+
+LOCATION: For every item, estimate its position on the page image as normalized coordinates. location_nx is 0.0 at the left edge and 1.0 at the right edge. location_ny is 0.0 at the top edge and 1.0 at the bottom edge. Return the centroid position of all instances of that item type. Be as spatially accurate as possible — look at where the symbols actually appear on the drawing.
 
 IDENTIFY THESE ITEMS:
 FIXTURES: Receptacles (standard GFCI AFCI TR WP), lighting (recessed surface wall), ceiling fans, exhaust fans, smoke/CO detectors, dedicated circuits, window and shading devices: motorized shades, manual shades, roller shades, motorized shutters, shade motors, shade panels (motor/head enclosures or power supply modules), shade controls (wall stations, keypads, touchpanels, remotes when shown as devices)

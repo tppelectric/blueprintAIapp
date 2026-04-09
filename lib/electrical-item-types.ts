@@ -24,4 +24,6 @@ export type ElectricalItemRow = {
   verification_status: VerificationStatus | string | null;
   verified_by: string | null;
   user_edited?: boolean;
+  location_nx?: number | null;
+  location_ny?: number | null;
 };

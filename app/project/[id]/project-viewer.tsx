@@ -871,6 +871,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
   const batchCostAccumRef = useRef(0);
 
   const [manualMode, setManualMode] = useState(false);
+  const [showTakeoffOverlay, setShowTakeoffOverlay] = useState(true);
+  const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
   const [manualDots, setManualDots] = useState<ManualDot[]>([]);
   const [manualCounts, setManualCounts] = useState<Record<string, number>>({});
   const [selectedManualItemId, setSelectedManualItemId] = useState<string | null>(
@@ -5196,6 +5198,34 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         : `Page ${scanCurrentPage} of ${scanTotalPages}`
       : `Page ${scanCurrentPage}`;
 
+  function getTakeoffDotColor(item: ElectricalItemRow): string {
+    const desc = item.description.toLowerCase();
+    const cat = item.category;
+    if (cat === "plan_note") return "#94a3b8";
+    if (cat === "panel") return "#f97316";
+    if (cat === "wiring") return "#a78bfa";
+    if (
+      desc.includes("smoke") ||
+      desc.includes("carbon") ||
+      desc.includes("detector")
+    )
+      return "#f87171";
+    if (
+      desc.includes("shade") ||
+      desc.includes("shutter") ||
+      desc.includes("roller")
+    )
+      return "#2dd4bf";
+    if (
+      desc.includes("receptacle") ||
+      desc.includes("outlet") ||
+      desc.includes("gfci")
+    )
+      return "#38bdf8";
+    if (desc.includes("switch") || desc.includes("dimmer")) return "#34d399";
+    return "#E8C84A"; // fixtures default gold
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-[#0a1628]">
       <header className="shrink-0 border-b border-white/10 bg-[#071422]/90 backdrop-blur-md">
@@ -6346,6 +6376,16 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                   >
                     {viewerFs ? "Exit full screen" : "Full screen"}
                   </BlueprintToolbarMenuItem>
+                  <BlueprintToolbarMenuItem
+                    onClick={() => {
+                      setToolbarMenuOpen(null);
+                      setShowTakeoffOverlay((v) => !v);
+                    }}
+                  >
+                    {showTakeoffOverlay
+                      ? "Hide takeoff overlay"
+                      : "Show takeoff overlay"}
+                  </BlueprintToolbarMenuItem>
                 </BlueprintToolbarMenu>
               </div>
 
@@ -7009,6 +7049,76 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                         />
                       </>
                     ) : null}
+                    {showTakeoffOverlay &&
+                    !manualMode &&
+                    !symbolCaptureState &&
+                    !symbolMatchState
+                      ? (() => {
+                          const pageItems = analysisItems.filter(
+                            (i) =>
+                              i.page_number === currentPage &&
+                              i.location_nx != null &&
+                              i.location_ny != null &&
+                              i.category !== "plan_note" &&
+                              i.category !== "wiring",
+                          );
+                          return pageItems.map((item) => {
+                            const nx = item.location_nx!;
+                            const ny = item.location_ny!;
+                            const color = getTakeoffDotColor(item);
+                            const isHighlighted =
+                              highlightedItemId === item.id;
+                            const qty = Math.round(
+                              Number(item.quantity ?? 1),
+                            );
+                            return (
+                              <div
+                                key={`overlay-${item.id}`}
+                                className="absolute z-[18] cursor-pointer"
+                                style={{
+                                  left: `${nx * 100}%`,
+                                  top: `${ny * 100}%`,
+                                  transform: `translate(-50%, -50%) scale(${isHighlighted ? 1.4 : 1})`,
+                                  transition: "transform 0.2s ease",
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setHighlightedItemId(item.id);
+                                  setTimeout(
+                                    () => setHighlightedItemId(null),
+                                    2000,
+                                  );
+                                }}
+                                title={`${item.description} ×${qty}`}
+                              >
+                                <div
+                                  style={{
+                                    backgroundColor: color,
+                                    border: isHighlighted
+                                      ? "2px solid white"
+                                      : "1.5px solid rgba(0,0,0,0.4)",
+                                    borderRadius: "50%",
+                                    width: 22,
+                                    height: 22,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    boxShadow: isHighlighted
+                                      ? `0 0 0 3px ${color}66`
+                                      : "0 1px 3px rgba(0,0,0,0.5)",
+                                    fontSize: 9,
+                                    fontWeight: 900,
+                                    color: "#0a1628",
+                                    userSelect: "none",
+                                  }}
+                                >
+                                  {qty > 99 ? "99+" : qty}
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()
+                      : null}
                     {manualMode && !symbolCaptureState && !symbolMatchState ? (
                       <>
                         {manualDots.map((d) => {

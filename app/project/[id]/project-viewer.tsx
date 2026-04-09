@@ -3156,29 +3156,23 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       const mergedRooms = merged.rooms ?? [];
       const scanPage = parts[0]!.page;
 
-      // Write rooms into detected_rooms table so results panel shows them
+      // Set rooms directly in state so results panel shows them immediately
       if (mergedRooms.length > 0) {
-        try {
-          const sb = createBrowserClient();
-          // Delete existing detected rooms for these pages first
-          for (const p of sorted) {
-            await sb.from("detected_rooms").delete().eq("project_id", projectId).eq("page_number", p);
-          }
-          // Insert new rooms
-          const rows = mergedRooms.map((r) => ({
-            project_id: projectId,
-            page_number: scanPage,
-            room_name: r.room_name,
-            room_type: r.room_type,
-            width_ft: r.width_ft ?? null,
-            length_ft: r.length_ft ?? null,
-            sq_ft: r.sq_ft ?? null,
-            confidence: r.confidence ?? 0.75,
-          }));
-          await sb.from("detected_rooms").insert(rows);
-        } catch {
-          /* non-blocking */
-        }
+        const stateRooms = mergedRooms.map((r, idx) => ({
+          id: crypto.randomUUID ? crypto.randomUUID() : `room-${scanPage}-${idx}-${Date.now()}`,
+          project_id: projectId,
+          page_number: scanPage,
+          room_name: r.room_name,
+          room_type: r.room_type ?? "other",
+          width_ft: r.width_ft ?? null,
+          length_ft: r.length_ft ?? null,
+          sq_ft: r.sq_ft ?? null,
+          confidence: r.confidence ?? 0.75,
+        }));
+        setDetectedRooms((prev) => [
+          ...prev.filter((r) => !sorted.includes(r.page_number)),
+          ...stateRooms,
+        ]);
       }
 
       setRoomScanData({
@@ -3193,10 +3187,6 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       setRoomScanSavedAtLabel(null);
       setRoomScanOpen(true);
       void reloadRoomScanHistory();
-      // Small delay to ensure Supabase insert has committed before refetching
-      setTimeout(() => {
-        void refetchDetectedRoomsFromDb();
-      }, 500);
     },
     [
       analyzeBusy,

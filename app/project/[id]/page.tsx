@@ -1,9 +1,9 @@
-import type { Metadata } from "next";
+ï»¿import type { Metadata } from "next";
 import { Suspense } from "react";
 import { ProjectViewer } from "./project-viewer";
 
 export const metadata: Metadata = {
-  title: "Blueprint viewer – Blueprint AI",
+  title: "Blueprint viewer - Blueprint AI",
   description: "View and navigate your uploaded blueprint PDF.",
 };
 
@@ -17,7 +17,7 @@ export default async function ProjectPage({
     <Suspense
       fallback={
         <div className="flex h-screen w-full items-center justify-center bg-[#0a1628]">
-          <div className="text-white/50 text-sm">Loading project…</div>
+          <div className="text-white/50 text-sm">Loading project...</div>
         </div>
       }
     >

@@ -3171,6 +3171,46 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           sq_ft: r.sq_ft ?? null,
           confidence: r.confidence ?? 0.75,
         }));
+        // Persist to detected_rooms and project_room_scans tables
+        try {
+          const sb = createBrowserClient();
+          // Delete existing for these pages
+          for (const p of sorted) {
+            await sb.from("detected_rooms").delete().eq("project_id", projectId).eq("page_number", p);
+          }
+          // Insert new detected_rooms rows
+          await sb.from("detected_rooms").insert(stateRooms.map((r) => ({
+            id: r.id,
+            project_id: r.project_id,
+            page_number: r.page_number,
+            room_name: r.room_name,
+            room_type: r.room_type,
+            width_ft: r.width_ft,
+            length_ft: r.length_ft,
+            sq_ft: r.sq_ft,
+            confidence: r.confidence,
+          })));
+          // Save to project_room_scans
+          let totalSq = 0;
+          const floorSet = new Set<number>();
+          for (const r of mergedRooms) {
+            if (r.sq_ft != null && r.sq_ft > 0) totalSq += r.sq_ft;
+            if (r.floor != null) floorSet.add(Math.round(r.floor));
+          }
+          const floors = floorSet.size > 0 ? Math.max(...floorSet) : 1;
+          await sb.from("project_room_scans").insert({
+            project_id: projectId,
+            rooms_json: mergedRooms,
+            total_sqft: Math.round(totalSq),
+            floor_count: floors,
+            scan_page: scanPage,
+            scan_label: `Room Scan · page ${scanPage} · ${new Date().toLocaleString()}`,
+            equipment_suggestions_json: merged.equipment_placement_suggestions ?? [],
+            scan_notes: merged.scan_notes ?? "",
+          });
+        } catch (e) {
+          console.error("Room scan persist error:", e);
+        }
         setDetectedRooms((prev) => [
           ...prev.filter((r) => !sorted.includes(r.page_number)),
           ...stateRooms,

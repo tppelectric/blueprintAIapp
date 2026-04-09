@@ -7696,7 +7696,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         scanPage={roomScanDialogPage}
         projectId={projectId}
         projectLabel={name}
-        autosaveEnabled={roomScanAutosave}
+        autosaveEnabled={false}
         onScansUpdated={() => void reloadRoomScanHistory()}
         historyScans={roomScanHistory}
         selectedHistoryId={selectedRoomScanId}

@@ -3153,13 +3153,41 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         parts.length === 1
           ? parts[0]!.data
           : mergeFloorPlanRoomScanPages(parts);
+      const mergedRooms = merged.rooms ?? [];
+      const scanPage = parts[0]!.page;
+
+      // Write rooms into detected_rooms table so results panel shows them
+      if (mergedRooms.length > 0) {
+        try {
+          const sb = createBrowserClient();
+          // Delete existing detected rooms for these pages first
+          for (const p of sorted) {
+            await sb.from("detected_rooms").delete().eq("project_id", projectId).eq("page_number", p);
+          }
+          // Insert new rooms
+          const rows = mergedRooms.map((r) => ({
+            project_id: projectId,
+            page_number: scanPage,
+            room_name: r.room_name,
+            room_type: r.room_type,
+            width_ft: r.width_ft ?? null,
+            length_ft: r.length_ft ?? null,
+            sq_ft: r.sq_ft ?? null,
+            confidence: r.confidence ?? 0.75,
+          }));
+          await sb.from("detected_rooms").insert(rows);
+        } catch {
+          /* non-blocking */
+        }
+      }
+
       setRoomScanData({
-        rooms: merged.rooms ?? [],
+        rooms: mergedRooms,
         equipment_placement_suggestions:
           merged.equipment_placement_suggestions ?? [],
         scan_notes: merged.scan_notes ?? "",
       });
-      setRoomScanDialogPage(parts[0]!.page);
+      setRoomScanDialogPage(scanPage);
       setRoomScanAutosave(true);
       setSelectedRoomScanId(null);
       setRoomScanSavedAtLabel(null);

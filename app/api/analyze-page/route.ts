@@ -48,10 +48,18 @@ function claudeTextLooksLikeJson(text: string): boolean {
 
 function tryExtractAnalyzePayload(
   text: string,
+  logCtx: { projectId: string; pageNumber: number; phase: string },
 ): { electrical_items: unknown[]; rooms: unknown[] } | null {
   try {
     return extractAnalyzePayload(text);
-  } catch {
+  } catch (e) {
+    console.error("[analyze-page] Claude response JSON parse/extract failed:", {
+      projectId: logCtx.projectId,
+      pageNumber: logCtx.pageNumber,
+      phase: logCtx.phase,
+      error: e instanceof Error ? e.message : String(e),
+      rawResponseText: text,
+    });
     return null;
   }
 }
@@ -377,7 +385,9 @@ Return your complete response as a single JSON object with this exact shape (no 
 {
   "electrical_items": [ ... array of electrical item objects as specified above ... ],
   "rooms": [ ... array of room objects ... ]
-}`;
+}
+
+CRITICAL: Your entire response must be valid JSON and nothing else. No explanation text before or after. No markdown code fences. No apologies. Return a single JSON object with this exact shape: { "electrical_items": [...], "rooms": [...] }. If you encounter an error or cannot analyze the image, return { "electrical_items": [], "rooms": [] }. Never return plain text. Never return a bare array. Never return anything except the JSON object.`;
 
 export async function POST(request: Request) {
   const rl = checkAiRouteRateLimit(request, "analyze-page");
@@ -608,7 +618,11 @@ No project-specific symbol legend is on file for this project — use standard N
 
   const cleanedText1 = stripMarkdownCodeFences(assistantText1);
   if (claudeTextLooksLikeJson(cleanedText1)) {
-    payload = tryExtractAnalyzePayload(cleanedText1);
+    payload = tryExtractAnalyzePayload(cleanedText1, {
+      projectId,
+      pageNumber,
+      phase: "primary",
+    });
   }
   if (payload) {
     console.log("[analyze-page] parsed payload (pre-strict-retry):", {
@@ -650,7 +664,11 @@ No project-specific symbol legend is on file for this project — use standard N
 
     const cleanedText2 = stripMarkdownCodeFences(assistantText2);
     if (claudeTextLooksLikeJson(cleanedText2)) {
-      payload = tryExtractAnalyzePayload(cleanedText2);
+      payload = tryExtractAnalyzePayload(cleanedText2, {
+        projectId,
+        pageNumber,
+        phase: "strict-json-followup",
+      });
     }
     if (!payload) {
       console.error(
@@ -721,7 +739,11 @@ No project-specific symbol legend is on file for this project — use standard N
     let retryPayload: ParsedAnalyzePayload | null = claudeTextLooksLikeJson(
       cleanedRetryText,
     )
-      ? tryExtractAnalyzePayload(cleanedRetryText)
+      ? tryExtractAnalyzePayload(cleanedRetryText, {
+          projectId,
+          pageNumber,
+          phase: "aggressive-retry",
+        })
       : null;
 
     if (!retryPayload) {

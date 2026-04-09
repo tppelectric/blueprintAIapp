@@ -220,11 +220,11 @@ Every single electrical item MUST be assigned to a room. Follow these rules exac
 Match which_room to room labels visible on the drawing when possible. Use the same spelling style as the sheet (you may use ALL CAPS for consistency).
 
 IDENTIFY THESE ITEMS:
-FIXTURES: Receptacles (standard GFCI AFCI TR WP), lighting (recessed surface wall), ceiling fans, exhaust fans, smoke/CO detectors, dedicated circuits
+FIXTURES: Receptacles (standard GFCI AFCI TR WP), lighting (recessed surface wall), ceiling fans, exhaust fans, smoke/CO detectors, dedicated circuits, window and shading devices: motorized shades, manual shades, roller shades, motorized shutters, shade motors, shade panels (motor/head enclosures or power supply modules), shade controls (wall stations, keypads, touchpanels, remotes when shown as devices)
 
 PANELS: Main panels with amperage, subpanels, disconnects, transfer switches
 
-WIRING: Wire gauge and type (NM-B MC EMT PVC), home runs, feeders, low voltage, underground. Estimate linear footage if scale bar visible.
+WIRING: Wire gauge and type (NM-B MC EMT PVC), home runs, feeders, low voltage (thermostat, data, doorbell, and shade/Lutron-style control wiring), dedicated power and control homeruns to motorized shades and shade controls, underground. Estimate linear footage if scale bar visible.
 
 PLAN NOTES: All electrical notes, NEC references, panel schedules, AHJ notes. Quote verbatim.
 

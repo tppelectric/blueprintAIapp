@@ -3164,6 +3164,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       setSelectedRoomScanId(null);
       setRoomScanSavedAtLabel(null);
       setRoomScanOpen(true);
+      void reloadRoomScanHistory();
+      void refetchDetectedRoomsFromDb();
     },
     [
       analyzeBusy,

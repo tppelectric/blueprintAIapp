@@ -465,8 +465,30 @@ function PageThumbnail({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderTaskRef = useRef<RenderTask | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
+    const el = buttonRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") {
+      setIsVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!isVisible) return;
     let cancelled = false;
 
     (async () => {
@@ -478,7 +500,7 @@ function PageThumbnail({
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+      const dpr = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1;
       const viewport = page.getViewport({ scale: THUMB_SCALE });
       canvas.width = Math.floor(viewport.width * dpr);
       canvas.height = Math.floor(viewport.height * dpr);
@@ -500,10 +522,11 @@ function PageThumbnail({
       cancelled = true;
       renderTaskRef.current?.cancel();
     };
-  }, [pdfDoc, pageNumber]);
+  }, [pdfDoc, pageNumber, isVisible]);
 
   return (
     <button
+      ref={buttonRef}
       type="button"
       onClick={onSelect}
       onContextMenu={onContextMenu}

@@ -7,16 +7,16 @@ import type { PDFDocumentProxy, PDFPageProxy } from "@/lib/pdfjs-worker";
 export const MAX_IMAGE_BYTES = 4718592; // 4.5 MiB
 
 /** Target length (CSS px) of the longer page edge after PDF scale — before DPR. */
-const DEFAULT_TARGET_LONG_EDGE_CSS_PX = 4096;
+const DEFAULT_TARGET_LONG_EDGE_CSS_PX = 2048;
 const MIN_PDF_SCALE = 0.08;
 const MAX_PDF_SCALE = 14;
 /** When reducing size, never go below this viewport scale (readability). */
 const MIN_VIEWPORT_SCALE = 0.5;
 const SCALE_REDUCE_FACTOR = 0.88;
 /** Use full device pixel ratio for sharp symbols; cap to avoid extreme memory use. */
-const MAX_DPR = 3;
+const MAX_DPR = 2;
 /** Browser / canvas practical limit per dimension. */
-const MAX_CANVAS_EDGE_PX = 8192;
+const MAX_CANVAS_EDGE_PX = 4096;
 
 const JPEG_QUALITY_INITIAL = 0.85;
 const JPEG_QUALITY_MIN = 0.5;

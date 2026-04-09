@@ -7225,14 +7225,14 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         <div
           className="pointer-events-none fixed right-3 z-[46] flex flex-col gap-2 lg:hidden"
           style={{
-            bottom: "calc(5.25rem + env(safe-area-inset-bottom, 0px))",
+            bottom: "calc(7rem + env(safe-area-inset-bottom, 0px))",
           }}
         >
           <button
             type="button"
             onClick={() => analyzeThisPage()}
             disabled={analyzeBusy || legendBusy || symbolToolboxBusy}
-            className="pointer-events-auto rounded-full border-2 border-sky-400/60 bg-sky-600/90 px-4 py-3 text-sm font-bold text-white shadow-lg disabled:opacity-45"
+            className="pointer-events-auto rounded-full border-2 border-[#E8C84A] bg-[#E8C84A] px-4 py-3 text-sm font-bold text-black shadow-lg disabled:opacity-45"
           >
             Analyze
           </button>

@@ -3193,7 +3193,10 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       setRoomScanSavedAtLabel(null);
       setRoomScanOpen(true);
       void reloadRoomScanHistory();
-      void refetchDetectedRoomsFromDb();
+      // Small delay to ensure Supabase insert has committed before refetching
+      setTimeout(() => {
+        void refetchDetectedRoomsFromDb();
+      }, 500);
     },
     [
       analyzeBusy,

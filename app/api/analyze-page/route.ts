@@ -21,7 +21,7 @@ import { checkAiRouteRateLimit } from "@/lib/rate-limit";
 import { recordAnalyzePageApiUsage } from "@/lib/record-analyze-page-usage";
 import { imageBufferAppearsBlank } from "@/lib/analyze-page-image";
 
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 /** Safety net: reject oversized payloads before Claude (5 MB API limit). */
 const MAX_INCOMING_IMAGE_BYTES = Math.floor(4.8 * 1024 * 1024);
@@ -557,7 +557,7 @@ No project-specific symbol legend is on file for this project — use standard N
     const msg = await withClaudeOverloadRetries(() =>
       anthropic.messages.create({
         model: MODEL,
-        max_tokens: 8192,
+        max_tokens: 4096,
         stream: false,
         system: systemPromptUsed,
         messages: [
@@ -748,7 +748,7 @@ No project-specific symbol legend is on file for this project — use standard N
       : null;
 
     if (!retryPayload) {
-      // 4th call removed — stays within 180s maxDuration budget.
+      // 4th call removed — stays within 300s maxDuration budget.
       console.log("[analyze-page] aggressive retry failed JSON parse, using fallback:", { pageNumber });
     }
 

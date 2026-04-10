@@ -7,6 +7,7 @@ import {
   forwardRef,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -652,10 +653,15 @@ const MainPageCanvas = forwardRef<
     pdfDoc: PDFDocumentProxy;
     pageNumber: number;
     zoom: number;
+    children?: ReactNode;
   }
->(function MainPageCanvas({ pdfDoc, pageNumber, zoom }, forwardedRef) {
+>(function MainPageCanvas({ pdfDoc, pageNumber, zoom, children }, forwardedRef) {
   const innerRef = useRef<HTMLCanvasElement | null>(null);
   const renderTaskRef = useRef<RenderTask | null>(null);
+  const [canvasSize, setCanvasSize] = useState<{
+    w: number;
+    h: number;
+  } | null>(null);
 
   const setRefs = useCallback(
     (el: HTMLCanvasElement | null) => {
@@ -665,6 +671,23 @@ const MainPageCanvas = forwardRef<
     },
     [forwardedRef],
   );
+
+  useLayoutEffect(() => {
+    const canvas = innerRef.current;
+    if (!canvas) return;
+    const measure = () => {
+      const w = canvas.offsetWidth;
+      const h = canvas.offsetHeight;
+      if (w <= 0 || h <= 0) return;
+      setCanvasSize((prev) =>
+        prev && prev.w === w && prev.h === h ? prev : { w, h },
+      );
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(canvas);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -705,10 +728,20 @@ const MainPageCanvas = forwardRef<
   }, [pdfDoc, pageNumber, zoom]);
 
   return (
-    <canvas
-      ref={setRefs}
-      className="max-w-full rounded-lg bg-white shadow-lg shadow-black/40"
-    />
+    <div
+      className="relative inline-block max-w-full overflow-hidden"
+      style={
+        canvasSize
+          ? { width: canvasSize.w, height: canvasSize.h }
+          : undefined
+      }
+    >
+      <canvas
+        ref={setRefs}
+        className="max-w-full rounded-lg bg-white shadow-lg shadow-black/40"
+      />
+      {children}
+    </div>
   );
 });
 
@@ -7017,15 +7050,13 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                 title="Focus here and use arrow keys to pan. Alt+drag to pan. Ctrl+wheel to zoom."
               >
                 <div className="flex min-h-full min-w-0 justify-center">
-                  <div className="relative inline-block max-w-full overflow-hidden">
-                    {currentPdfAndPage ? (
-                      <MainPageCanvas
-                        ref={mainPdfCanvasRef}
-                        pdfDoc={currentPdfAndPage.doc}
-                        pageNumber={currentPdfAndPage.localPage}
-                        zoom={zoom}
-                      />
-                    ) : null}
+                  {currentPdfAndPage ? (
+                    <MainPageCanvas
+                      ref={mainPdfCanvasRef}
+                      pdfDoc={currentPdfAndPage.doc}
+                      pageNumber={currentPdfAndPage.localPage}
+                      zoom={zoom}
+                    >
                     {symbolCaptureState?.phase === "select" &&
                     symbolCaptureState.mode === "rectangle" ? (
                       <div
@@ -7228,7 +7259,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                         />
                       </>
                     ) : null}
-                  </div>
+                    </MainPageCanvas>
+                  ) : null}
                 </div>
               </div>
               <div

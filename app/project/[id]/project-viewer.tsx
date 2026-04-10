@@ -5443,6 +5443,16 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         }}
       />
 
+      {roomScanBusy && roomScanBatchProgress == null && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-[#0a1628] border border-[#E8C84A]/40 text-[#E8C84A] text-sm px-4 py-2 rounded-full shadow-lg pointer-events-none">
+          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+          Scanning rooms… please wait
+        </div>
+      )}
+
       <RoomScanBatchOverlay
         open={roomScanBatchProgress != null}
         currentPageIndex={roomScanBatchProgress?.current ?? 1}

@@ -2483,7 +2483,17 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           errorMessage: signal.aborted ? "Cancelled" : "Network error",
         };
       }
-      const json = (await res.json()) as AnalyzePageResponseJson;
+      let json: AnalyzePageResponseJson;
+      try {
+        json = (await res.json()) as AnalyzePageResponseJson;
+      } catch {
+        updateThumb(pageToAnalyze, "error");
+        return {
+          itemCount: 0,
+          outcome: "error",
+          errorMessage: `Server error (${res.status}) — check Vercel logs for timeout or memory issue on page ${pageToAnalyze}.`,
+        };
+      }
       if (!res.ok) {
         updateThumb(pageToAnalyze, "error");
         return {

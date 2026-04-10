@@ -557,7 +557,7 @@ No project-specific symbol legend is on file for this project — use standard N
     const msg = await withClaudeOverloadRetries(() =>
       anthropic.messages.create({
         model: MODEL,
-        max_tokens: 4096,
+        max_tokens: 6000,
         stream: false,
         system: systemPromptUsed,
         messages: [

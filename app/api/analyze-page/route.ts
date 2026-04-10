@@ -247,14 +247,13 @@ PLAN NOTES: All electrical notes, NEC references, panel schedules, AHJ notes. Qu
 
 PANEL SCHEDULE DETECTION:
 If this page contains a panel schedule table:
-- Read every circuit in the schedule
-- Extract: circuit number, description,
-  breaker size, voltage, phase
-- Return each circuit as a plan_note item:
-  description: Circuit X - [description]
-  specification: [breaker size]A, [voltage]V
+- Return ONE plan_note item summarizing the panel:
+  description: Panel Schedule - [panel name]
+  specification: [service size]A, [voltage]V, [number of circuits] circuits
   category: plan_note
   confidence: 0.95
+- Do NOT return individual circuit rows - this causes token overflow
+- Focus instead on physical devices and symbols drawn on the plan
 
 RISER DIAGRAM DETECTION:
 If this page contains an electrical riser:
@@ -557,7 +556,7 @@ No project-specific symbol legend is on file for this project — use standard N
     const msg = await withClaudeOverloadRetries(() =>
       anthropic.messages.create({
         model: MODEL,
-        max_tokens: 6000,
+        max_tokens: 8192,
         stream: false,
         system: systemPromptUsed,
         messages: [

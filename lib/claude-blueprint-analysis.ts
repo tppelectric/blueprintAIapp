@@ -45,7 +45,13 @@ export function extractAnalyzePayload(text: string): {
   const trimmed = text.trim();
   const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
   const payload = (fence ? fence[1] : trimmed).trim();
-  const parsed = JSON.parse(payload) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    console.error("[extractAnalyzePayload] JSON.parse failed. Raw text:", text.slice(0, 300));
+    return { electrical_items: [], rooms: [] };
+  }
   if (Array.isArray(parsed)) {
     return { electrical_items: parsed, rooms: [] };
   }
@@ -69,7 +75,13 @@ export function extractRoomScanPayload(text: string): {
   const trimmed = text.trim();
   const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
   const payload = (fence ? fence[1] : trimmed).trim();
-  const parsed = JSON.parse(payload) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    console.error("[extractRoomScanPayload] JSON.parse failed. Raw text:", text.slice(0, 300));
+    return { rooms: [], floor_count: 1 };
+  }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("Claude did not return a JSON object for room scan.");
   }

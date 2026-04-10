@@ -91,6 +91,7 @@ type ElectricalItemInsertRow = {
 type DetectedRoomInsertRow = {
   project_id: string;
   page_number: number;
+  floor_number: number;
   room_name: string;
   room_type: string;
   width_ft: number | null;

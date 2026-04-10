@@ -16,7 +16,7 @@ import {
 } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import type { ElectricalItemRow } from "@/lib/electrical-item-types";
-import type { DetectedRoomRow } from "@/lib/detected-room-types";
+import { dedupeDetectedRooms, type DetectedRoomRow } from "@/lib/detected-room-types";
 import {
   getPdfjs,
   type PDFDocumentProxy,
@@ -150,6 +150,8 @@ function scanStoredRoomsToDetected(
         : `recall-${scanPage}-${idx}-${Date.now()}`,
     project_id: projectId,
     page_number: scanPage,
+    floor_number:
+      r.floor != null && r.floor >= 1 ? Math.round(r.floor) : 1,
     room_name: String(r.room_name ?? "Room").trim() || "Room",
     room_type: String(r.room_type ?? "other").trim() || "other",
     width_ft: r.width_ft ?? null,
@@ -1516,7 +1518,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           setAnalysisItems(itemsRes.data as ElectricalItemRow[]);
         }
         if (roomsRes.data) {
-          setDetectedRooms(roomsRes.data as DetectedRoomRow[]);
+          setDetectedRooms(dedupeDetectedRooms(roomsRes.data as DetectedRoomRow[]));
         }
         setTakeoffViewMode("live");
         setActiveRecallSession(null);
@@ -1560,7 +1562,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           setAnalysisItems(itemsRes.data as ElectricalItemRow[]);
         }
         if (roomsRes.data) {
-          setDetectedRooms(roomsRes.data as DetectedRoomRow[]);
+          setDetectedRooms(dedupeDetectedRooms(roomsRes.data as DetectedRoomRow[]));
         }
       } catch {
         /* RLS or missing table */
@@ -1579,7 +1581,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         .select("*")
         .eq("project_id", projectId)
         .order("page_number", { ascending: true });
-      if (data) setDetectedRooms(data as DetectedRoomRow[]);
+      if (data) setDetectedRooms(dedupeDetectedRooms(data as DetectedRoomRow[]));
     } catch {
       /* ignore */
     }
@@ -3164,6 +3166,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           id: crypto.randomUUID ? crypto.randomUUID() : `room-${scanPage}-${idx}-${Date.now()}`,
           project_id: projectId,
           page_number: scanPage,
+          floor_number:
+            r.floor != null && r.floor >= 1 ? Math.round(r.floor) : 1,
           room_name: r.room_name,
           room_type: r.room_type ?? "other",
           width_ft: r.width_ft ?? null,
@@ -3183,6 +3187,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
             id: r.id,
             project_id: r.project_id,
             page_number: r.page_number,
+            floor_number: r.floor_number,
             room_name: r.room_name,
             room_type: r.room_type,
             width_ft: r.width_ft,
@@ -3891,7 +3896,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         setAnalysisItems(itemsRes.data as ElectricalItemRow[]);
       }
       if (roomsRes.data) {
-        setDetectedRooms(roomsRes.data as DetectedRoomRow[]);
+        setDetectedRooms(dedupeDetectedRooms(roomsRes.data as DetectedRoomRow[]));
       }
     } catch {
       /* keep prior state if fetch fails */

@@ -42,7 +42,8 @@ For each space return:
   approximate_width_ft: number or null,
   approximate_length_ft: number or null,
   approximate_sq_ft: number or null (prefer when shown on drawing or calculable from scale),
-  confidence: number 0.0–1.0
+  confidence: number 0.0–1.0,
+  floor_number: integer (1 for ground/first floor, 2 for second floor, etc. Use sheet name, level labels, or title block to determine. Default 1 if unclear.)
 }
 
 Also set floor_count in the root object: total building stories/floors suggested by the title block, sheet name (e.g. LEVEL 2), or typical residential/commercial context. Minimum 1.
@@ -51,7 +52,8 @@ Return exactly this JSON shape:
 {
   "rooms": [ ... ],
   "floor_count": <integer>
-}`;
+}
+// Each room object must include floor_number field.`;
 
 function claudeTextLooksLikeJson(text: string): boolean {
   const t = text.trim();
@@ -263,6 +265,7 @@ export async function POST(request: Request) {
   const roomRows: Array<{
     project_id: string;
     page_number: number;
+    floor_number: number;
     room_name: string;
     room_type: string;
     width_ft: number | null;

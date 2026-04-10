@@ -158,6 +158,7 @@ export type IncomingRoom = {
   approximate_length_ft?: number | null;
   approximate_sq_ft?: number | null;
   confidence?: number;
+  floor_number?: number | null;
 };
 
 export function normalizeAnalysisRoom(raw: IncomingRoom): {
@@ -167,6 +168,7 @@ export function normalizeAnalysisRoom(raw: IncomingRoom): {
   length_ft: number | null;
   sq_ft: number | null;
   confidence: number;
+  floor_number: number;
 } | null {
   const room_name = String(raw.room_name ?? "").trim();
   if (!room_name) return null;
@@ -182,6 +184,9 @@ export function normalizeAnalysisRoom(raw: IncomingRoom): {
     const n = Number(v);
     return Number.isFinite(n) && n >= 0 ? n : null;
   };
+  const floor_number = Number.isFinite(Number(raw.floor_number)) && Number(raw.floor_number) >= 1
+    ? Math.round(Number(raw.floor_number))
+    : 1;
   return {
     room_name,
     room_type: rt,
@@ -189,5 +194,6 @@ export function normalizeAnalysisRoom(raw: IncomingRoom): {
     length_ft: numOrNull(raw.approximate_length_ft),
     sq_ft: numOrNull(raw.approximate_sq_ft),
     confidence: c,
+    floor_number,
   };
 }

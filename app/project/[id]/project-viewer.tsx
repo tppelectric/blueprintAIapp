@@ -422,7 +422,7 @@ const LEGEND_CURSOR_RING_PX = 40;
 /** ~50% larger thumbnails for page recognition */
 const THUMB_SCALE = 0.27;
 /** Slightly lower res for batched legend upload to reduce POST size. */
-const LEGEND_PAGE_RENDER = { targetLongEdgeCssPx: 2200 } as const;
+const LEGEND_PAGE_RENDER = { targetLongEdgeCssPx: 1000 } as const;
 
 function thumbStatusGlyph(s: PageThumbScanStatus | undefined): string {
   switch (s) {

@@ -428,18 +428,14 @@ export async function POST(request: Request) {
     let obj: Record<string, unknown>;
     try {
       obj = extractJsonObject(assistantText);
-    } catch (e) {
-      return NextResponse.json(
-        {
-          error:
-            e instanceof Error
-              ? e.message
-              : "Could not parse Claude legend response.",
-          page: pageNumber,
-          raw: assistantText.slice(0, 1500),
-        },
-        { status: 422 },
+    } catch {
+      console.error(
+        "[detect-legend] JSON parse failed for page",
+        pageNumber,
+        "raw:",
+        assistantText.slice(0, 200),
       );
+      continue;
     }
 
     const parsed = parseLegendResponse(pageNumber, obj);

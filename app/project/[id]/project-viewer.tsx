@@ -729,7 +729,7 @@ const MainPageCanvas = forwardRef<
 
   return (
     <div
-      className="relative inline-block max-w-full overflow-hidden"
+      className="relative block w-full overflow-hidden"
       style={
         canvasSize
           ? { width: canvasSize.w }
@@ -7051,7 +7051,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                 }}
                 title="Focus here and use arrow keys to pan. Alt+drag to pan. Ctrl+wheel to zoom."
               >
-                <div className="flex min-h-full min-w-0 justify-center">
+                <div className="flex min-h-full min-w-0 items-start justify-center">
                   {currentPdfAndPage ? (
                     <MainPageCanvas
                       ref={mainPdfCanvasRef}

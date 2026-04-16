@@ -2325,6 +2325,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
     error?: string;
     persisted?: boolean;
     pageAnalysisWarning?: string;
+    pageType?: string;
+    skipGptVerification?: boolean;
   };
 
   const applyAnalyzePageJson = useCallback(
@@ -2366,7 +2368,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         ...prev.filter((r) => r.page_number !== pageToAnalyze),
         ...incomingRooms,
       ]);
-      if (incoming.length > 0 && !opts?.skipGpt) {
+      if (incoming.length > 0 && !opts?.skipGpt && !json.skipGptVerification) {
         opts?.onScanProgress?.(73, "GPT-4o verifying counts…", null);
         opts?.onBeforeGpt?.();
         await runGptVerification(

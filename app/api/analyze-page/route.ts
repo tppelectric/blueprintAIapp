@@ -20,6 +20,7 @@ import {
 import { checkAiRouteRateLimit } from "@/lib/rate-limit";
 import { recordAnalyzePageApiUsage } from "@/lib/record-analyze-page-usage";
 import { imageBufferAppearsBlank } from "@/lib/analyze-page-image";
+import { classifyPageType } from "@/lib/page-type-classifier";
 
 export const maxDuration = 300;
 
@@ -510,6 +511,28 @@ export async function POST(request: Request) {
     isPng: claudeMediaType === "image/png",
   });
 
+  // Pre-classify the page type before running full analysis
+  let pageType: import("@/lib/page-type-classifier").PageType = "unknown";
+  try {
+    const classification = await classifyPageType(
+      imageBase64,
+      claudeMediaType,
+      apiKey,
+    );
+    pageType = classification.pageType;
+    console.log("[analyze-page] page classification:", {
+      pageNumber,
+      pageType,
+      confidence: classification.confidence,
+      reason: classification.reason,
+    });
+  } catch {
+    pageType = "unknown";
+  }
+
+  // Spec sheets and legends skip GPT verification and coordinate extraction
+  const isSpecSheet = pageType === "spec_sheet" || pageType === "legend";
+
   let legendAppendix = "";
   try {
     const supabaseLegend = createServiceRoleClient();
@@ -794,6 +817,7 @@ No project-specific symbol legend is on file for this project — use standard N
       items: [],
       rooms: [],
       message: "No electrical items or rooms met the confidence threshold.",
+      pageType,
     });
   }
 
@@ -938,6 +962,8 @@ No project-specific symbol legend is on file for this project — use standard N
     items: insertedItems,
     rooms: insertedRooms,
     persisted: true,
+    pageType,
+    skipGptVerification: isSpecSheet,
     message:
       rows.length === 0
         ? "No electrical items met the confidence threshold."

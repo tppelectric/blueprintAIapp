@@ -732,7 +732,7 @@ const MainPageCanvas = forwardRef<
       className="relative inline-block max-w-full overflow-hidden"
       style={
         canvasSize
-          ? { width: canvasSize.w, height: canvasSize.h }
+          ? { width: canvasSize.w }
           : undefined
       }
     >

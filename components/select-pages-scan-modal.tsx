@@ -201,7 +201,7 @@ export function SelectPagesScanModal({
                       onChange={() => toggle(p)}
                       className="mt-1 h-4 w-4 shrink-0 rounded border-white/30 bg-[#0a1628]"
                     />
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1 overflow-hidden">
                       <div className="flex items-center justify-between gap-1">
                         <span className="text-xs font-bold text-white">
                           Page {p}
@@ -231,7 +231,9 @@ export function SelectPagesScanModal({
                       ) : (
                         <p className="text-[9px] text-white/35">Not scanned</p>
                       )}
-                      <div className="mt-2">{thumbnailCells[idx]}</div>
+                      <div className="mt-2 w-full overflow-hidden rounded-md">
+                        {thumbnailCells[idx]}
+                      </div>
                     </div>
                   </label>
                 </div>

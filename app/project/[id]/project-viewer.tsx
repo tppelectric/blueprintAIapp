@@ -728,14 +728,7 @@ const MainPageCanvas = forwardRef<
   }, [pdfDoc, pageNumber, zoom]);
 
   return (
-    <div
-      className="relative block w-full overflow-hidden"
-      style={
-        canvasSize
-          ? { width: canvasSize.w }
-          : undefined
-      }
-    >
+    <div className="relative block w-full overflow-hidden">
       <canvas
         ref={setRefs}
         className="max-w-full rounded-lg bg-white shadow-lg shadow-black/40"

@@ -9,6 +9,10 @@ import {
   extractFloorPlanScanPayload,
   normalizeFloorPlanScanResponse,
 } from "@/lib/tool-floor-plan-scan";
+import {
+  isRoomCountSource,
+  parseRoomScanSheetType,
+} from "@/lib/room-scan-sheet-type";
 import { checkAiRouteRateLimit } from "@/lib/rate-limit";
 import {
   anthropicUsageFromMessage,
@@ -22,14 +26,30 @@ const MAX_INCOMING_IMAGE_BYTES = Math.floor(4.8 * 1024 * 1024);
 
 const BASE_SYSTEM = `You are an expert architectural floor-plan reader. Analyze the attached blueprint/floor-plan image.
 
-TASK:
+SHEET CLASSIFICATION (required first):
+Classify this page:
+- architectural_floor_plan: Architectural floor plan with walls and room labels
+- rcp: Reflected ceiling plan
+- power_plan: Electrical power plan with rooms and device symbols
+- fixture_schedule: Lighting/fixture schedule (tables, no spatial layout) — rooms MUST be []
+- spec_detail: Specifications, details, sections, risers — rooms MUST be []
+- legend: Symbol legend or keynotes — rooms MUST be []
+- other: Unrecognized
+
+If sheet_type is fixture_schedule, spec_detail, or legend, return "rooms": [].
+Only enumerate rooms for architectural_floor_plan, rcp, or power_plan.
+
+TASK (room-count sheets only):
 1. Identify every distinct room or labeled area (bedrooms, baths, kitchen, garage, hallways, closets, mechanical, outdoor/patio/deck, etc.).
 2. Estimate dimensions when a scale bar, dimensions, or grid is visible; otherwise infer reasonable approximate length and width in feet from drawing proportions. Use null for dimensions you cannot estimate at all.
-3. Assign floor_level as integer: 1 = main/ground, 2 = second story, 3+ = upper levels, 0 = basement/cellar if clearly indicated.
+3. Assign floor on each room as integer: 0 = basement/cellar, 1 = main/ground, 2 = second story, 3+ = upper levels.
 4. Classify room_type using one of: living_room, bedroom, kitchen, bathroom, garage, dining_room, hallway, laundry, outdoor, patio, basement, office, utility, other.
 
 Return ONLY valid JSON (no markdown fences). Shape:
 {
+  "sheet_type": "architectural_floor_plan" | "rcp" | "power_plan" | "fixture_schedule" | "spec_detail" | "legend" | "other",
+  "sheet_floor_level": integer (0=basement, 1=first/main, 2+=upper; null if unknown),
+  "sheet_title": "title block or sheet name if visible, else empty string",
   "rooms": [
     {
       "room_name": "string — label from plan or best descriptive name",
@@ -47,7 +67,7 @@ Return ONLY valid JSON (no markdown fences). Shape:
   "scan_notes": "one paragraph on plan quality, scale, or verification needs"
 }
 
-Omit rooms with confidence below 0.5. Be thorough with hallways and utility spaces when visible.`;
+Omit rooms with confidence below 0.5. Be thorough with hallways and utility spaces when visible on room-count sheets.`;
 
 const TOOL_SUFFIX: Record<string, string> = {
   wifi: `
@@ -190,9 +210,16 @@ export async function POST(request: Request) {
 
   try {
     const parsed = extractFloorPlanScanPayload(assistantText);
-    const rooms = normalizeFloorPlanScanResponse(parsed.rooms);
+    const sheetType = parseRoomScanSheetType(parsed.sheet_type);
+    let rooms = normalizeFloorPlanScanResponse(parsed.rooms);
+    if (!isRoomCountSource(sheetType)) {
+      rooms = [];
+    }
     return NextResponse.json({
       rooms,
+      sheet_type: sheetType,
+      sheet_floor_level: parsed.sheet_floor_level ?? null,
+      sheet_title: parsed.sheet_title ?? "",
       equipment_placement_suggestions:
         parsed.equipment_placement_suggestions ?? [],
       scan_notes: parsed.scan_notes ?? "",

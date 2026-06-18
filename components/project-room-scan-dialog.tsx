@@ -14,6 +14,7 @@ import {
   type ProjectRoomScanListItem,
 } from "@/lib/project-room-scans";
 import { TPP_COMPANY_FULL } from "@/lib/tpp-branding";
+import { computeRoomScanTotals } from "@/lib/room-name-dedup";
 import type { FloorPlanScanApiResponse } from "@/lib/tool-floor-plan-scan";
 import {
   floorPlanScanToAvRooms,
@@ -322,19 +323,9 @@ function FloorPlanRoomScanDialogView({
     if (!data?.rooms.length) {
       return { totalSq: 0, floors: 0, roomCount: 0 };
     }
-    let totalSq = 0;
-    const floorSet = new Set<number>();
-    for (const r of data.rooms) {
-      if (r.sq_ft != null && r.sq_ft > 0) totalSq += r.sq_ft;
-      if (r.floor != null) floorSet.add(Math.round(r.floor));
-    }
-    const floors =
-      floorSet.size > 0 ? Math.max(...floorSet) : data.rooms.length > 0 ? 1 : 0;
-    return {
-      totalSq: Math.round(totalSq),
-      floors,
-      roomCount: data.rooms.length,
-    };
+    return computeRoomScanTotals(
+      data.rooms.map((r) => ({ sq_ft: r.sq_ft, floor: r.floor })),
+    );
   }, [data]);
 
   const payloadFingerprint = useMemo(() => {

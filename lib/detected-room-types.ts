@@ -1,3 +1,8 @@
+import {
+  mergeRoomsByFloorAndSimilarName,
+  pickDim,
+} from "@/lib/room-name-dedup";
+
 export type DetectedRoomRow = {
   id: string;
   project_id: string;
@@ -12,46 +17,57 @@ export type DetectedRoomRow = {
   created_at?: string;
 };
 
-function normRoomKey(name: string, floorNumber: number): string {
-  return `${name.trim().toLowerCase().replace(/\s+/g, " ")}::floor${floorNumber}`;
+function roomFloor(r: DetectedRoomRow): number {
+  return r.floor_number != null && r.floor_number >= 0 ? r.floor_number : 1;
 }
 
-function pickDim(a: number | null, b: number | null): number | null {
-  if (a != null && a > 0 && b != null && b > 0) return Math.max(a, b);
-  if (a != null && a > 0) return a;
-  if (b != null && b > 0) return b;
-  return null;
+function mergeDetectedPair(
+  existing: DetectedRoomRow,
+  incoming: DetectedRoomRow,
+): DetectedRoomRow {
+  const sq = (x: number | null) => (x != null && x > 0 ? x : 0);
+  const eSq = sq(existing.sq_ft);
+  const iSq = sq(incoming.sq_ft);
+  let mergedSq: number | null;
+  if (eSq > 0 && iSq > 0) {
+    if (eSq !== iSq) {
+      mergedSq = Math.max(eSq, iSq);
+    } else {
+      mergedSq =
+        existing.confidence >= incoming.confidence
+          ? existing.sq_ft
+          : incoming.sq_ft;
+    }
+  } else {
+    const nextSq = Math.max(eSq, iSq);
+    mergedSq = nextSq > 0 ? nextSq : (existing.sq_ft ?? incoming.sq_ft);
+  }
+  return {
+    ...existing,
+    width_ft: pickDim(existing.width_ft, incoming.width_ft),
+    length_ft: pickDim(existing.length_ft, incoming.length_ft),
+    sq_ft: mergedSq,
+    confidence: Math.max(existing.confidence, incoming.confidence),
+    room_name:
+      existing.room_name.length >= incoming.room_name.length
+        ? existing.room_name
+        : incoming.room_name,
+    room_type:
+      existing.room_type !== "other" ? existing.room_type : incoming.room_type,
+    page_number: Math.min(existing.page_number, incoming.page_number),
+  };
 }
 
 /**
- * Deduplicate detected rooms by normalized room name across pages.
- * Same room appearing on multiple pages counts once.
- * Keeps the row from the lowest page number as the base; takes max sq_ft and highest confidence.
+ * Deduplicate detected rooms by floor + conservative similar-name matching.
+ * Same room on multiple pages counts once.
  */
 export function dedupeDetectedRooms(rooms: DetectedRoomRow[]): DetectedRoomRow[] {
-  const byKey = new Map<string, DetectedRoomRow>();
   const sorted = [...rooms].sort((a, b) => a.page_number - b.page_number);
-  for (const r of sorted) {
-    const key = normRoomKey(r.room_name, r.floor_number ?? 1);
-    if (!key) continue;
-    const existing = byKey.get(key);
-    if (!existing) {
-      byKey.set(key, { ...r });
-    } else {
-      const sq = (x: number | null) => (x != null && x > 0 ? x : 0);
-      const nextSq = Math.max(sq(existing.sq_ft), sq(r.sq_ft));
-      byKey.set(key, {
-        ...existing,
-        width_ft: pickDim(existing.width_ft, r.width_ft),
-        length_ft: pickDim(existing.length_ft, r.length_ft),
-        sq_ft: nextSq > 0 ? nextSq : (existing.sq_ft ?? r.sq_ft),
-        confidence: Math.max(existing.confidence, r.confidence),
-        room_name: existing.room_name.length >= r.room_name.length
-          ? existing.room_name
-          : r.room_name,
-        room_type: existing.room_type !== "other" ? existing.room_type : r.room_type,
-      });
-    }
-  }
-  return [...byKey.values()];
+  return mergeRoomsByFloorAndSimilarName(
+    sorted,
+    roomFloor,
+    (r) => r.room_name,
+    mergeDetectedPair,
+  );
 }

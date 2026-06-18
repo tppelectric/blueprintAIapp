@@ -32,12 +32,18 @@ export type FloorPlanScanApiResponse = {
   rooms: FloorPlanScanRoom[];
   equipment_placement_suggestions: string[];
   scan_notes: string;
+  sheet_type?: string;
+  sheet_floor_level?: number | null;
+  sheet_title?: string;
 };
 
 export function extractFloorPlanScanPayload(text: string): {
   rooms: unknown[];
   equipment_placement_suggestions: string[];
   scan_notes: string;
+  sheet_type?: string;
+  sheet_floor_level?: number | null;
+  sheet_title?: string;
 } {
   const trimmed = text.trim();
   const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -50,7 +56,22 @@ export function extractFloorPlanScanPayload(text: string): {
     : [];
   const scan_notes =
     typeof parsed.scan_notes === "string" ? parsed.scan_notes.trim() : "";
-  return { rooms, equipment_placement_suggestions: suggestions, scan_notes };
+  const sheet_floor_level =
+    parsed.sheet_floor_level === null || parsed.sheet_floor_level === undefined
+      ? null
+      : Number.isFinite(Number(parsed.sheet_floor_level))
+        ? Math.round(Number(parsed.sheet_floor_level))
+        : null;
+  return {
+    rooms,
+    equipment_placement_suggestions: suggestions,
+    scan_notes,
+    sheet_type:
+      typeof parsed.sheet_type === "string" ? parsed.sheet_type : undefined,
+    sheet_floor_level,
+    sheet_title:
+      typeof parsed.sheet_title === "string" ? parsed.sheet_title.trim() : "",
+  };
 }
 
 const WIFI_TYPES = new Set<string>([
@@ -80,7 +101,7 @@ function floorOrNull(v: unknown): number | null {
   if (v === null || v === undefined) return null;
   const n = Math.round(Number(v));
   if (!Number.isFinite(n)) return null;
-  if (n < 0) return 1;
+  if (n < 0) return 0;
   return n;
 }
 
@@ -447,7 +468,9 @@ export function floorPlanScanToElectricalRooms(
     const { lengthFt, widthFt } = deriveLengthWidth(r);
     const roomType = mapElectricalRoomType(r.room_type, r.room_name);
     const floor =
-      r.floor == null || r.floor < 1 ? 1 : Math.min(6, Math.round(r.floor));
+      r.floor == null || r.floor < 0
+        ? 1
+        : Math.min(6, Math.round(r.floor));
     const hint = electricalHeuristicDevices(roomType);
     return createElectricalRoom(newId(), {
       name: r.room_name,

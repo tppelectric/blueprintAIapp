@@ -100,8 +100,19 @@ import {
   type ProjectRoomScanListItem,
   type ProjectRoomScanRow,
 } from "@/lib/project-room-scans";
-import type { FloorPlanScanApiResponse } from "@/lib/tool-floor-plan-scan";
+import type {
+  FloorPlanScanApiResponse,
+  FloorPlanScanRoom,
+} from "@/lib/tool-floor-plan-scan";
 import { mergeFloorPlanRoomScanPages } from "@/lib/merge-floor-plan-room-scans";
+import { computeRoomScanTotals } from "@/lib/room-name-dedup";
+import {
+  inferFloorFromTitle,
+  inferSheetTypeFromTitle,
+  parseRoomScanSheetType,
+  selectRoomSourcePages,
+  type RoomScanSheetType,
+} from "@/lib/room-scan-sheet-type";
 import {
   ScanProgressOverlay,
   type ScanProgressPageRow,
@@ -152,7 +163,7 @@ function scanStoredRoomsToDetected(
     project_id: projectId,
     page_number: scanPage,
     floor_number:
-      r.floor != null && r.floor >= 1 ? Math.round(r.floor) : 1,
+      r.floor != null && r.floor >= 0 ? Math.round(r.floor) : 1,
     room_name: String(r.room_name ?? "Room").trim() || "Room",
     room_type: String(r.room_type ?? "other").trim() || "other",
     width_ft: r.width_ft ?? null,
@@ -3125,6 +3136,9 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         equipment_placement_suggestions:
           json.equipment_placement_suggestions ?? [],
         scan_notes: json.scan_notes ?? "",
+        sheet_type: json.sheet_type,
+        sheet_floor_level: json.sheet_floor_level ?? null,
+        sheet_title: json.sheet_title ?? "",
       };
     },
     [],
@@ -3156,7 +3170,12 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
         setRoomScanBatchProgress({ current: 1, total: sorted.length });
       }
       setRoomScanBusy(true);
-      const parts: { page: number; data: FloorPlanScanApiResponse }[] = [];
+      const parts: {
+        page: number;
+        data: FloorPlanScanApiResponse;
+        sheetType: RoomScanSheetType;
+        floorLevel: number | null;
+      }[] = [];
       try {
         for (let i = 0; i < sorted.length; i += 1) {
           if (multi) {
@@ -3171,7 +3190,16 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           const p = sorted[i]!;
           try {
             const data = await fetchSingleFloorPlanRoomScan(p);
-            parts.push({ page: p, data });
+            const title = data.sheet_title?.trim() ?? "";
+            const sheetType =
+              parseRoomScanSheetType(data.sheet_type) ??
+              inferSheetTypeFromTitle(title) ??
+              "other";
+            const floorLevel =
+              data.sheet_floor_level ??
+              inferFloorFromTitle(title) ??
+              null;
+            parts.push({ page: p, data, sheetType, floorLevel });
           } catch (e) {
             window.alert(
               e instanceof Error ? e.message : "Room scan failed.",
@@ -3191,12 +3219,26 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       if (cancelledIncomplete) return;
       if (parts.length === 0) return;
 
-      const merged =
-        parts.length === 1
-          ? parts[0]!.data
-          : mergeFloorPlanRoomScanPages(parts);
+      const { selectedPages, skippedNotes } = selectRoomSourcePages(
+        parts.map((p) => ({
+          page: p.page,
+          sheetType: p.sheetType,
+          floorLevel: p.floorLevel,
+        })),
+      );
+      const partsForMerge = parts.filter((p) => selectedPages.includes(p.page));
+
+      const merged = mergeFloorPlanRoomScanPages(partsForMerge);
       const mergedRooms = merged.rooms ?? [];
-      const scanPage = parts[0]!.page;
+      const scanPage = partsForMerge[0]?.page ?? parts[0]!.page;
+      const scanNotes = [
+        merged.scan_notes,
+        skippedNotes.length
+          ? `Skipped ${skippedNotes.length} page(s) (duplicate floor or non-room sheet):\n${skippedNotes.join("\n")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
 
       // Set rooms directly in state so results panel shows them immediately
       if (mergedRooms.length > 0) {
@@ -3205,7 +3247,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           project_id: projectId,
           page_number: scanPage,
           floor_number:
-            r.floor != null && r.floor >= 1 ? Math.round(r.floor) : 1,
+            r.floor != null && r.floor >= 0 ? Math.round(r.floor) : 1,
           room_name: r.room_name,
           room_type: r.room_type ?? "other",
           width_ft: r.width_ft ?? null,
@@ -3213,6 +3255,13 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           sq_ft: r.sq_ft ?? null,
           confidence: r.confidence ?? 0.75,
         }));
+        const dedupedRooms = dedupeDetectedRooms(stateRooms);
+        const totals = computeRoomScanTotals(
+          dedupedRooms.map((r) => ({
+            sq_ft: r.sq_ft,
+            floor: r.floor_number,
+          })),
+        );
         // Persist to detected_rooms and project_room_scans tables
         try {
           const sb = createBrowserClient();
@@ -3221,7 +3270,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
             await sb.from("detected_rooms").delete().eq("project_id", projectId).eq("page_number", p);
           }
           // Insert new detected_rooms rows
-          await sb.from("detected_rooms").insert(stateRooms.map((r) => ({
+          await sb.from("detected_rooms").insert(dedupedRooms.map((r) => ({
             id: r.id,
             project_id: r.project_id,
             page_number: r.page_number,
@@ -3233,39 +3282,48 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
             sq_ft: r.sq_ft,
             confidence: r.confidence,
           })));
-          // Save to project_room_scans
-          let totalSq = 0;
-          const floorSet = new Set<number>();
-          for (const r of mergedRooms) {
-            if (r.sq_ft != null && r.sq_ft > 0) totalSq += r.sq_ft;
-            if (r.floor != null) floorSet.add(Math.round(r.floor));
-          }
-          const floors = floorSet.size > 0 ? Math.max(...floorSet) : 1;
           await sb.from("project_room_scans").insert({
             project_id: projectId,
-            rooms_json: mergedRooms,
-            total_sqft: Math.round(totalSq),
-            floor_count: floors,
+            rooms_json: dedupedRooms,
+            total_sqft: totals.totalSq,
+            floor_count: totals.floors,
             scan_page: scanPage,
             scan_label: `Room Scan · page ${scanPage} · ${new Date().toLocaleString()}`,
             equipment_suggestions_json: merged.equipment_placement_suggestions ?? [],
-            scan_notes: merged.scan_notes ?? "",
+            scan_notes: scanNotes,
           });
         } catch (e) {
           console.error("Room scan persist error:", e);
         }
         setDetectedRooms((prev) => [
           ...prev.filter((r) => !sorted.includes(r.page_number)),
-          ...stateRooms,
+          ...dedupedRooms,
         ]);
-      }
 
-      setRoomScanData({
-        rooms: mergedRooms,
-        equipment_placement_suggestions:
-          merged.equipment_placement_suggestions ?? [],
-        scan_notes: merged.scan_notes ?? "",
-      });
+        const displayRooms: FloorPlanScanRoom[] = dedupedRooms.map((r) => ({
+          room_name: r.room_name,
+          room_type: r.room_type,
+          width_ft: r.width_ft,
+          length_ft: r.length_ft,
+          sq_ft: r.sq_ft,
+          floor: r.floor_number,
+          confidence: r.confidence,
+        }));
+
+        setRoomScanData({
+          rooms: displayRooms,
+          equipment_placement_suggestions:
+            merged.equipment_placement_suggestions ?? [],
+          scan_notes: scanNotes,
+        });
+      } else {
+        setRoomScanData({
+          rooms: mergedRooms,
+          equipment_placement_suggestions:
+            merged.equipment_placement_suggestions ?? [],
+          scan_notes: scanNotes,
+        });
+      }
       setRoomScanDialogPage(scanPage);
       setRoomScanAutosave(true);
       setSelectedRoomScanId(null);
@@ -3280,6 +3338,8 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
       symbolCaptureState,
       symbolMatchState,
       fetchSingleFloorPlanRoomScan,
+      projectId,
+      reloadRoomScanHistory,
     ],
   );
 

@@ -184,8 +184,13 @@ export function normalizeAnalysisRoom(raw: IncomingRoom): {
     const n = Number(v);
     return Number.isFinite(n) && n >= 0 ? n : null;
   };
-  const floor_number = Number.isFinite(Number(raw.floor_number)) && Number(raw.floor_number) >= 1
-    ? Math.round(Number(raw.floor_number))
+  const floorRaw = Number(raw.floor_number);
+  const floor_number = Number.isFinite(floorRaw)
+    ? floorRaw === 0
+      ? 0
+      : floorRaw >= 1
+        ? Math.round(floorRaw)
+        : 1
     : 1;
   return {
     room_name,

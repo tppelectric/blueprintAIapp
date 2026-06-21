@@ -59,6 +59,8 @@ type StoredMsg = {
   content: string;
   timestamp: string;
   actions?: unknown;
+  jobtreadJobId?: string | null;
+  jobLabel?: string | null;
 };
 
 function sanitizeMessages(input: unknown): StoredMsg[] {
@@ -75,6 +77,10 @@ function sanitizeMessages(input: unknown): StoredMsg[] {
     const row: StoredMsg = { role, content, timestamp };
     if (Array.isArray(o.actions) && o.actions.length) {
       row.actions = o.actions;
+    }
+    if (typeof o.jobtreadJobId === "string" && o.jobtreadJobId.trim()) {
+      row.jobtreadJobId = o.jobtreadJobId;
+      row.jobLabel = typeof o.jobLabel === "string" ? o.jobLabel : null;
     }
     out.push(row);
     if (out.length >= 80) break;

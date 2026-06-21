@@ -15,6 +15,9 @@ export type AIMessage = {
   role: "user" | "assistant";
   content: string;
   timestamp: string;
+  /** Per-bubble JobTread tag (stored in messages JSON). */
+  jobtreadJobId?: string | null;
+  jobLabel?: string | null;
 };
 
 export type AIAction = {

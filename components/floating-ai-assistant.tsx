@@ -41,6 +41,31 @@ function filterJobsForPicker(jobs: JobPickerRow[], query: string): JobPickerRow[
 
 type ChatMessage = AIMessage & { actions?: AIAction[] };
 
+type JobPickerMode = "conversation" | "bubble-assign" | "bubble-edit";
+
+function bubbleKey(m: ChatMessage, index: number): string {
+  return `${m.timestamp}-${index}`;
+}
+
+/** Display chip as #jobnumber from formatJobTagLabel ("1234 · Name"). */
+function jobChipText(label: string): string {
+  const num = label.split(" · ")[0]?.trim();
+  if (num) return `#${num}`;
+  const t = label.trim();
+  return t.startsWith("#") ? t : `#${t.slice(0, 24)}`;
+}
+
+function indicesFromBubbleKeys(
+  messages: ChatMessage[],
+  keys: Set<string>,
+): number[] {
+  const out: number[] = [];
+  messages.forEach((m, i) => {
+    if (keys.has(bubbleKey(m, i))) out.push(i);
+  });
+  return out;
+}
+
 function normalizeNavigateHref(href: string | undefined): string | null {
   if (href == null) return null;
   const t = href.trim();
@@ -243,11 +268,20 @@ function toHistoryPayload(messages: ChatMessage[]): AIMessage[] {
 }
 
 function toPersistPayload(messages: ChatMessage[]): unknown[] {
-  return messages.map(({ role, content, timestamp, actions }) => {
-    const row: Record<string, unknown> = { role, content, timestamp };
-    if (actions?.length) row.actions = actions;
-    return row;
-  });
+  return messages.map(
+    ({ role, content, timestamp, actions, jobtreadJobId, jobLabel }) => {
+      const row: Record<string, unknown> = { role, content, timestamp };
+      if (actions?.length) row.actions = actions;
+      const id =
+        typeof jobtreadJobId === "string" ? jobtreadJobId.trim() : "";
+      if (id) {
+        row.jobtreadJobId = id;
+        const lbl = typeof jobLabel === "string" ? jobLabel.trim() : "";
+        if (lbl) row.jobLabel = lbl;
+      }
+      return row;
+    },
+  );
 }
 
 function parseStoredActions(raw: unknown): AIAction[] | undefined {
@@ -280,11 +314,20 @@ function storedRowsToMessages(rows: unknown[]): ChatMessage[] {
       typeof o.timestamp === "string" ? o.timestamp : nowIso();
     if (!content.trim()) continue;
     const actions = parseStoredActions(o.actions);
+    const jtId =
+      typeof o.jobtreadJobId === "string" && o.jobtreadJobId.trim()
+        ? o.jobtreadJobId.trim()
+        : null;
+    const jtLabel =
+      typeof o.jobLabel === "string" && o.jobLabel.trim()
+        ? o.jobLabel.trim()
+        : null;
     out.push({
       role: o.role,
       content,
       timestamp,
       ...(actions ? { actions } : {}),
+      ...(jtId ? { jobtreadJobId: jtId, jobLabel: jtLabel } : {}),
     });
   }
   return out;
@@ -350,6 +393,13 @@ export function FloatingAIAssistant() {
   const [jobSearch, setJobSearch] = useState("");
   const [jobsLoading, setJobsLoading] = useState(false);
   const [jobPickerOpen, setJobPickerOpen] = useState(false);
+  const [jobPickerMode, setJobPickerMode] =
+    useState<JobPickerMode>("conversation");
+  const [bubbleEditIndex, setBubbleEditIndex] = useState<number | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedBubbleKeys, setSelectedBubbleKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [conversationLoaded, setConversationLoaded] = useState(false);
   const [autoTagSettled, setAutoTagSettled] = useState(false);
   const taggedJobRef = useRef<TaggedJob | null>(null);
@@ -390,13 +440,34 @@ export function FloatingAIAssistant() {
   }, [open, jobPickerOpen, loadJobs]);
 
   useEffect(() => {
-    if (!open) setJobPickerOpen(false);
+    if (!open) {
+      setJobPickerOpen(false);
+      setSelectMode(false);
+      setSelectedBubbleKeys(new Set());
+      setBubbleEditIndex(null);
+    }
   }, [open]);
 
   useEffect(() => {
     autoTagAttemptedRef.current = null;
     setAutoTagSettled(false);
   }, [pathname]);
+
+  const closeJobPicker = useCallback(() => {
+    setJobPickerOpen(false);
+    setJobSearch("");
+    setJobPickerMode("conversation");
+    setBubbleEditIndex(null);
+  }, []);
+
+  const toggleJobPicker = useCallback(() => {
+    setJobPickerMode("conversation");
+    setBubbleEditIndex(null);
+    setJobPickerOpen((o) => {
+      if (o) setJobSearch("");
+      return !o;
+    });
+  }, []);
 
   const saveJobTagRemote = useCallback(
     async (next: TaggedJob | null) => {
@@ -433,20 +504,49 @@ export function FloatingAIAssistant() {
       };
       setTaggedJob(next);
       setJobSearch("");
-      setJobPickerOpen(false);
+      closeJobPicker();
       if (!opts?.fromAutoTag) userClearedOnPathRef.current = null;
       void saveJobTagRemote(next);
     },
-    [saveJobTagRemote],
+    [saveJobTagRemote, closeJobPicker],
   );
 
   const clearJobTag = useCallback(() => {
     userClearedOnPathRef.current = pathname ?? null;
     setTaggedJob(null);
-    setJobSearch("");
-    setJobPickerOpen(false);
+    closeJobPicker();
     void saveJobTagRemote(null);
-  }, [saveJobTagRemote, pathname]);
+  }, [saveJobTagRemote, pathname, closeJobPicker]);
+
+  const openBubbleEditPicker = useCallback((index: number) => {
+    setBubbleEditIndex(index);
+    setJobPickerMode("bubble-edit");
+    setJobPickerOpen(true);
+  }, []);
+
+  const openBubbleAssignPicker = useCallback(() => {
+    if (selectedBubbleKeys.size === 0) return;
+    setBubbleEditIndex(null);
+    setJobPickerMode("bubble-assign");
+    setJobPickerOpen(true);
+  }, [selectedBubbleKeys.size]);
+
+  const toggleBubbleSelection = useCallback((key: string) => {
+    setSelectedBubbleKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectMode = useCallback(() => {
+    setSelectMode((on) => {
+      if (on) setSelectedBubbleKeys(new Set());
+      return !on;
+    });
+    closeJobPicker();
+  }, [closeJobPicker]);
 
   const filteredJobs = useMemo(
     () => filterJobsForPicker(jobs, jobSearch),
@@ -472,6 +572,9 @@ export function FloatingAIAssistant() {
     setTaggedJob(null);
     setJobSearch("");
     setHasUnread(false);
+    setSelectMode(false);
+    setSelectedBubbleKeys(new Set());
+    closeJobPicker();
     void (async () => {
       try {
         const res = await fetch(
@@ -489,7 +592,7 @@ export function FloatingAIAssistant() {
         /* ignore */
       }
     })();
-  }, [pageCtx.page]);
+  }, [pageCtx.page, closeJobPicker]);
 
   const saveMessagesRemote = useCallback(
     async (next: ChatMessage[]) => {
@@ -522,6 +625,69 @@ export function FloatingAIAssistant() {
       }
     },
     [pageCtx.page, conversationTitle],
+  );
+
+  const assignJobToBubbles = useCallback(
+    (indices: number[], job: JobPickerRow) => {
+      const tag = {
+        jobtreadJobId: jobTagStorageId(job),
+        jobLabel: formatJobTagLabel(job),
+      };
+      setMessages((prev) => {
+        const next = prev.map((m, i) =>
+          indices.includes(i) ? { ...m, ...tag } : m,
+        );
+        void saveMessagesRemote(next);
+        return next;
+      });
+      setSelectedBubbleKeys(new Set());
+      closeJobPicker();
+    },
+    [saveMessagesRemote, closeJobPicker],
+  );
+
+  const clearBubbleJob = useCallback(
+    (index: number) => {
+      setMessages((prev) => {
+        const next = prev.map((m, i) => {
+          if (i !== index) return m;
+          const stripped: ChatMessage = {
+            role: m.role,
+            content: m.content,
+            timestamp: m.timestamp,
+          };
+          if (m.actions?.length) stripped.actions = m.actions;
+          return stripped;
+        });
+        void saveMessagesRemote(next);
+        return next;
+      });
+      closeJobPicker();
+    },
+    [saveMessagesRemote, closeJobPicker],
+  );
+
+  const handleJobPickFromSelect = useCallback(
+    (job: JobPickerRow) => {
+      if (jobPickerMode === "bubble-assign") {
+        const indices = indicesFromBubbleKeys(messages, selectedBubbleKeys);
+        if (indices.length > 0) assignJobToBubbles(indices, job);
+        return;
+      }
+      if (jobPickerMode === "bubble-edit" && bubbleEditIndex != null) {
+        assignJobToBubbles([bubbleEditIndex], job);
+        return;
+      }
+      selectJob(job);
+    },
+    [
+      jobPickerMode,
+      messages,
+      selectedBubbleKeys,
+      bubbleEditIndex,
+      assignJobToBubbles,
+      selectJob,
+    ],
   );
 
   const sendMessage = useCallback(async () => {
@@ -901,24 +1067,76 @@ export function FloatingAIAssistant() {
                     ×
                   </button>
                 </span>
-              ) : jobPickerOpen ? (
+              ) : !isJobPagePathname(pathname ?? "/") ||
+                (conversationLoaded && autoTagSettled) ? (
+                <button
+                  type="button"
+                  onClick={toggleJobPicker}
+                  className={[
+                    "mt-1.5 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] transition-colors",
+                    jobPickerOpen && jobPickerMode === "conversation"
+                      ? "border-[#E8C84A]/50 bg-[#E8C84A]/15 text-[#E8C84A]"
+                      : "border-dashed border-white/25 text-white/55 hover:border-[#E8C84A]/40 hover:text-[#E8C84A]",
+                  ].join(" ")}
+                  aria-label={
+                    jobPickerOpen && jobPickerMode === "conversation"
+                      ? "Close job picker"
+                      : "Tag a job"
+                  }
+                  aria-expanded={
+                    jobPickerOpen && jobPickerMode === "conversation"
+                  }
+                >
+                  + Job
+                </button>
+              ) : null}
+              {jobPickerOpen ? (
                 <div className="mt-1.5 space-y-1">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[10px] text-white/45">
+                      {jobPickerMode === "bubble-assign"
+                        ? `Assign ${selectedBubbleKeys.size} message(s)`
+                        : jobPickerMode === "bubble-edit"
+                          ? "Message job tag"
+                          : "Tag conversation"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={closeJobPicker}
+                      className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-white/60 hover:bg-white/10 hover:text-white"
+                      aria-label="Close job picker"
+                    >
+                      Done
+                    </button>
+                  </div>
+                  {jobPickerMode === "bubble-edit" &&
+                  bubbleEditIndex != null ? (
+                    <button
+                      type="button"
+                      onClick={() => clearBubbleJob(bubbleEditIndex)}
+                      className="w-full rounded-lg border border-red-500/35 bg-red-950/25 px-2 py-1 text-[10px] font-medium text-red-200 hover:bg-red-950/40"
+                    >
+                      Remove tag
+                    </button>
+                  ) : null}
                   <input
                     type="search"
                     value={jobSearch}
                     onChange={(e) => setJobSearch(e.target.value)}
-                    placeholder={jobsLoading ? "Loading jobs…" : "Search job name or #…"}
+                    placeholder={
+                      jobsLoading ? "Loading jobs…" : "Search job name or #…"
+                    }
                     className="w-full rounded-lg border border-white/12 bg-[#060d1a] px-2 py-1 text-[10px] text-white placeholder:text-white/35 focus:border-[#E8C84A]/40 focus:outline-none"
-                    aria-label="Search jobs to tag"
+                    aria-label="Search jobs"
                   />
                   <select
                     value=""
                     onChange={(e) => {
                       const picked = jobs.find((j) => j.id === e.target.value);
-                      if (picked) selectJob(picked);
+                      if (picked) handleJobPickFromSelect(picked);
                     }}
                     className="w-full rounded-lg border border-white/12 bg-[#060d1a] px-2 py-1 text-[10px] text-white focus:border-[#E8C84A]/40 focus:outline-none"
-                    aria-label="Select job to tag"
+                    aria-label="Select job"
                   >
                     <option value="">
                       {jobsLoading
@@ -932,47 +1150,63 @@ export function FloatingAIAssistant() {
                     ))}
                   </select>
                 </div>
-              ) : !isJobPagePathname(pathname ?? "/") ||
-                (conversationLoaded && autoTagSettled) ? (
-                <button
-                  type="button"
-                  onClick={() => setJobPickerOpen(true)}
-                  className="mt-1.5 inline-flex items-center rounded-full border border-dashed border-white/25 px-2 py-0.5 text-[10px] text-white/55 hover:border-[#E8C84A]/40 hover:text-[#E8C84A]"
-                  aria-label="Tag a job"
-                >
-                  + Job
-                </button>
               ) : null}
             </div>
-            <div className="flex shrink-0 items-center gap-1">
-              <button
-                type="button"
-                onClick={clearChat}
-                className="rounded-lg p-1.5 text-white/60 hover:bg-white/10 hover:text-white"
-                aria-label="Clear conversation"
-                title="Clear conversation"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="h-4 w-4"
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              <div className="flex items-center gap-1">
+                {selectMode && selectedBubbleKeys.size > 0 ? (
+                  <button
+                    type="button"
+                    onClick={openBubbleAssignPicker}
+                    className="rounded-lg px-2 py-1 text-[10px] font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/10"
+                    title="Assign selected messages to a job"
+                  >
+                    Assign ({selectedBubbleKeys.size})
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={toggleSelectMode}
+                  className={[
+                    "rounded-lg px-2 py-1 text-[10px] font-medium",
+                    selectMode
+                      ? "bg-[#E8C84A]/15 text-[#E8C84A]"
+                      : "text-white/55 hover:bg-white/10 hover:text-white",
+                  ].join(" ")}
+                  aria-pressed={selectMode}
+                  title={selectMode ? "Exit select mode" : "Select messages"}
                 >
-                  <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14zM10 11v6M14 11v6" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setOpen(false);
-                }}
-                className="rounded-lg p-1.5 text-lg leading-none text-white/70 hover:bg-white/10 hover:text-white"
-                aria-label="Close"
-              >
-                ×
-              </button>
+                  {selectMode ? "Done" : "Select"}
+                </button>
+                <button
+                  type="button"
+                  onClick={clearChat}
+                  className="rounded-lg p-1.5 text-white/60 hover:bg-white/10 hover:text-white"
+                  aria-label="Clear conversation"
+                  title="Clear conversation"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    className="h-4 w-4"
+                  >
+                    <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14zM10 11v6M14 11v6" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                  }}
+                  className="rounded-lg p-1.5 text-lg leading-none text-white/70 hover:bg-white/10 hover:text-white"
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
             </div>
           </header>
 
@@ -986,15 +1220,29 @@ export function FloatingAIAssistant() {
                 Blueprint AI related.
               </p>
             ) : null}
-            {messages.map((m, i) => (
-              <div key={`${m.timestamp}-${i}`} className="flex flex-col gap-2">
+            {messages.map((m, i) => {
+              const key = bubbleKey(m, i);
+              const checked = selectedBubbleKeys.has(key);
+              return (
+              <div key={key} className="flex flex-col gap-1.5">
                 <div
                   className={
                     m.role === "user"
-                      ? "ml-6 flex justify-end sm:ml-8"
-                      : "mr-2 flex justify-start sm:mr-4"
+                      ? "ml-6 flex items-start justify-end gap-2 sm:ml-8"
+                      : "mr-2 flex items-start justify-start gap-2 sm:mr-4"
                   }
                 >
+                  {selectMode ? (
+                    <label className="mt-2 flex shrink-0 cursor-pointer items-center">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleBubbleSelection(key)}
+                        className="h-3.5 w-3.5 rounded border-white/30 bg-[#060d1a] text-[#E8C84A] focus:ring-[#E8C84A]/40"
+                        aria-label={`Select message ${i + 1}`}
+                      />
+                    </label>
+                  ) : null}
                   <div
                     className={
                       m.role === "user"
@@ -1007,10 +1255,25 @@ export function FloatingAIAssistant() {
                         ? sanitizeAssistantDisplayMessage(m.content)
                         : m.content}
                     </p>
+                    {m.jobLabel ? (
+                      <button
+                        type="button"
+                        onClick={() => openBubbleEditPicker(i)}
+                        className={[
+                          "mt-1.5 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold",
+                          m.role === "user"
+                            ? "border-[#0a1628]/25 bg-[#0a1628]/10 text-[#0a1628] hover:bg-[#0a1628]/15"
+                            : "border-[#E8C84A]/35 bg-[#E8C84A]/10 text-[#E8C84A] hover:bg-[#E8C84A]/15",
+                        ].join(" ")}
+                        title={m.jobLabel}
+                      >
+                        {jobChipText(m.jobLabel)}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
                 {m.role === "assistant" && m.actions?.length ? (
-                  <div className="mr-2 flex flex-wrap gap-2 pl-0 sm:mr-4">
+                  <div className="mr-2 flex flex-wrap gap-2 pl-0 sm:mr-4 sm:pl-5">
                     {m.actions.map((a, ai) => (
                       <button
                         key={`${a.label}-${ai}`}
@@ -1024,7 +1287,8 @@ export function FloatingAIAssistant() {
                   </div>
                 ) : null}
               </div>
-            ))}
+            );
+            })}
             {loading ? (
               <div className="mr-2 flex justify-start sm:mr-4">
                 <div className="rounded-2xl rounded-bl-md border border-white/10 bg-[#060d1a] px-4 ring-1 ring-[#E8C84A]/10">

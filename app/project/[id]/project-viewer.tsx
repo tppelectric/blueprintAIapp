@@ -16,7 +16,11 @@ import {
   type ReactNode,
 } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
-import type { ElectricalItemRow } from "@/lib/electrical-item-types";
+import {
+  takeoffInstanceCoords,
+  type ElectricalItemRow,
+} from "@/lib/electrical-item-types";
+import { normalizeElectricalItemRow } from "@/lib/electrical-verify";
 import { dedupeDetectedRooms, type DetectedRoomRow } from "@/lib/detected-room-types";
 import {
   getPdfjs,
@@ -1552,7 +1556,11 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           localStorage.removeItem(recallKey);
         }
         if (itemsRes.data) {
-          setAnalysisItems(itemsRes.data as ElectricalItemRow[]);
+          setAnalysisItems(
+            itemsRes.data.map((r) =>
+              normalizeElectricalItemRow(r as Record<string, unknown>),
+            ),
+          );
         }
         if (roomsRes.data) {
           setDetectedRooms(dedupeDetectedRooms(roomsRes.data as DetectedRoomRow[]));
@@ -1596,7 +1604,11 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           setActiveRecallSession(null);
         }
         if (itemsRes.data) {
-          setAnalysisItems(itemsRes.data as ElectricalItemRow[]);
+          setAnalysisItems(
+            itemsRes.data.map((r) =>
+              normalizeElectricalItemRow(r as Record<string, unknown>),
+            ),
+          );
         }
         if (roomsRes.data) {
           setDetectedRooms(dedupeDetectedRooms(roomsRes.data as DetectedRoomRow[]));
@@ -3991,7 +4003,11 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
           .order("page_number", { ascending: true }),
       ]);
       if (itemsRes.data) {
-        setAnalysisItems(itemsRes.data as ElectricalItemRow[]);
+        setAnalysisItems(
+          itemsRes.data.map((r) =>
+            normalizeElectricalItemRow(r as Record<string, unknown>),
+          ),
+        );
       }
       if (roomsRes.data) {
         setDetectedRooms(dedupeDetectedRooms(roomsRes.data as DetectedRoomRow[]));
@@ -7208,23 +7224,55 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                           const pageItems = analysisItems.filter(
                             (i) =>
                               i.page_number === currentPage &&
-                              i.location_nx != null &&
-                              i.location_ny != null &&
                               i.category !== "plan_note" &&
                               i.category !== "wiring",
                           );
-                          return pageItems.map((item) => {
-                            const nx = item.location_nx!;
-                            const ny = item.location_ny!;
+                          const dots: {
+                            item: ElectricalItemRow;
+                            nx: number;
+                            ny: number;
+                            instanceIndex: number;
+                            instanceTotal: number;
+                          }[] = [];
+                          for (const item of pageItems) {
+                            const coords = takeoffInstanceCoords(item);
+                            if (coords.length === 0) continue;
+                            coords.forEach((c, idx) => {
+                              dots.push({
+                                item,
+                                nx: c.nx,
+                                ny: c.ny,
+                                instanceIndex: idx + 1,
+                                instanceTotal: coords.length,
+                              });
+                            });
+                          }
+                          return dots.map((d) => {
+                            const {
+                              item,
+                              nx,
+                              ny,
+                              instanceIndex,
+                              instanceTotal,
+                            } = d;
                             const color = getTakeoffDotColor(item);
                             const isHighlighted =
                               highlightedItemId === item.id;
                             const qty = Math.round(
                               Number(item.quantity ?? 1),
                             );
+                            const showIndex =
+                              instanceTotal > 1 && instanceTotal <= 12;
+                            const label = showIndex
+                              ? String(instanceIndex)
+                              : qty > 99
+                                ? "99+"
+                                : instanceTotal === 1
+                                  ? String(qty)
+                                  : "";
                             return (
                               <div
-                                key={`overlay-${item.id}`}
+                                key={`overlay-${item.id}-${instanceIndex}`}
                                 className="absolute z-[18] cursor-pointer"
                                 style={{
                                   left: `${nx * 100}%`,
@@ -7240,7 +7288,11 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                                     2000,
                                   );
                                 }}
-                                title={`${item.description} ×${qty}`}
+                                title={
+                                  instanceTotal > 1
+                                    ? `${item.description} · ${instanceIndex} of ${qty} (${instanceTotal} located)`
+                                    : `${item.description} ×${qty}`
+                                }
                               >
                                 <div
                                   style={{
@@ -7263,7 +7315,7 @@ export function ProjectViewer({ projectId }: { projectId: string }) {
                                     userSelect: "none",
                                   }}
                                 >
-                                  {qty > 99 ? "99+" : qty}
+                                  {label}
                                 </div>
                               </div>
                             );

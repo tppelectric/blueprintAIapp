@@ -1,8 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { withAuth } from "@/lib/api/withAuth";
 import { createServiceRoleClient } from "@/lib/supabase/service";
+import {
+  humanVerifyPatch,
+  normalizeElectricalItemRow,
+} from "@/lib/electrical-verify";
 
-export const POST = withAuth(async (request: NextRequest, _ctx) => {
+export const POST = withAuth(async (request: NextRequest, { user }) => {
   let body: { itemId?: string; choice?: string };
   try {
     body = (await request.json()) as typeof body;
@@ -41,7 +45,7 @@ export const POST = withAuth(async (request: NextRequest, _ctx) => {
 
   const { data: siblings, error: sibErr } = await supabase
     .from("electrical_items")
-    .select("id, quantity, description")
+    .select("id, quantity, description, instance_locations, origin_source")
     .eq("project_id", row.project_id)
     .eq("page_number", row.page_number)
     .eq("description", row.description);
@@ -69,12 +73,18 @@ export const POST = withAuth(async (request: NextRequest, _ctx) => {
       }
     }
 
+    const sNorm = normalizeElectricalItemRow(s as Record<string, unknown>);
+
     const { data, error } = await supabase
       .from("electrical_items")
       .update({
         final_count,
         verification_status: "confirmed",
         verified_by: "resolve",
+        ...humanVerifyPatch(user.id, "accepted", {
+          stampInstances: sNorm.instance_locations,
+          origin_source: sNorm.origin_source ?? "ai",
+        }),
       })
       .eq("id", s.id)
       .select()
@@ -83,7 +93,7 @@ export const POST = withAuth(async (request: NextRequest, _ctx) => {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-    if (data) updated.push(data);
+    if (data) updated.push(normalizeElectricalItemRow(data as Record<string, unknown>));
   }
 
   return NextResponse.json({ items: updated });

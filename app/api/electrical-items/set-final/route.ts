@@ -1,8 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { withAuth } from "@/lib/api/withAuth";
 import { createServiceRoleClient } from "@/lib/supabase/service";
+import {
+  humanVerifyPatch,
+  normalizeElectricalItemRow,
+} from "@/lib/electrical-verify";
 
-export const POST = withAuth(async (request: NextRequest, _ctx) => {
+export const POST = withAuth(async (request: NextRequest, { user }) => {
   let body: { itemId?: string; finalCount?: number };
   try {
     body = (await request.json()) as typeof body;
@@ -37,12 +41,28 @@ export const POST = withAuth(async (request: NextRequest, _ctx) => {
     );
   }
 
+  const { data: row, error: fetchErr } = await supabase
+    .from("electrical_items")
+    .select("id, instance_locations, origin_source")
+    .eq("id", itemId)
+    .maybeSingle();
+
+  if (fetchErr || !row) {
+    return NextResponse.json({ error: "Item not found." }, { status: 404 });
+  }
+
+  const normalized = normalizeElectricalItemRow(row as Record<string, unknown>);
+
   const { data, error } = await supabase
     .from("electrical_items")
     .update({
       final_count: finalCount,
       verification_status: "confirmed",
       verified_by: "override",
+      ...humanVerifyPatch(user.id, "edited", {
+        stampInstances: normalized.instance_locations,
+        origin_source: normalized.origin_source ?? "ai",
+      }),
     })
     .eq("id", itemId)
     .select()
@@ -55,5 +75,9 @@ export const POST = withAuth(async (request: NextRequest, _ctx) => {
     return NextResponse.json({ error: "Item not found." }, { status: 404 });
   }
 
-  return NextResponse.json({ item: data });
+  return NextResponse.json({
+    item: data
+      ? normalizeElectricalItemRow(data as Record<string, unknown>)
+      : null,
+  });
 });

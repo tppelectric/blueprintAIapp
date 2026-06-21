@@ -5,10 +5,23 @@ import {
   humanVerifyPatch,
   normalizeElectricalItemRow,
 } from "@/lib/electrical-verify";
+import type { SymbolVerifiedStatus } from "@/lib/electrical-item-types";
 
-/** Estimator accepts the line item — locks final_count to Claude quantity. */
+const STATUSES = new Set<SymbolVerifiedStatus>([
+  "unverified",
+  "accepted",
+  "edited",
+  "removed",
+  "manual",
+]);
+
+/** Update human symbol verify status on a line item (row or single instance). */
 export const POST = withAuth(async (request: NextRequest, { user }) => {
-  let body: { itemId?: string };
+  let body: {
+    itemId?: string;
+    verified_status?: string;
+    instanceIndex?: number;
+  };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -16,8 +29,20 @@ export const POST = withAuth(async (request: NextRequest, { user }) => {
   }
 
   const itemId = body.itemId?.trim();
+  const verified_status = body.verified_status?.trim() as
+    | SymbolVerifiedStatus
+    | undefined;
   if (!itemId) {
     return NextResponse.json({ error: "itemId required." }, { status: 400 });
+  }
+  if (!verified_status || !STATUSES.has(verified_status)) {
+    return NextResponse.json(
+      {
+        error:
+          "verified_status must be unverified|accepted|edited|removed|manual.",
+      },
+      { status: 400 },
+    );
   }
 
   let supabase;
@@ -32,7 +57,7 @@ export const POST = withAuth(async (request: NextRequest, { user }) => {
 
   const { data: row, error: fetchErr } = await supabase
     .from("electrical_items")
-    .select("id, quantity, instance_locations, origin_source")
+    .select("*")
     .eq("id", itemId)
     .maybeSingle();
 
@@ -40,20 +65,38 @@ export const POST = withAuth(async (request: NextRequest, { user }) => {
     return NextResponse.json({ error: "Item not found." }, { status: 404 });
   }
 
-  const final_count = Math.round(Number(row.quantity));
   const normalized = normalizeElectricalItemRow(row as Record<string, unknown>);
+  const patch = humanVerifyPatch(user.id, verified_status, {
+    stampInstances: normalized.instance_locations,
+  });
+
+  if (
+    typeof body.instanceIndex === "number" &&
+    Number.isInteger(body.instanceIndex) &&
+    body.instanceIndex >= 0
+  ) {
+    const instances = normalized.instance_locations ?? [];
+    if (body.instanceIndex >= instances.length) {
+      return NextResponse.json(
+        { error: "instanceIndex out of range." },
+        { status: 400 },
+      );
+    }
+    const next = instances.map((p, i) =>
+      i === body.instanceIndex
+        ? {
+            ...p,
+            verified_status,
+            source: normalized.origin_source ?? "ai",
+          }
+        : p,
+    );
+    patch.instance_locations = next;
+  }
 
   const { data, error } = await supabase
     .from("electrical_items")
-    .update({
-      final_count,
-      verification_status: "confirmed",
-      verified_by: "accept",
-      ...humanVerifyPatch(user.id, "accepted", {
-        stampInstances: normalized.instance_locations,
-        origin_source: normalized.origin_source ?? "ai",
-      }),
-    })
+    .update(patch)
     .eq("id", itemId)
     .select()
     .maybeSingle();

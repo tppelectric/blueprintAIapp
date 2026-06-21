@@ -1,10 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { withAuth } from "@/lib/api/withAuth";
 import { createServiceRoleClient } from "@/lib/supabase/service";
+import {
+  humanVerifyPatch,
+  normalizeElectricalItemRow,
+} from "@/lib/electrical-verify";
 
 const CATEGORIES = new Set(["fixture", "panel", "wiring", "plan_note"]);
 
-export const POST = withAuth(async (request: NextRequest, _ctx) => {
+export const POST = withAuth(async (request: NextRequest, { user }) => {
   let body: {
     itemId?: string;
     description?: string;
@@ -42,7 +46,7 @@ export const POST = withAuth(async (request: NextRequest, _ctx) => {
 
   const { data: row, error: fetchErr } = await supabase
     .from("electrical_items")
-    .select("id, project_id, page_number, description, category")
+    .select("id, project_id, page_number, description, category, instance_locations, origin_source")
     .eq("id", itemId)
     .maybeSingle();
 
@@ -59,8 +63,14 @@ export const POST = withAuth(async (request: NextRequest, _ctx) => {
       .select("*")
       .eq("id", itemId)
       .maybeSingle();
-    return NextResponse.json({ item: unchanged });
+    return NextResponse.json({
+      item: unchanged
+        ? normalizeElectricalItemRow(unchanged as Record<string, unknown>)
+        : null,
+    });
   }
+
+  const normalized = normalizeElectricalItemRow(row as Record<string, unknown>);
 
   const { error: logErr } = await supabase.from("symbol_corrections").insert({
     original_description: origDesc,
@@ -84,6 +94,10 @@ export const POST = withAuth(async (request: NextRequest, _ctx) => {
       description,
       category,
       user_edited: true,
+      ...humanVerifyPatch(user.id, "edited", {
+        stampInstances: normalized.instance_locations,
+        origin_source: normalized.origin_source ?? "ai",
+      }),
     })
     .eq("id", itemId)
     .select()
@@ -93,5 +107,9 @@ export const POST = withAuth(async (request: NextRequest, _ctx) => {
     return NextResponse.json({ error: updErr.message }, { status: 500 });
   }
 
-  return NextResponse.json({ item: updated });
+  return NextResponse.json({
+    item: updated
+      ? normalizeElectricalItemRow(updated as Record<string, unknown>)
+      : null,
+  });
 });

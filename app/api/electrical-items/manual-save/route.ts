@@ -1,8 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { withAuth } from "@/lib/api/withAuth";
 import { createServiceRoleClient } from "@/lib/supabase/service";
+import {
+  humanVerifyPatch,
+  normalizeElectricalItemRow,
+} from "@/lib/electrical-verify";
 
-export const POST = withAuth(async (request: NextRequest, _ctx) => {
+export const POST = withAuth(async (request: NextRequest, { user }) => {
   let body: {
     projectId?: string;
     pageNumber?: number;
@@ -54,22 +58,46 @@ export const POST = withAuth(async (request: NextRequest, _ctx) => {
       prepared.push({ id, fc });
     }
 
+    const ids = prepared.map((p) => p.id);
+    const { data: existingRows, error: fetchErr } = await supabase
+      .from("electrical_items")
+      .select("id, instance_locations, origin_source")
+      .in("id", ids)
+      .eq("project_id", projectId)
+      .eq("page_number", pageNumber);
+
+    if (fetchErr) {
+      return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+    }
+
+    const rowById = new Map(
+      (existingRows ?? []).map((r) => [
+        String(r.id),
+        normalizeElectricalItemRow(r as Record<string, unknown>),
+      ]),
+    );
+
     const outcomes = await Promise.all(
-      prepared.map(({ id, fc }) =>
-        supabase
+      prepared.map(({ id, fc }) => {
+        const normalized = rowById.get(id);
+        return supabase
           .from("electrical_items")
           .update({
             final_count: fc,
             verification_status: "manual",
             verified_by: "manual",
+            ...humanVerifyPatch(user.id, "manual", {
+              stampInstances: normalized?.instance_locations,
+              origin_source: normalized?.origin_source ?? "ai",
+            }),
           })
           .eq("id", id)
           .eq("project_id", projectId)
           .eq("page_number", pageNumber)
           .select()
           .maybeSingle()
-          .then(({ data, error }) => ({ data, error, id })),
-      ),
+          .then(({ data, error }) => ({ data, error, id }));
+      }),
     );
 
     const updated: unknown[] = [];
@@ -80,7 +108,11 @@ export const POST = withAuth(async (request: NextRequest, _ctx) => {
           { status: 500 },
         );
       }
-      if (o.data) updated.push(o.data);
+      if (o.data) {
+        updated.push(
+          normalizeElectricalItemRow(o.data as Record<string, unknown>),
+        );
+      }
     }
     return NextResponse.json({ items: updated });
   }
@@ -97,7 +129,7 @@ export const POST = withAuth(async (request: NextRequest, _ctx) => {
     const totalClicks = Math.max(0, Math.round(Number(raw)));
     const { data: rows, error: fetchErr } = await supabase
       .from("electrical_items")
-      .select("id, quantity")
+      .select("id, quantity, instance_locations, origin_source")
       .eq("project_id", projectId)
       .eq("page_number", pageNumber)
       .eq("description", description)
@@ -126,12 +158,19 @@ export const POST = withAuth(async (request: NextRequest, _ctx) => {
 
     for (let i = 0; i < rows.length; i++) {
       const final_count = bases[i] ?? 0;
+      const normalized = normalizeElectricalItemRow(
+        rows[i] as Record<string, unknown>,
+      );
       const { data, error } = await supabase
         .from("electrical_items")
         .update({
           final_count,
           verification_status: "manual",
           verified_by: "manual",
+          ...humanVerifyPatch(user.id, "manual", {
+            stampInstances: normalized.instance_locations,
+            origin_source: normalized.origin_source ?? "ai",
+          }),
         })
         .eq("id", rows[i]!.id)
         .select()
@@ -140,7 +179,11 @@ export const POST = withAuth(async (request: NextRequest, _ctx) => {
       if (error) {
         return NextResponse.json({ error: error.message, description }, { status: 500 });
       }
-      if (data) updated.push(data);
+      if (data) {
+        updated.push(
+          normalizeElectricalItemRow(data as Record<string, unknown>),
+        );
+      }
     }
   }
 

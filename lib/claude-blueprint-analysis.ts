@@ -1,5 +1,9 @@
 /** Shared Claude blueprint JSON parsing for analyze-page and analyze-target routes. */
 
+import type { InstanceLocation } from "@/lib/electrical-item-types";
+
+export type { InstanceLocation };
+
 export type IncomingItem = {
   category?: string;
   description?: string;
@@ -11,6 +15,7 @@ export type IncomingItem = {
   which_room?: string | null;
   location_nx?: number | null;
   location_ny?: number | null;
+  instance_locations?: unknown;
 };
 
 export const ANALYSIS_CATEGORIES = new Set([
@@ -103,6 +108,56 @@ function optionalNormCoord(v: unknown): number | null {
   return clamp01(n);
 }
 
+function parseInstanceLocationEntry(raw: unknown): InstanceLocation | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const nx = optionalNormCoord(o.nx);
+  const ny = optionalNormCoord(o.ny);
+  if (nx == null || ny == null) return null;
+  const entry: InstanceLocation = { nx, ny };
+  const vs = String(o.verified_status ?? "").trim();
+  if (
+    vs === "unverified" ||
+    vs === "accepted" ||
+    vs === "edited" ||
+    vs === "removed" ||
+    vs === "manual"
+  ) {
+    entry.verified_status = vs;
+  }
+  const src = String(o.source ?? "").trim();
+  if (src === "ai" || src === "manual") {
+    entry.source = src;
+  }
+  return entry;
+}
+
+/**
+ * Parse instance_locations from Claude. For EA items, truncates excess points;
+ * keeps partial arrays when the model returns fewer than quantity.
+ */
+export function reconcileInstanceLocations(
+  raw: unknown,
+  quantity: number,
+  unit: string,
+): InstanceLocation[] {
+  const points: InstanceLocation[] = [];
+  if (Array.isArray(raw)) {
+    for (const entry of raw) {
+      const p = parseInstanceLocationEntry(entry);
+      if (p) points.push(p);
+    }
+  }
+  const q = Math.round(quantity);
+  if (unit === "EA" && q > 0 && points.length > q) {
+    return points.slice(0, q);
+  }
+  if (unit !== "EA" && points.length > 1) {
+    return points.slice(0, 1);
+  }
+  return points;
+}
+
 export function normalizeAnalysisItem(raw: IncomingItem): {
   category: string;
   description: string;
@@ -114,6 +169,7 @@ export function normalizeAnalysisItem(raw: IncomingItem): {
   which_room: string;
   location_nx: number | null;
   location_ny: number | null;
+  instance_locations: InstanceLocation[] | null;
 } | null {
   const cat = String(raw.category ?? "").toLowerCase().trim();
   if (!ANALYSIS_CATEGORIES.has(cat)) return null;
@@ -134,6 +190,9 @@ export function normalizeAnalysisItem(raw: IncomingItem): {
   }
   const nx = optionalNormCoord(raw.location_nx);
   const ny = optionalNormCoord(raw.location_ny);
+  const instances = reconcileInstanceLocations(raw.instance_locations, q, unit);
+  const mirrorNx = instances[0]?.nx ?? nx;
+  const mirrorNy = instances[0]?.ny ?? ny;
   return {
     category: cat,
     description,
@@ -146,8 +205,9 @@ export function normalizeAnalysisItem(raw: IncomingItem): {
         ? null
         : String(raw.raw_note),
     which_room: which,
-    location_nx: nx,
-    location_ny: ny,
+    location_nx: mirrorNx,
+    location_ny: mirrorNy,
+    instance_locations: instances.length > 0 ? instances : null,
   };
 }
 

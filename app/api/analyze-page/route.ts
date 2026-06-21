@@ -74,6 +74,8 @@ type ElectricalItemInsertRow = {
   project_id: string;
   page_number: number;
   verification_status: string;
+  verified_status: string;
+  origin_source: string;
   category: string;
   description: string;
   specification: string;
@@ -84,6 +86,7 @@ type ElectricalItemInsertRow = {
   raw_note: string | null;
   location_nx: number | null;
   location_ny: number | null;
+  instance_locations: { nx: number; ny: number }[] | null;
   gpt_count: null;
   final_count: null;
   verified_by: null;
@@ -116,6 +119,8 @@ function materializeElectricalItemRows(
         page_number: pageNumber,
         ...normalized,
         verification_status: "pending",
+        verified_status: "unverified",
+        origin_source: "ai",
         gpt_count: null,
         final_count: null,
         verified_by: null,
@@ -170,6 +175,8 @@ function fallbackUnclearPlanNoteRow(
     project_id: projectId,
     page_number: pageNumber,
     verification_status: "pending",
+    verified_status: "unverified",
+    origin_source: "ai",
     category: "plan_note",
     description: `Page ${pageNumber} - content unclear - please verify manually`,
     specification: "",
@@ -180,6 +187,7 @@ function fallbackUnclearPlanNoteRow(
     raw_note: null,
     location_nx: null,
     location_ny: null,
+    instance_locations: null,
     gpt_count: null,
     final_count: null,
     verified_by: null,
@@ -198,8 +206,10 @@ For each item found return a JSON array with objects:
   confidence: number between 0.0 and 1.0,
   raw_note: verbatim plan note text or null,
   which_room: string (see ROOM ASSIGNMENT RULES below),
-  location_nx: number 0.0-1.0 left-to-right position on the page (centroid if multiple instances spread across page),
-  location_ny: number 0.0-1.0 top-to-bottom position on the page (centroid if multiple instances spread across page)
+  instance_locations: [
+    { "nx": number 0.0-1.0, "ny": number 0.0-1.0 },
+    ...
+  ]
 }
 
 ROOM ASSIGNMENT RULES — CRITICAL:
@@ -235,7 +245,16 @@ Every single electrical item MUST be assigned to a room. Follow these rules exac
 
 Match which_room to room labels visible on the drawing when possible. Use the same spelling style as the sheet (you may use ALL CAPS for consistency).
 
-LOCATION: For every item, estimate its position on the page image as normalized coordinates. location_nx is 0.0 at the left edge and 1.0 at the right edge. location_ny is 0.0 at the top edge and 1.0 at the bottom edge. Return the centroid position of all instances of that item type. Be as spatially accurate as possible — look at where the symbols actually appear on the drawing.
+LOCATION (CRITICAL — per symbol, precise placement):
+For each item, return instance_locations: an array of {nx, ny} with ONE entry per physical symbol instance.
+- Normalization: nx and ny are 0.0–1.0 relative to the FULL page image raster (nx=0 left edge, nx=1 right edge; ny=0 top edge, ny=1 bottom edge; origin top-left). Use the entire page for the coordinate frame.
+- Drawing area ONLY: place every point inside the actual plan/drawing region where devices are drawn. NEVER place points in the title block, legend, fixture/panel schedule tables, revision blocks, sheet border, or empty margins (especially the right-hand title strip and outer borders). If a symbol exists on the plan, its {nx, ny} must fall on that drawn symbol.
+- On the glyph: place each {nx, ny} DIRECTLY ON the center of the actual symbol glyph as drawn — not in nearby open floor space, not on walls, and not on room name labels.
+- Count match: for unit "EA", instance_locations.length MUST equal quantity. Each point corresponds to one distinct physical symbol — do not omit instances, do not reuse one coordinate for multiple devices, and do not average or centroid.
+- If quantity is 1, return exactly one {nx, ny}.
+- Uncertainty: if a symbol's exact position is uncertain, place the point on the most likely device location within the drawing — never default to a page corner, page center, title block, margin, or the average of other points.
+- For unit LF, LOT, or NOTE: return [] or at most one representative point inside the drawing area; quantity still reflects the measured count/length.
+- Keep the response compact: instance_locations contains coordinates only (no extra fields or prose) to limit output size.
 
 IDENTIFY THESE ITEMS:
 FIXTURES: Receptacles (standard GFCI AFCI TR WP), lighting (recessed surface wall), ceiling fans, exhaust fans, smoke/CO detectors, dedicated circuits, window and shading devices: motorized shades, manual shades, roller shades, motorized shutters, shade motors, shade panels (motor/head enclosures or power supply modules), shade controls (wall stations, keypads, touchpanels, remotes when shown as devices)

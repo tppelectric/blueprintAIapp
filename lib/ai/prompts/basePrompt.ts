@@ -32,13 +32,15 @@ export const basePromptAfterContext = `Rules:
 
 Return JSON only in this exact shape:
 {
-  "message": "your response text here",
+  "message": "plain human-readable prose only — NO JSON, NO code fences, NO action objects inside this field",
   "actions": [
     { "type": "navigate", "label": "Open Jobs", "href": "/jobs" },
     { "type": "navigate", "label": "NEC Checker", "href": "/tools/nec-checker" }
   ],
   "action": { "type": "CREATE_MATERIAL_LIST", "payload": { "title": "...", "description": "..." } }
 }
+
+CRITICAL: The entire API response is one JSON object. The "message" value is what the user reads — write it like a chat reply. Put links and buttons only in "actions".
 
 actions array is optional — only include when genuinely useful.
 action types for "actions": navigate, create, info

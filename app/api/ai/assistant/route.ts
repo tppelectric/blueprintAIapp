@@ -2,9 +2,9 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse, type NextRequest } from "next/server";
 import type {
   AIMessage,
-  AIResponse,
   AIPageContext,
 } from "@/lib/ai-assistant-context";
+import { parseAssistantJson } from "@/lib/ai/parse-assistant-json";
 import { createSupabaseRouteClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -82,7 +82,7 @@ Return JSON only in this exact shape — no other text, no markdown, no code blo
     { "type": "navigate", "label": "Open Jobs", "href": "/jobs" }
   ]
 }
-CRITICAL: The message value is plain conversational text only. Never paste JSON, action objects, or code blocks inside message. The entire API response is the JSON object — do not wrap it or repeat it inside the message string.
+CRITICAL: The message value is plain conversational text only. Never paste JSON, action objects, or code fences inside message. Structured data belongs only in "actions". The entire API response is the JSON object — do not wrap it or repeat it inside the message string.
 
 actions array is optional — only include when genuinely useful.
 action types: navigate, create, info
@@ -252,46 +252,6 @@ function toAnthropicHistory(
     out.push({ role: m.role, content: text });
   }
   return out;
-}
-
-function parseAssistantJson(raw: string): AIResponse {
-  let t = raw.trim();
-  if (t.startsWith("```")) {
-    t = t.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "");
-  }
-  try {
-    const j = JSON.parse(t) as unknown;
-    if (!j || typeof j !== "object") {
-      return { message: raw };
-    }
-    const o = j as Record<string, unknown>;
-    const message =
-      typeof o.message === "string" ? o.message : String(o.message ?? raw);
-    const actionsRaw = o.actions;
-    let actions: AIResponse["actions"];
-    if (Array.isArray(actionsRaw)) {
-      actions = actionsRaw
-        .map((a) => {
-          if (!a || typeof a !== "object") return null;
-          const ar = a as Record<string, unknown>;
-          const type = typeof ar.type === "string" ? ar.type : "";
-          const label = typeof ar.label === "string" ? ar.label : "";
-          if (!type || !label) return null;
-          const href =
-            typeof ar.href === "string" ? ar.href : undefined;
-          const data =
-            ar.data && typeof ar.data === "object" && !Array.isArray(ar.data)
-              ? (ar.data as Record<string, unknown>)
-              : undefined;
-          return { type, label, href, data };
-        })
-        .filter(Boolean) as AIResponse["actions"];
-      if (actions?.length === 0) actions = undefined;
-    }
-    return { message, actions };
-  } catch {
-    return { message: raw };
-  }
 }
 
 export async function POST(request: NextRequest) {

@@ -16,6 +16,7 @@ import {
   type InternalRequestPriority,
   type InternalRequestType,
 } from "@/lib/internal-request-types";
+import { sanitizeAssistantDisplayMessage } from "@/lib/ai/parse-assistant-json";
 
 type ChatMessage = AIMessage & { actions?: AIAction[] };
 
@@ -162,8 +163,10 @@ function getPageContext(pathname: string): AIPageContext {
     return { page: "team_clock", pageTitle: "Team Clock" };
   if (pathname === "/licenses")
     return { page: "licenses", pageTitle: "Licenses" };
-  if (pathname === "/field")
+  if (pathname.startsWith("/field/punch"))
     return { page: "field_punch", pageTitle: "Field Punch" };
+  if (pathname.startsWith("/field"))
+    return { page: "field", pageTitle: "Field" };
   if (pathname === "/dashboard")
     return { page: "dashboard", pageTitle: "My Projects" };
   if (pathname.startsWith("/tools/wifi-analyzer"))
@@ -435,7 +438,7 @@ export function FloatingAIAssistant() {
 
       const assistantMsg: ChatMessage = {
         role: "assistant",
-        content: j.response.message,
+        content: sanitizeAssistantDisplayMessage(j.response.message),
         timestamp: nowIso(),
         actions: j.response.actions,
       };
@@ -668,12 +671,15 @@ export function FloatingAIAssistant() {
 
       {open ? (
         <div
-          className="fixed bottom-40 right-4 z-[90] flex w-80 max-h-[32rem] flex-col overflow-hidden rounded-2xl border border-[#E8C84A]/30 bg-[#0a1628] shadow-2xl sm:right-5 sm:w-96"
+          className="fixed bottom-40 right-4 z-[90] flex w-[min(100vw-2rem,24rem)] max-h-[min(32rem,70vh)] flex-col overflow-hidden rounded-2xl border border-[#E8C84A]/25 bg-[#060d1a] shadow-[0_16px_48px_rgba(0,0,0,0.55)] sm:right-5 sm:w-96"
           role="dialog"
           aria-label="Blueprint AI Assistant"
         >
-          <header className="flex shrink-0 items-start justify-between border-b border-white/10 px-4 py-3">
+          <header className="flex shrink-0 items-start justify-between border-b border-[#E8C84A]/20 bg-[#0a1628] px-3 py-2.5 sm:px-4 sm:py-3">
             <div className="min-w-0 pr-2">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-[#E8C84A]/70">
+                Assistant
+              </p>
               <h2 className="text-sm font-bold text-white">
                 Blueprint AI Assistant
               </h2>
@@ -713,10 +719,10 @@ export function FloatingAIAssistant() {
 
           <div
             ref={scrollRef}
-            className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4"
+            className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto bg-[#0a1628]/80 p-3 sm:gap-3 sm:p-4"
           >
             {messages.length === 0 && !loading ? (
-              <p className="text-center text-sm text-white/50">
+              <p className="text-center text-xs text-white/45 sm:text-sm">
                 Ask me anything about your jobs, tools, NEC code, or anything
                 Blueprint AI related.
               </p>
@@ -726,28 +732,32 @@ export function FloatingAIAssistant() {
                 <div
                   className={
                     m.role === "user"
-                      ? "ml-8 flex justify-end"
-                      : "mr-4 flex justify-start"
+                      ? "ml-6 flex justify-end sm:ml-8"
+                      : "mr-2 flex justify-start sm:mr-4"
                   }
                 >
                   <div
                     className={
                       m.role === "user"
-                        ? "max-w-[95%] rounded-2xl bg-[#E8C84A]/20 px-3 py-2 text-sm text-white"
-                        : "max-w-[95%] rounded-2xl bg-white/[0.06] px-3 py-2 text-sm text-white/90"
+                        ? "max-w-[92%] rounded-2xl rounded-br-md bg-[#E8C84A] px-3 py-2 text-sm font-medium text-[#0a1628] shadow-sm"
+                        : "max-w-[92%] rounded-2xl rounded-bl-md border border-white/10 bg-[#060d1a] px-3 py-2 text-sm text-white/95 shadow-sm ring-1 ring-[#E8C84A]/10"
                     }
                   >
-                    <p className="whitespace-pre-wrap">{m.content}</p>
+                    <p className="whitespace-pre-wrap leading-relaxed">
+                      {m.role === "assistant"
+                        ? sanitizeAssistantDisplayMessage(m.content)
+                        : m.content}
+                    </p>
                   </div>
                 </div>
                 {m.role === "assistant" && m.actions?.length ? (
-                  <div className="mr-4 flex flex-wrap gap-2 pl-0">
+                  <div className="mr-2 flex flex-wrap gap-2 pl-0 sm:mr-4">
                     {m.actions.map((a, ai) => (
                       <button
                         key={`${a.label}-${ai}`}
                         type="button"
                         onClick={() => onActionClick(a)}
-                        className="rounded-full border border-[#E8C84A]/40 px-3 py-1 text-xs text-[#E8C84A] hover:bg-[#E8C84A]/10"
+                        className="rounded-full border border-[#E8C84A]/40 bg-[#060d1a] px-3 py-1 text-xs text-[#E8C84A] hover:bg-[#E8C84A]/10"
                       >
                         {a.label}
                       </button>
@@ -757,15 +767,15 @@ export function FloatingAIAssistant() {
               </div>
             ))}
             {loading ? (
-              <div className="mr-4 flex justify-start">
-                <div className="rounded-2xl bg-white/[0.06] px-4">
+              <div className="mr-2 flex justify-start sm:mr-4">
+                <div className="rounded-2xl rounded-bl-md border border-white/10 bg-[#060d1a] px-4 ring-1 ring-[#E8C84A]/10">
                   <LoadingDots />
                 </div>
               </div>
             ) : null}
           </div>
 
-          <div className="shrink-0 border-t border-white/10 p-3 pb-16 md:pb-3">
+          <div className="shrink-0 border-t border-[#E8C84A]/15 bg-[#060d1a] p-2.5 pb-16 md:pb-2.5">
             <div className="flex gap-2">
               <textarea
                 ref={textareaRef}
@@ -775,7 +785,7 @@ export function FloatingAIAssistant() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={onKeyDown}
                 placeholder="Message…"
-                className="min-h-[40px] max-h-[120px] flex-1 resize-none rounded-xl border border-white/15 bg-white/[0.05] px-3 py-2 text-sm text-white placeholder:text-white/35 focus:border-[#E8C84A]/40 focus:outline-none disabled:opacity-50"
+                className="min-h-[40px] max-h-[120px] flex-1 resize-none rounded-xl border border-white/12 bg-[#0a1628] px-3 py-2 text-sm text-white placeholder:text-white/35 focus:border-[#E8C84A]/40 focus:outline-none disabled:opacity-50"
               />
               <button
                 type="button"

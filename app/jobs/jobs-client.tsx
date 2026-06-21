@@ -609,12 +609,22 @@ export function JobsClient() {
         href={`/jobs/${j.id}`}
         className="block p-4 pl-10 pt-10 sm:pl-11 sm:pt-11"
       >
-        <p className="text-base font-semibold text-white">
-          {j.job_number} · {j.job_name}
-        </p>
-        <p className="app-muted mt-0.5 sm:mt-1">
-          {customerLabel(j)}
-        </p>
+        <div className="mb-1 space-y-0.5 sm:mb-1.5">
+          <p className="text-base font-semibold leading-snug text-white">
+            {j.job_number}
+          </p>
+          <p className="text-sm font-medium leading-snug text-white/90">
+            {j.job_name}
+          </p>
+          {j.location_name?.trim() ? (
+            <p className="text-xs text-white/60">
+              {j.location_name.trim()}
+            </p>
+          ) : null}
+          <p className="text-xs text-white/60">
+            {customerLabel(j)}
+          </p>
+        </div>
         {j.assigned_crew_id && crewNames[j.assigned_crew_id] ? (
           <p className="mt-0.5 text-xs text-[#E8C84A]/70">
             Crew: {crewNames[j.assigned_crew_id]}
@@ -633,11 +643,6 @@ export function JobsClient() {
             </span>
           ) : null}
         </div>
-        {j.location_name?.trim() ? (
-          <p className="app-muted mt-1 text-xs text-white/60">
-            {j.location_name.trim()}
-          </p>
-        ) : null}
         {[j.address, j.city, j.state].filter(Boolean).length ? (
           <p className="app-muted mt-1.5 sm:mt-2">
             {[j.address, j.city, j.state, j.zip].filter(Boolean).join(", ")}

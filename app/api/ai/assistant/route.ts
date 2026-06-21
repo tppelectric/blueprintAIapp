@@ -4,6 +4,7 @@ import type {
   AIMessage,
   AIPageContext,
 } from "@/lib/ai-assistant-context";
+import { formatJobContextBlock } from "@/lib/ai/job-tag";
 import { parseAssistantJson } from "@/lib/ai/parse-assistant-json";
 import { createSupabaseRouteClient } from "@/lib/supabase/server";
 
@@ -21,9 +22,16 @@ function entityLine(ctx: AIPageContext): string {
   return "";
 }
 
-function buildSystemPrompt(ctx: AIPageContext, liveSnapshot: string): string {
+function buildSystemPrompt(
+  ctx: AIPageContext,
+  liveSnapshot: string,
+  taggedJobBlock?: string,
+): string {
   const entityContext = entityLine(ctx);
   const userRole = ctx.userRole?.trim() || "unknown";
+  const taggedSection = taggedJobBlock
+    ? `\nTagged job (user selected — prioritize for this conversation):\n${taggedJobBlock}\n`
+    : "";
   return `You are an AI assistant inside Blueprint AI, a business management platform for TPP Electrical Contractors Inc., a full-service electrical and low-voltage contracting company based in New York.
 
 You help with:
@@ -95,7 +103,7 @@ CRITICAL RULES — Live app snapshot:
 - ALWAYS prioritize snapshot data over general knowledge for those topics.
 - If the snapshot contains data for what they asked → summarize it directly in your message.
 - If the snapshot is empty for what they asked → say "No data available" (do not invent entries).
-
+${taggedSection}
 ${liveSnapshot}`;
 }
 
@@ -254,6 +262,42 @@ function toAnthropicHistory(
   return out;
 }
 
+const JOB_SELECT =
+  "job_number,job_name,status,job_type,address,city,state,zip,customers(company_name,contact_name)";
+
+async function loadTaggedJobContext(
+  supabase: ReturnType<typeof createSupabaseRouteClient>,
+  jobRef: string,
+): Promise<string | null> {
+  const ref = jobRef.trim();
+  if (!ref) return null;
+
+  const { data: byJt } = await supabase
+    .from("jobs")
+    .select(JOB_SELECT)
+    .eq("jobtread_id", ref)
+    .maybeSingle();
+
+  if (byJt) {
+    return formatJobContextBlock(byJt as Parameters<typeof formatJobContextBlock>[0]);
+  }
+
+  const uuidRe =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (uuidRe.test(ref)) {
+    const { data: byId } = await supabase
+      .from("jobs")
+      .select(JOB_SELECT)
+      .eq("id", ref)
+      .maybeSingle();
+    if (byId) {
+      return formatJobContextBlock(byId as Parameters<typeof formatJobContextBlock>[0]);
+    }
+  }
+
+  return null;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = createSupabaseRouteClient(request);
@@ -276,6 +320,7 @@ export async function POST(request: NextRequest) {
       message?: string;
       context?: AIPageContext;
       history?: AIMessage[];
+      jobtreadJobId?: string | null;
     };
     try {
       body = (await request.json()) as typeof body;
@@ -336,7 +381,15 @@ export async function POST(request: NextRequest) {
     const anthropic = new Anthropic({ apiKey });
     const snapshot = await loadCommandCenterSnapshot(supabase);
     const liveSnapshot = formatCommandCenterSnapshot(snapshot);
-    const system = buildSystemPrompt(context, liveSnapshot);
+    const jobRef = body.jobtreadJobId?.trim() ?? "";
+    const taggedJobBlock = jobRef
+      ? await loadTaggedJobContext(supabase, jobRef)
+      : null;
+    const system = buildSystemPrompt(
+      context,
+      liveSnapshot,
+      taggedJobBlock ?? undefined,
+    );
 
     const claudeMsg = await anthropic.messages.create({
       model: MODEL,

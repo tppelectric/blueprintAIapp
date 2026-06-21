@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAppToast } from "@/components/toast-provider";
 import { useUserRole } from "@/hooks/use-user-role";
@@ -17,6 +17,23 @@ import {
   type InternalRequestType,
 } from "@/lib/internal-request-types";
 import { sanitizeAssistantDisplayMessage } from "@/lib/ai/parse-assistant-json";
+import {
+  formatJobTagLabel,
+  jobTagStorageId,
+  type JobPickerRow,
+} from "@/lib/ai/job-tag";
+
+type TaggedJob = { id: string; label: string };
+
+function filterJobsForPicker(jobs: JobPickerRow[], query: string): JobPickerRow[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return jobs;
+  return jobs.filter(
+    (j) =>
+      j.job_name.toLowerCase().includes(q) ||
+      j.job_number.toLowerCase().includes(q),
+  );
+}
 
 type ChatMessage = AIMessage & { actions?: AIAction[] };
 
@@ -316,11 +333,95 @@ export function FloatingAIAssistant() {
   const [conversationTitle, setConversationTitle] = useState<string | null>(
     null,
   );
+  const [taggedJob, setTaggedJob] = useState<TaggedJob | null>(null);
+  const [jobs, setJobs] = useState<JobPickerRow[]>([]);
+  const [jobSearch, setJobSearch] = useState("");
+  const [jobsLoading, setJobsLoading] = useState(false);
+  const taggedJobRef = useRef<TaggedJob | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const pageCtx = getPageContext(pathname ?? "/");
+
+  taggedJobRef.current = taggedJob;
+
+  const loadJobs = useCallback(async () => {
+    setJobsLoading(true);
+    try {
+      const sb = createBrowserClient();
+      const { data, error } = await sb
+        .from("jobs")
+        .select(
+          "id,jobtread_id,job_name,job_number,status,job_type,updated_at,customers(company_name,contact_name)",
+        )
+        .order("updated_at", { ascending: false })
+        .limit(500);
+      if (!error) {
+        setJobs((data ?? []) as unknown as JobPickerRow[]);
+      }
+    } catch {
+      setJobs([]);
+    } finally {
+      setJobsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    void loadJobs();
+  }, [open, loadJobs]);
+
+  const saveJobTagRemote = useCallback(
+    async (next: TaggedJob | null) => {
+      try {
+        const res = await fetch("/api/ai-conversations", {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pageContext: pageCtx.page,
+            jobtreadJobId: next?.id ?? null,
+            jobLabel: next?.label ?? null,
+          }),
+        });
+        if (!res.ok) {
+          const body = await res.text();
+          console.error("[ai-conversations] PATCH job tag failed", {
+            status: res.status,
+            body,
+          });
+        }
+      } catch {
+        /* offline or migration not run */
+      }
+    },
+    [pageCtx.page],
+  );
+
+  const selectJob = useCallback(
+    (job: JobPickerRow) => {
+      const next: TaggedJob = {
+        id: jobTagStorageId(job),
+        label: formatJobTagLabel(job),
+      };
+      setTaggedJob(next);
+      setJobSearch("");
+      void saveJobTagRemote(next);
+    },
+    [saveJobTagRemote],
+  );
+
+  const clearJobTag = useCallback(() => {
+    setTaggedJob(null);
+    setJobSearch("");
+    void saveJobTagRemote(null);
+  }, [saveJobTagRemote]);
+
+  const filteredJobs = useMemo(
+    () => filterJobsForPicker(jobs, jobSearch),
+    [jobs, jobSearch],
+  );
 
   useEffect(() => {
     if (!scrollRef.current) return;
@@ -338,6 +439,8 @@ export function FloatingAIAssistant() {
   const clearChat = useCallback(() => {
     setMessages([]);
     setConversationTitle(null);
+    setTaggedJob(null);
+    setJobSearch("");
     setHasUnread(false);
     void (async () => {
       try {
@@ -370,6 +473,8 @@ export function FloatingAIAssistant() {
           body: JSON.stringify({
             pageContext: pageCtx.page,
             messages: toPersistPayload(next),
+            jobtreadJobId: taggedJobRef.current?.id ?? null,
+            jobLabel: taggedJobRef.current?.label ?? null,
           }),
         });
         if (!res.ok) {
@@ -418,6 +523,7 @@ export function FloatingAIAssistant() {
           history: toHistoryPayload(
             messages.length <= 20 ? messages : messages.slice(-20),
           ),
+          jobtreadJobId: taggedJobRef.current?.id ?? null,
         }),
       });
 
@@ -480,6 +586,8 @@ export function FloatingAIAssistant() {
     let cancelled = false;
     setMessages([]);
     setConversationTitle(null);
+    setTaggedJob(null);
+    setJobSearch("");
     void (async () => {
       try {
         const r = await fetch(
@@ -495,9 +603,14 @@ export function FloatingAIAssistant() {
           return;
         }
         if (cancelled) return;
-        let j: { messages?: unknown[]; title?: string | null };
+        let j: {
+          messages?: unknown[];
+          title?: string | null;
+          jobtreadJobId?: string | null;
+          jobLabel?: string | null;
+        };
         try {
-          j = JSON.parse(raw) as { messages?: unknown[]; title?: string | null };
+          j = JSON.parse(raw) as typeof j;
         } catch {
           console.error("[ai-conversations] GET invalid JSON", raw);
           return;
@@ -510,6 +623,15 @@ export function FloatingAIAssistant() {
             ? j.title.trim()
             : null,
         );
+        const jtId =
+          typeof j.jobtreadJobId === "string" && j.jobtreadJobId.trim()
+            ? j.jobtreadJobId.trim()
+            : null;
+        const jtLabel =
+          typeof j.jobLabel === "string" && j.jobLabel.trim()
+            ? j.jobLabel.trim()
+            : null;
+        setTaggedJob(jtId && jtLabel ? { id: jtId, label: jtLabel } : null);
       } catch {
         /* table may not exist yet */
       }
@@ -684,6 +806,53 @@ export function FloatingAIAssistant() {
                 Blueprint AI Assistant
               </h2>
               <p className="truncate text-xs text-white/55">{pageCtx.pageTitle}</p>
+              {taggedJob ? (
+                <span className="mt-1.5 inline-flex max-w-full items-center gap-1 rounded-full border border-[#E8C84A]/40 bg-[#E8C84A]/10 px-2 py-0.5 text-[10px] text-[#E8C84A]">
+                  <span className="truncate" title={taggedJob.label}>
+                    {taggedJob.label}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => clearJobTag()}
+                    className="shrink-0 leading-none text-[#E8C84A]/80 hover:text-white"
+                    aria-label="Clear job tag"
+                    title="Clear job tag"
+                  >
+                    ×
+                  </button>
+                </span>
+              ) : (
+                <div className="mt-1.5 space-y-1">
+                  <input
+                    type="search"
+                    value={jobSearch}
+                    onChange={(e) => setJobSearch(e.target.value)}
+                    placeholder={jobsLoading ? "Loading jobs…" : "Search job name or #…"}
+                    className="w-full rounded-lg border border-white/12 bg-[#060d1a] px-2 py-1 text-[10px] text-white placeholder:text-white/35 focus:border-[#E8C84A]/40 focus:outline-none"
+                    aria-label="Search jobs to tag"
+                  />
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const picked = jobs.find((j) => j.id === e.target.value);
+                      if (picked) selectJob(picked);
+                    }}
+                    className="w-full rounded-lg border border-white/12 bg-[#060d1a] px-2 py-1 text-[10px] text-white focus:border-[#E8C84A]/40 focus:outline-none"
+                    aria-label="Select job to tag"
+                  >
+                    <option value="">
+                      {jobsLoading
+                        ? "Loading jobs…"
+                        : `Select job (${filteredJobs.length})…`}
+                    </option>
+                    {filteredJobs.map((j) => (
+                      <option key={j.id} value={j.id}>
+                        {formatJobTagLabel(j)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
             <div className="flex shrink-0 items-center gap-1">
               <button

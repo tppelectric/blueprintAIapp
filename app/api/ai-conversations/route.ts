@@ -6,6 +6,46 @@ export const dynamic = "force-dynamic";
 const PAGE_CTX_MAX = 120;
 const TITLE_MAX = 60;
 const INSERT_TITLE_FALLBACK = "Chat";
+const JOB_REF_MAX = 120;
+const JOB_LABEL_MAX = 200;
+
+function sanitizeJobTag(
+  rawId: unknown,
+  rawLabel: unknown,
+): { id: string | null; label: string | null } | undefined {
+  if (rawId === undefined && rawLabel === undefined) return undefined;
+  const idRaw = rawId === null || rawId === undefined ? "" : String(rawId).trim();
+  if (!idRaw) {
+    return { id: null, label: null };
+  }
+  const id = idRaw.slice(0, JOB_REF_MAX);
+  const labelRaw =
+    rawLabel === null || rawLabel === undefined ? "" : String(rawLabel).trim();
+  const label = labelRaw ? labelRaw.slice(0, JOB_LABEL_MAX) : null;
+  return { id, label };
+}
+
+type ConversationRow = {
+  id: string;
+  messages: unknown;
+  title: string | null;
+  updated_at: string;
+  jobtread_job_id?: string | null;
+  job_label?: string | null;
+};
+
+function conversationJson(rec: ConversationRow, pageContext: string) {
+  return {
+    ok: true as const,
+    pageContext,
+    id: rec.id,
+    messages: sanitizeMessages(rec.messages),
+    title: rec.title,
+    updatedAt: rec.updated_at,
+    jobtreadJobId: rec.jobtread_job_id ?? null,
+    jobLabel: rec.job_label ?? null,
+  };
+}
 
 function sanitizePageContext(raw: string): string | null {
   const t = raw.trim().slice(0, PAGE_CTX_MAX);
@@ -78,7 +118,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await supabase
     .from("ai_conversations")
-    .select("id,messages,title,updated_at")
+    .select("id,messages,title,updated_at,jobtread_job_id,job_label")
     .eq("user_id", user.id)
     .eq("page_context", pageContext)
     .maybeSingle();
@@ -94,24 +134,14 @@ export async function GET(request: NextRequest) {
       messages: [],
       title: null,
       updatedAt: null,
+      jobtreadJobId: null,
+      jobLabel: null,
     });
   }
 
-  const rec = data as {
-    id: string;
-    messages: unknown;
-    title: string | null;
-    updated_at: string;
-  };
-
-  return NextResponse.json({
-    ok: true,
-    pageContext,
-    id: rec.id,
-    messages: sanitizeMessages(rec.messages),
-    title: rec.title,
-    updatedAt: rec.updated_at,
-  });
+  return NextResponse.json(
+    conversationJson(data as ConversationRow, pageContext),
+  );
 }
 
 /**
@@ -130,7 +160,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  let body: { pageContext?: string; messages?: unknown };
+  let body: {
+    pageContext?: string;
+    messages?: unknown;
+    jobtreadJobId?: string | null;
+    jobLabel?: string | null;
+  };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -153,6 +188,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const jobTag = sanitizeJobTag(body.jobtreadJobId, body.jobLabel);
   const now = new Date().toISOString();
 
   const { data: existing, error: selectError } = await supabase
@@ -168,15 +204,20 @@ export async function POST(request: NextRequest) {
 
   if (!existing) {
     const title = deriveInsertTitle(messages);
+    const insertRow: Record<string, unknown> = {
+      user_id: user.id,
+      page_context: pageContext,
+      messages,
+      title,
+      updated_at: now,
+    };
+    if (jobTag) {
+      insertRow.jobtread_job_id = jobTag.id;
+      insertRow.job_label = jobTag.label;
+    }
     const { data: inserted, error: insertError } = await supabase
       .from("ai_conversations")
-      .insert({
-        user_id: user.id,
-        page_context: pageContext,
-        messages,
-        title,
-        updated_at: now,
-      })
+      .insert(insertRow)
       .select("id")
       .single();
 
@@ -192,12 +233,18 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  const updateRow: Record<string, unknown> = {
+    messages,
+    updated_at: now,
+  };
+  if (jobTag) {
+    updateRow.jobtread_job_id = jobTag.id;
+    updateRow.job_label = jobTag.label;
+  }
+
   const { error: updateError } = await supabase
     .from("ai_conversations")
-    .update({
-      messages,
-      updated_at: now,
-    })
+    .update(updateRow)
     .eq("id", (existing as { id: string }).id)
     .eq("user_id", user.id);
 
@@ -210,6 +257,118 @@ export async function POST(request: NextRequest) {
     id: (existing as { id: string }).id,
     pageContext,
     created: false,
+  });
+}
+
+/**
+ * PATCH { pageContext, jobtreadJobId, jobLabel } — tag or clear job without messages.
+ */
+export async function PATCH(request: NextRequest) {
+  const supabase = createSupabaseRouteClient(request);
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user?.id) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  let body: {
+    pageContext?: string;
+    jobtreadJobId?: string | null;
+    jobLabel?: string | null;
+  };
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON." }, { status: 400 });
+  }
+
+  const pageContext = sanitizePageContext(String(body.pageContext ?? ""));
+  if (!pageContext) {
+    return NextResponse.json(
+      { error: "pageContext is required." },
+      { status: 400 },
+    );
+  }
+
+  const jobTag = sanitizeJobTag(body.jobtreadJobId, body.jobLabel);
+  if (!jobTag) {
+    return NextResponse.json({ error: "jobtreadJobId required." }, { status: 400 });
+  }
+
+  const now = new Date().toISOString();
+
+  const { data: existing, error: selectError } = await supabase
+    .from("ai_conversations")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("page_context", pageContext)
+    .maybeSingle();
+
+  if (selectError) {
+    return NextResponse.json({ error: selectError.message }, { status: 500 });
+  }
+
+  if (!existing) {
+    const { data: inserted, error: insertError } = await supabase
+      .from("ai_conversations")
+      .insert({
+        user_id: user.id,
+        page_context: pageContext,
+        messages: [],
+        title: INSERT_TITLE_FALLBACK,
+        updated_at: now,
+        jobtread_job_id: jobTag.id,
+        job_label: jobTag.label,
+      })
+      .select("id,jobtread_job_id,job_label")
+      .single();
+
+    if (insertError) {
+      return NextResponse.json({ error: insertError.message }, { status: 500 });
+    }
+
+    const row = inserted as {
+      id: string;
+      jobtread_job_id: string | null;
+      job_label: string | null;
+    };
+    return NextResponse.json({
+      ok: true,
+      id: row.id,
+      pageContext,
+      jobtreadJobId: row.jobtread_job_id,
+      jobLabel: row.job_label,
+    });
+  }
+
+  const { data: updated, error: updateError } = await supabase
+    .from("ai_conversations")
+    .update({
+      jobtread_job_id: jobTag.id,
+      job_label: jobTag.label,
+      updated_at: now,
+    })
+    .eq("id", (existing as { id: string }).id)
+    .eq("user_id", user.id)
+    .select("id,jobtread_job_id,job_label")
+    .single();
+
+  if (updateError) {
+    return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+
+  const row = updated as {
+    id: string;
+    jobtread_job_id: string | null;
+    job_label: string | null;
+  };
+  return NextResponse.json({
+    ok: true,
+    id: row.id,
+    pageContext,
+    jobtreadJobId: row.jobtread_job_id,
+    jobLabel: row.job_label,
   });
 }
 

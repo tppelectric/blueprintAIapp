@@ -1,4 +1,5 @@
 import type { ElectricalItemRow } from "@/lib/electrical-item-types";
+import { itemWasSentBackForRevision } from "@/lib/format-verify-stamp";
 
 /** UI filter tabs aligned with takeoff summary rows */
 export type TakeoffFilterTab =
@@ -32,6 +33,7 @@ export function inferTakeoffBucket(item: ElectricalItemRow): TakeoffFilterTab {
 
 export function itemNeedsVerificationTab(item: ElectricalItemRow): boolean {
   if (item.category === "plan_note") return false;
+  if (itemWasSentBackForRevision(item)) return true;
   const claude = Math.round(Number(item.quantity));
   const gpt =
     item.gpt_count != null ? Math.round(Number(item.gpt_count)) : null;

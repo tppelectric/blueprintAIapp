@@ -4,6 +4,7 @@ import { createServiceRoleClient } from "@/lib/supabase/service";
 import {
   humanVerifyPatch,
   normalizeElectricalItemRow,
+  revertHumanVerifyPatch,
 } from "@/lib/electrical-verify";
 import type { SymbolVerifiedStatus } from "@/lib/electrical-item-types";
 
@@ -66,9 +67,16 @@ export const POST = withAuth(async (request: NextRequest, { user }) => {
   }
 
   const normalized = normalizeElectricalItemRow(row as Record<string, unknown>);
-  const patch = humanVerifyPatch(user.id, verified_status, {
-    stampInstances: normalized.instance_locations,
-  });
+  const isRevert =
+    verified_status === "unverified" || verified_status === "removed";
+  const patch = isRevert
+    ? revertHumanVerifyPatch(verified_status, {
+        stampInstances: normalized.instance_locations,
+        origin_source: normalized.origin_source ?? "ai",
+      })
+    : humanVerifyPatch(user.id, verified_status, {
+        stampInstances: normalized.instance_locations,
+      });
 
   if (
     typeof body.instanceIndex === "number" &&

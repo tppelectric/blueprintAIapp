@@ -29,7 +29,18 @@ export function formatVerifyWhen(iso: string | null | undefined): string | null 
   });
 }
 
+export function itemWasSentBackForRevision(item: ElectricalItemRow): boolean {
+  const vs = item.verified_status;
+  if (vs === "removed") return true;
+  if (vs === "unverified") {
+    const vb = item.verified_by?.trim();
+    return !vb;
+  }
+  return false;
+}
+
 export function itemShowsAcceptedBadge(item: ElectricalItemRow): boolean {
+  if (itemWasSentBackForRevision(item)) return false;
   const vb = item.verified_by ?? null;
   const status = item.verification_status ?? "pending";
   return (

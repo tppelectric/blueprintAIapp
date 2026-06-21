@@ -38,6 +38,7 @@ import { useUserRole } from "@/hooks/use-user-role";
 import {
   formatVerifyStamp,
   itemShowsAcceptedBadge,
+  itemWasSentBackForRevision,
 } from "@/lib/format-verify-stamp";
 
 const ITEM_DRAG_MIME = "application/x-blueprint-item";
@@ -102,6 +103,12 @@ function passesConfidenceTier(
 }
 
 function itemRowVerificationBorder(item: ElectricalItemRow): string {
+  if (itemWasSentBackForRevision(item)) {
+    if (Number(item.confidence) < 0.75) {
+      return "border-l-4 border-l-orange-500";
+    }
+    return "";
+  }
   if (item.verification_status === "conflict") {
     return "border-l-4 border-l-amber-400";
   }
@@ -266,6 +273,10 @@ function verificationBreakdown(items: ElectricalItemRow[]) {
   for (const i of items) {
     if (i.category === "plan_note") continue;
     total++;
+    if (itemWasSentBackForRevision(i)) {
+      unverified++;
+      continue;
+    }
     const st = i.verification_status ?? "pending";
     const vb = i.verified_by ?? null;
     if (st === "conflict") {
@@ -507,6 +518,30 @@ function CompactItemRow({
     }
   };
 
+  const unacceptVerified = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/electrical-items/set-verified-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          itemId: item.id,
+          verified_status: "unverified",
+        }),
+      });
+      const json = (await res.json()) as {
+        item?: ElectricalItemRow;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Unaccept failed.");
+      if (json.item) onPatchItems([json.item]);
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Could not unaccept.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const submitOverride = async () => {
     const n = Math.round(Number(overrideDraft));
     if (!Number.isFinite(n) || n < 0) {
@@ -741,7 +776,26 @@ function CompactItemRow({
               </span>
             </span>
           ) : null}
-          <ItemVerificationBadge item={item} verifyStamp={verifyStamp} />
+          {itemShowsAcceptedBadge(item) ? (
+            <span className="inline-flex shrink-0 items-start gap-0.5">
+              <ItemVerificationBadge item={item} verifyStamp={verifyStamp} />
+              <button
+                type="button"
+                disabled={saving}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void unacceptVerified();
+                }}
+                className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-white/20 bg-white/5 text-[10px] leading-none text-white/55 hover:border-amber-400/50 hover:bg-amber-950/40 hover:text-amber-100 disabled:opacity-40"
+                title="Unaccept — send back for revision"
+                aria-label="Unaccept"
+              >
+                ✕
+              </button>
+            </span>
+          ) : (
+            <ItemVerificationBadge item={item} verifyStamp={verifyStamp} />
+          )}
         </div>
       </div>
       {item.category !== "plan_note" ? (

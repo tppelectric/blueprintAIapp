@@ -29,7 +29,7 @@ function overrideMapFromRows(rows: OverrideRow[]): Map<string, PipelineCountBuck
   return m;
 }
 
-type SyncPhase = "jobtread" | "mapping" | "done";
+type SyncInlineStatus = "idle" | "syncing" | "synced" | "error";
 
 /** Same call pattern as homepage-sync-widget `runSync("jobs")`. */
 async function runJobtreadJobsSync(): Promise<{ count?: number }> {
@@ -177,8 +177,11 @@ export function HomeJobStatusSnapshot() {
   const [refreshTick, setRefreshTick] = useState(0);
 
   const [syncOpen, setSyncOpen] = useState(false);
-  const [syncLoading, setSyncLoading] = useState(false);
-  const [syncPhase, setSyncPhase] = useState<SyncPhase>("jobtread");
+  const [syncOnlyLoading, setSyncOnlyLoading] = useState(false);
+  const [syncInlineStatus, setSyncInlineStatus] =
+    useState<SyncInlineStatus>("idle");
+  const [syncInlineError, setSyncInlineError] = useState<string | null>(null);
+  const [mappingLoading, setMappingLoading] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [unrecognized, setUnrecognized] = useState<string[]>([]);
   const [assignments, setAssignments] = useState<
@@ -229,34 +232,53 @@ export function HomeJobStatusSnapshot() {
     };
   }, [roleLoading, isAllowed, refreshTick]);
 
+  useEffect(() => {
+    if (syncInlineStatus !== "synced") return;
+    const t = window.setTimeout(() => setSyncInlineStatus("idle"), 3000);
+    return () => window.clearTimeout(t);
+  }, [syncInlineStatus]);
+
   const closeSyncModal = useCallback(() => {
     setSyncOpen(false);
-    setSyncPhase("jobtread");
     setSyncError(null);
   }, []);
 
-  const openSync = useCallback(async () => {
-    setSyncOpen(true);
-    setSyncError(null);
-    setSyncLoading(true);
-    setSyncPhase("jobtread");
-    setUnrecognized([]);
-    setAssignments({});
+  const runSyncOnly = useCallback(async () => {
+    setSyncInlineError(null);
+    setSyncInlineStatus("syncing");
+    setSyncOnlyLoading(true);
     try {
       await runJobtreadJobsSync();
       setRefreshTick((t) => t + 1);
-      setSyncPhase("mapping");
+      setSyncInlineStatus("synced");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Sync failed.";
+      setSyncInlineError(msg);
+      setSyncInlineStatus("error");
+    } finally {
+      setSyncOnlyLoading(false);
+    }
+  }, []);
+
+  const openMapping = useCallback(async () => {
+    setSyncOpen(true);
+    setSyncError(null);
+    setMappingLoading(true);
+    setUnrecognized([]);
+    setAssignments({});
+    try {
       const { unrecognized: unrec, assignments: init } =
         await loadMappingData();
       setUnrecognized(unrec);
       setAssignments(init);
-      setSyncPhase("done");
     } catch (e) {
-      setSyncError(e instanceof Error ? e.message : "Sync failed.");
+      setSyncError(
+        e instanceof Error ? e.message : "Could not load mappings.",
+      );
       setUnrecognized([]);
       setAssignments({});
     } finally {
-      setSyncLoading(false);
+      setMappingLoading(false);
     }
   }, []);
 
@@ -285,7 +307,6 @@ export function HomeJobStatusSnapshot() {
         throw new Error(t || "Save failed.");
       }
       setSyncOpen(false);
-      setSyncPhase("jobtread");
       setRefreshTick((t) => t + 1);
     } catch (e) {
       setSyncError(e instanceof Error ? e.message : "Save failed.");
@@ -307,14 +328,39 @@ export function HomeJobStatusSnapshot() {
             Job Pipeline
           </p>
           {role === "super_admin" ? (
-            <button
-              type="button"
-              onClick={() => void openSync()}
-              disabled={syncOpen && syncLoading}
-              className="rounded-md border border-white/15 bg-white/[0.06] px-2 py-0.5 text-[11px] font-medium text-[#E8C84A] hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Sync
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => void runSyncOnly()}
+                disabled={syncOnlyLoading}
+                className="rounded-md border border-white/15 bg-white/[0.06] px-2 py-0.5 text-[11px] font-medium text-[#E8C84A] hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Sync
+              </button>
+              <button
+                type="button"
+                onClick={() => void openMapping()}
+                disabled={mappingLoading && syncOpen}
+                className="rounded-md border border-white/15 bg-white/[0.06] px-2 py-0.5 text-[11px] font-medium text-white/70 hover:bg-white/[0.1] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Map buckets
+              </button>
+              {syncInlineStatus === "syncing" ? (
+                <span className="flex items-center gap-1 text-[11px] text-white/50">
+                  <SyncSpinner />
+                  Syncing…
+                </span>
+              ) : syncInlineStatus === "synced" ? (
+                <span className="text-[11px] text-emerald-300">Synced</span>
+              ) : syncInlineError ? (
+                <span
+                  className="max-w-[12rem] truncate text-[11px] text-red-300"
+                  title={syncInlineError}
+                >
+                  {syncInlineError}
+                </span>
+              ) : null}
+            </>
           ) : null}
         </div>
         <div className="flex items-center gap-4">
@@ -383,12 +429,12 @@ export function HomeJobStatusSnapshot() {
                 id="pipeline-sync-title"
                 className="text-sm font-semibold text-white"
               >
-                Pipeline bucket sync
+                Map pipeline buckets
               </h2>
               <button
                 type="button"
                 onClick={closeSyncModal}
-                disabled={syncLoading}
+                disabled={mappingLoading}
                 className="rounded-lg px-2 py-1 text-sm text-white/60 hover:bg-white/[0.08] hover:text-white disabled:opacity-40"
                 aria-label="Close"
               >
@@ -396,12 +442,10 @@ export function HomeJobStatusSnapshot() {
               </button>
             </div>
             <div className="max-h-[calc(85vh-8rem)] overflow-y-auto px-4 py-3">
-              {syncLoading ? (
+              {mappingLoading ? (
                 <p className="flex items-center gap-2 text-sm text-white/55">
                   <SyncSpinner />
-                  {syncPhase === "jobtread"
-                    ? "Syncing jobs from JobTread…"
-                    : "Loading bucket mappings…"}
+                  Loading bucket mappings…
                 </p>
               ) : syncError ? (
                 <p className="text-sm text-red-300">{syncError}</p>
@@ -450,7 +494,7 @@ export function HomeJobStatusSnapshot() {
               <button
                 type="button"
                 onClick={closeSyncModal}
-                disabled={syncLoading || saveLoading}
+                disabled={mappingLoading || saveLoading}
                 className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/80 hover:bg-white/[0.06] disabled:opacity-40"
               >
                 {syncError ? "Close" : "Cancel"}
@@ -459,7 +503,7 @@ export function HomeJobStatusSnapshot() {
                 type="button"
                 disabled={
                   saveLoading ||
-                  syncLoading ||
+                  mappingLoading ||
                   syncError != null ||
                   unrecognized.length === 0
                 }

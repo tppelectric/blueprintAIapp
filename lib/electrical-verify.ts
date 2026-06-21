@@ -192,3 +192,65 @@ export function humanVerifyPatch(
   }
   return patch;
 }
+
+/**
+ * Patch for Supabase update when a human REVERTS a verify (unverified/removed) —
+ * i.e. sends the item back for revision. Unlike humanVerifyPatch, this does NOT
+ * stamp a verifier; it clears the verifier stamp and the legacy accept signals
+ * (verified_by / verification_status) so the Accepted badge fully clears.
+ */
+export function revertHumanVerifyPatch(
+  verified_status: SymbolVerifiedStatus,
+  opts?: {
+    stampInstances?: InstanceLocation[] | null;
+    origin_source?: SymbolOriginSource | string;
+  },
+): Record<string, unknown> {
+  const origin = parseOriginSource(opts?.origin_source);
+  const patch: Record<string, unknown> = {
+    verified_status,
+    verified_user_id: null,
+    verified_at: null,
+    verified_by: null,
+    verification_status: "pending",
+  };
+  if (opts?.origin_source) {
+    patch.origin_source = origin;
+  }
+  const stamped = stampInstanceLocationsVerified(
+    opts?.stampInstances ?? null,
+    verified_status,
+    origin,
+  );
+  if (stamped) {
+    patch.instance_locations = stamped;
+  }
+  return patch;
+}
+
+/** Clear human accept and legacy count-verify markers; keep final_count. */
+export function revertHumanVerifyPatch(
+  status: "unverified" | "removed" = "unverified",
+  opts?: {
+    stampInstances?: InstanceLocation[] | null;
+    origin_source?: SymbolOriginSource | string;
+  },
+): Record<string, unknown> {
+  const origin = parseOriginSource(opts?.origin_source);
+  const patch: Record<string, unknown> = {
+    verified_status: status,
+    verified_user_id: null,
+    verified_at: null,
+    verified_by: null,
+    verification_status: "pending",
+  };
+  const stamped = stampInstanceLocationsVerified(
+    opts?.stampInstances ?? null,
+    status,
+    origin,
+  );
+  if (stamped) {
+    patch.instance_locations = stamped;
+  }
+  return patch;
+}

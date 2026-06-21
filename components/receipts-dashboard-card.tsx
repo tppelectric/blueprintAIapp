@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { formatReceiptCurrency } from "@/lib/receipts-types";
-import { fetchUnassignedReceiptsCount } from "@/lib/unassigned-receipts-count";
+import { fetchPendingJobtreadPushCount } from "@/lib/unassigned-receipts-count";
 import { createBrowserClient } from "@/lib/supabase/client";
 
 function startOfWeekMondayLocal(d: Date): Date {
@@ -19,8 +19,14 @@ function startOfMonthLocal(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
 }
 
-export function ReceiptsDashboardCard() {
+export function ReceiptsDashboardCard({
+  canSync = false,
+}: {
+  /** Viewer can push receipts to JobTread (super_admin / office_manager) → show the sync queue. */
+  canSync?: boolean;
+}) {
   const [unassigned, setUnassigned] = useState<number | null>(null);
+  const [pendingSync, setPendingSync] = useState<number | null>(null);
   const [weekTotal, setWeekTotal] = useState<number | null>(null);
   const [monthTotal, setMonthTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,6 +44,10 @@ export function ReceiptsDashboardCard() {
         .is("job_id", null);
       if (e1) throw e1;
       setUnassigned(ua ?? 0);
+
+      if (canSync) {
+        setPendingSync(await fetchPendingJobtreadPushCount(sb));
+      }
 
       const { data: weekRows, error: e2 } = await sb
         .from("receipts")
@@ -66,7 +76,7 @@ export function ReceiptsDashboardCard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [canSync]);
 
   useEffect(() => {
     void load();
@@ -95,6 +105,18 @@ export function ReceiptsDashboardCard() {
             {unassigned ?? "—"} unassigned
             {unassigned && unassigned > 0 ? " — needs job" : ""}
           </li>
+          {canSync ? (
+            <li
+              className={
+                pendingSync && pendingSync > 0
+                  ? "font-semibold text-[#E8C84A]"
+                  : ""
+              }
+            >
+              {pendingSync ?? "—"} waiting to sync
+              {pendingSync && pendingSync > 0 ? " → JobTread" : ""}
+            </li>
+          ) : null}
           <li>
             This week:{" "}
             <span className="tabular-nums text-[#E8C84A]">

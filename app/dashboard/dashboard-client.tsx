@@ -20,6 +20,7 @@ import { DashboardRequestsSummaryCard } from "@/components/dashboard-requests-su
 import {
   canManageIntegrations,
   canManageReceiptsAdmin,
+  canPushReceiptToJobtread,
   canViewAdminRequestQueue,
   canViewTeamClock,
 } from "@/lib/user-roles";
@@ -239,8 +240,9 @@ export function DashboardClient() {
   const showIntegrationsSettings =
     !roleLoading && canManageIntegrations(role);
   const showTeamClock = !roleLoading && canViewTeamClock(role);
+  const canSyncReceipts = !roleLoading && canPushReceiptToJobtread(role);
   const showReceiptsAdminCard =
-    !roleLoading && canManageReceiptsAdmin(role);
+    !roleLoading && (canManageReceiptsAdmin(role) || canSyncReceipts);
   const showAdminUsersQuick = !roleLoading && role === "super_admin";
   const showCrewManagementQuick =
     !roleLoading && (role === "admin" || role === "super_admin");
@@ -569,7 +571,9 @@ export function DashboardClient() {
                   : "No usage yet"}
               </p>
             </div>
-            {showReceiptsAdminCard ? <ReceiptsDashboardCard /> : null}
+            {showReceiptsAdminCard ? (
+              <ReceiptsDashboardCard canSync={canSyncReceipts} />
+            ) : null}
           </section>
         ) : null}
 

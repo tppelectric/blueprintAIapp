@@ -503,6 +503,12 @@ export function JobDetailClient({
                         <dd className="text-white">{job.status}</dd>
                       </div>
                     ) : null}
+                    {job.location_name?.trim() ? (
+                      <div className="grid grid-cols-[minmax(0,7rem)_1fr] items-baseline gap-x-2 gap-y-0.5 lg:col-span-2">
+                        <dt className="text-white/45">Location</dt>
+                        <dd className="text-white">{job.location_name.trim()}</dd>
+                      </div>
+                    ) : null}
                     {[job.address, job.city, job.state, job.zip].some(Boolean) ? (
                       <div className="grid grid-cols-[minmax(0,7rem)_1fr] items-baseline gap-x-2 gap-y-0.5 lg:col-span-2">
                         <dt className="text-white/45">Address</dt>

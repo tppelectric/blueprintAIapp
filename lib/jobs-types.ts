@@ -65,6 +65,7 @@ export type JobRow = {
   status: string;
   need_ready_to_invoice?: string | null;
   address: string | null;
+  location_name?: string | null;
   city: string | null;
   state: string | null;
   zip: string | null;
@@ -89,6 +90,7 @@ export type JobListRow = {
   created_at?: string;
   customer_id?: string | null;
   address?: string | null;
+  location_name?: string | null;
   city?: string | null;
   state?: string | null;
   zip?: string | null;

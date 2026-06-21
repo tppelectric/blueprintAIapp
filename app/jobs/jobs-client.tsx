@@ -159,7 +159,7 @@ export function JobsClient() {
       const { data, error: qe } = await sb
         .from("jobs")
         .select(
-          "id,job_name,job_number,status,job_type,address,city,state,zip,description,notes,created_at,updated_at,customer_id,assigned_user_id,assigned_crew_id,need_ready_to_invoice, customers(company_name,contact_name)",
+          "id,job_name,job_number,status,job_type,address,location_name,city,state,zip,description,notes,created_at,updated_at,customer_id,assigned_user_id,assigned_crew_id,need_ready_to_invoice, customers(company_name,contact_name)",
         )
         .order("updated_at", { ascending: false });
       if (qe) throw qe;
@@ -633,6 +633,11 @@ export function JobsClient() {
             </span>
           ) : null}
         </div>
+        {j.location_name?.trim() ? (
+          <p className="app-muted mt-1 text-xs text-white/60">
+            {j.location_name.trim()}
+          </p>
+        ) : null}
         {[j.address, j.city, j.state].filter(Boolean).length ? (
           <p className="app-muted mt-1.5 sm:mt-2">
             {[j.address, j.city, j.state, j.zip].filter(Boolean).join(", ")}

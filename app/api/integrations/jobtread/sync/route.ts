@@ -250,6 +250,7 @@ async function syncJobsImport(
       jobtread_id: j.id,
       status: mapJobtreadStatus(j.status),
       address: j.location?.address?.trim() || null,
+      location_name: j.location?.name?.trim() || null,
       customer_id: customerId,
       job_status_custom: j.job_status_custom ?? null,
       need_ready_to_invoice: j.need_ready_to_invoice ?? null,

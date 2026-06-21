@@ -99,6 +99,6 @@ export async function GET(request: Request) {
   }
 
   const resolved = resolvePostLoginRedirect(nextPath);
-  const safeNext = isSafeRedirectPath(resolved) ? resolved : "/dashboard";
+  const safeNext = isSafeRedirectPath(resolved) ? resolved : "/";
   return NextResponse.redirect(`${origin}${safeNext}`);
 }

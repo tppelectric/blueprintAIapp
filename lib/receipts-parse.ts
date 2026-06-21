@@ -68,5 +68,9 @@ export function parseReceiptRow(r: Record<string, unknown>): ReceiptRow {
       r.description != null && String(r.description).trim() !== ""
         ? String(r.description)
         : null,
+    pushed_to_jobtread_at:
+      r.pushed_to_jobtread_at != null ? String(r.pushed_to_jobtread_at) : null,
+    jobtread_comment_id:
+      r.jobtread_comment_id != null ? String(r.jobtread_comment_id) : null,
   };
 }

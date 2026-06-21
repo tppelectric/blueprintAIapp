@@ -427,6 +427,57 @@ export async function fetchJobtreadJobs(
   }
 }
 
+/** Live job lookup for receipt push verification (read-only). */
+export async function fetchJobtreadJobById(
+  grantKey: string,
+  jobtreadJobId: string,
+): Promise<JobtreadJob | null> {
+  try {
+    const raw = await jobtreadQuery(grantKey, {
+      job: {
+        $: { id: jobtreadJobId.trim() },
+        id: {},
+        name: {},
+        number: {},
+        status: {},
+        location: {
+          id: {},
+          name: {},
+          address: {},
+          account: { id: {}, name: {} },
+        },
+      },
+    });
+    const root = unwrapPaveRoot(raw);
+    const jobRec = asRecord(root.job);
+    if (!jobRec || !str(jobRec.id)) return null;
+    const loc = asRecord(jobRec.location);
+    const locAccount = loc ? asRecord(loc.account) : null;
+    return {
+      id: str(jobRec.id),
+      name: str(jobRec.name),
+      number: strOrNull(jobRec.number),
+      createdAt: "",
+      status: strOrNull(jobRec.status),
+      location: loc
+        ? {
+            id: str(loc.id),
+            name: str(loc.name),
+            address: loc.address != null ? str(loc.address) : undefined,
+          }
+        : null,
+      account: locAccount
+        ? { id: str(locAccount.id), name: strOrNull(locAccount.name) }
+        : null,
+      job_status_custom: null,
+      need_ready_to_invoice: null,
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`fetchJobtreadJobById failed: ${msg}`);
+  }
+}
+
 /**
  * One page of organization daily logs. Pass `page` from previous `nextPage` to continue.
  */

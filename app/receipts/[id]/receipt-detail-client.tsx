@@ -1,16 +1,33 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { WideAppHeader } from "@/components/wide-app-header";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { useUserRole } from "@/hooks/use-user-role";
+import { canPushReceiptToJobtread } from "@/lib/user-roles";
 import {
   displayProfileName,
   formatReceiptCurrency,
   type ReceiptRow,
 } from "@/lib/receipts-types";
 import { parseReceiptRow } from "@/lib/receipts-parse";
+
+type PushPreview = {
+  blockReason: string | null;
+  notePreview: string;
+  alreadyPushed: boolean;
+  pushedAt: string | null;
+  jobLive: {
+    title: string;
+    number: string | null;
+    name: string;
+    customerName: string | null;
+    address: string | null;
+    status: string | null;
+  } | null;
+};
 
 type JobLite = {
   id: string;
@@ -63,6 +80,8 @@ function formatReceiptDateOnly(iso: string | null | undefined): string {
 export function ReceiptDetailClient() {
   const params = useParams<{ id: string }>();
   const id = typeof params?.id === "string" ? params.id : "";
+  const { role } = useUserRole();
+  const canPush = canPushReceiptToJobtread(role);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +90,13 @@ export function ReceiptDetailClient() {
   const [job, setJob] = useState<JobLite | null>(null);
   const [uploader, setUploader] = useState<ProfileLite | null>(null);
   const [lightbox, setLightbox] = useState(false);
+
+  const [pushOpen, setPushOpen] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
+  const [pushSaving, setPushSaving] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
+  const [pushPreview, setPushPreview] = useState<PushPreview | null>(null);
+  const [pushSuccess, setPushSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id?.trim()) {
@@ -169,6 +195,87 @@ export function ReceiptDetailClient() {
       cancelled = true;
     };
   }, [id]);
+
+  const closePushModal = useCallback(() => {
+    setPushOpen(false);
+    setPushPreview(null);
+    setPushError(null);
+    setPushSuccess(null);
+  }, []);
+
+  const openPushModal = useCallback(async () => {
+    if (!id?.trim()) return;
+    setPushOpen(true);
+    setPushLoading(true);
+    setPushError(null);
+    setPushSuccess(null);
+    setPushPreview(null);
+    try {
+      const res = await fetch(
+        `/api/receipts/${encodeURIComponent(id)}/jobtread-push-preview`,
+        { credentials: "include" },
+      );
+      const body = (await res.json()) as PushPreview & {
+        ok?: boolean;
+        error?: string;
+      };
+      if (!res.ok || body.ok === false) {
+        throw new Error(body.error ?? "Could not load push preview.");
+      }
+      setPushPreview({
+        blockReason: body.blockReason ?? null,
+        notePreview: body.notePreview ?? "",
+        alreadyPushed: Boolean(body.alreadyPushed),
+        pushedAt: body.pushedAt ?? null,
+        jobLive: body.jobLive ?? null,
+      });
+    } catch (e) {
+      setPushError(e instanceof Error ? e.message : "Preview failed.");
+    } finally {
+      setPushLoading(false);
+    }
+  }, [id]);
+
+  const confirmPush = useCallback(async () => {
+    if (!id?.trim()) return;
+    setPushSaving(true);
+    setPushError(null);
+    try {
+      const res = await fetch(
+        `/api/receipts/${encodeURIComponent(id)}/jobtread-push`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ confirm: true }),
+        },
+      );
+      const body = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        pushedAt?: string;
+        commentId?: string;
+      };
+      if (!res.ok || body.ok === false) {
+        throw new Error(body.error ?? "Push failed.");
+      }
+      setPushSuccess("Receipt note posted to JobTread.");
+      setReceipt((prev) =>
+        prev
+          ? {
+              ...prev,
+              pushed_to_jobtread_at: body.pushedAt ?? new Date().toISOString(),
+              jobtread_comment_id: body.commentId ?? prev.jobtread_comment_id,
+            }
+          : prev,
+      );
+      setTimeout(() => closePushModal(), 1200);
+    } catch (e) {
+      setPushError(e instanceof Error ? e.message : "Push failed.");
+    } finally {
+      setPushSaving(false);
+    }
+  }, [id, closePushModal]);
 
   const pageTitle = receipt?.vendor_name?.trim() || "Receipt";
 
@@ -337,6 +444,25 @@ export function ReceiptDetailClient() {
                   )}
                 </div>
 
+                {canPush ? (
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => void openPushModal()}
+                      disabled={!receipt.job_id || Boolean(receipt.pushed_to_jobtread_at)}
+                      className="rounded-lg border border-[#E8C84A]/45 bg-[#E8C84A]/15 px-3 py-1.5 text-xs font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/25 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Push to JobTread
+                    </button>
+                    {receipt.pushed_to_jobtread_at ? (
+                      <span className="text-xs text-emerald-300">
+                        Pushed{" "}
+                        {formatDisplayDate(receipt.pushed_to_jobtread_at)}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 {receipt.description?.trim() ? (
                   <div>
                     <p className="text-[11px] font-bold uppercase tracking-wide text-white/40">
@@ -458,6 +584,115 @@ export function ReceiptDetailClient() {
             onClick={(e) => e.stopPropagation()}
           />
         </button>
+      ) : null}
+
+      {pushOpen ? (
+        <div
+          className="fixed inset-0 z-[220] flex items-center justify-center bg-black/65 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="receipt-jt-push-title"
+        >
+          <div className="max-h-[90vh] w-full max-w-lg overflow-hidden rounded-xl border border-white/12 bg-[#0a1628] shadow-xl">
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+              <h2
+                id="receipt-jt-push-title"
+                className="text-sm font-semibold text-white"
+              >
+                Push receipt to JobTread
+              </h2>
+              <button
+                type="button"
+                onClick={closePushModal}
+                disabled={pushSaving}
+                className="rounded-lg px-2 py-1 text-sm text-white/60 hover:bg-white/[0.08] hover:text-white disabled:opacity-40"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="max-h-[calc(90vh-8rem)] overflow-y-auto px-4 py-3">
+              {pushLoading ? (
+                <p className="text-sm text-white/55">Loading JobTread job…</p>
+              ) : pushError && !pushPreview ? (
+                <p className="text-sm text-red-300">{pushError}</p>
+              ) : (
+                <>
+                  {pushPreview?.blockReason ? (
+                    <p className="mb-3 text-sm text-amber-200">
+                      {pushPreview.blockReason}
+                    </p>
+                  ) : null}
+                  {pushSuccess ? (
+                    <p className="mb-3 text-sm text-emerald-300">{pushSuccess}</p>
+                  ) : null}
+                  {pushPreview?.jobLive ? (
+                    <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.04] p-3 text-sm">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45">
+                        JobTread job (live)
+                      </p>
+                      <p className="mt-1 font-semibold text-white">
+                        {pushPreview.jobLive.title}
+                      </p>
+                      {pushPreview.jobLive.customerName ? (
+                        <p className="mt-1 text-white/70">
+                          Customer: {pushPreview.jobLive.customerName}
+                        </p>
+                      ) : null}
+                      {pushPreview.jobLive.address ? (
+                        <p className="mt-0.5 text-white/55">
+                          {pushPreview.jobLive.address}
+                        </p>
+                      ) : null}
+                      {pushPreview.jobLive.status ? (
+                        <p className="mt-1 text-xs text-white/45">
+                          Status: {pushPreview.jobLive.status}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45">
+                    Comment preview
+                  </p>
+                  <pre className="mt-1.5 whitespace-pre-wrap rounded-lg border border-white/10 bg-black/20 p-3 font-sans text-xs leading-relaxed text-white/85">
+                    {pushPreview?.notePreview ?? "—"}
+                  </pre>
+                  <p className="mt-3 text-[11px] text-white/40">
+                    Text note only. Receipt image attach is not included yet
+                    (TODO: createUploadRequest + createFile once confirmed).
+                  </p>
+                  {pushError && pushPreview ? (
+                    <p className="mt-3 text-sm text-red-300">{pushError}</p>
+                  ) : null}
+                </>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-white/10 px-4 py-3">
+              <button
+                type="button"
+                onClick={closePushModal}
+                disabled={pushSaving}
+                className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/80 hover:bg-white/[0.06] disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={
+                  pushSaving ||
+                  pushLoading ||
+                  !pushPreview ||
+                  Boolean(pushPreview.blockReason) ||
+                  Boolean(pushSuccess)
+                }
+                onClick={() => void confirmPush()}
+                className="rounded-lg border border-[#E8C84A]/45 bg-[#E8C84A]/15 px-3 py-1.5 text-xs font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/25 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {pushSaving ? "Pushing…" : "Confirm & push"}
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );

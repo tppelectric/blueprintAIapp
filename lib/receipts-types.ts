@@ -38,6 +38,9 @@ export type ReceiptRow = {
   notes: string | null;
   /** Optional user memo (DB column `description` when present). */
   description: string | null;
+  /** Set when receipt note was manually pushed to JobTread (optional column). */
+  pushed_to_jobtread_at?: string | null;
+  jobtread_comment_id?: string | null;
   scan_raw?: unknown;
 };
 

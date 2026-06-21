@@ -36,6 +36,11 @@ export function canManageIntegrations(role: UserRole | null): boolean {
   return role === "super_admin" || role === "admin";
 }
 
+/** Manual push of receipt notes to JobTread (super_admin / office_manager). */
+export function canPushReceiptToJobtread(role: UserRole | null): boolean {
+  return role === "super_admin" || role === "office_manager";
+}
+
 /** Upload/delete company reference PDFs (Reference Library). */
 export function canManageReferenceDocuments(role: UserRole | null): boolean {
   return role === "super_admin" || role === "admin";

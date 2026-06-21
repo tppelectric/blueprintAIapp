@@ -19,7 +19,7 @@ export function HomeMarketingHeroToolsSection({ children }: Props) {
   const { role, loading } = useUserRole();
 
   const toolGrid = (
-    <div className="mx-auto mt-14 grid w-full max-w-6xl grid-cols-1 gap-6 sm:mt-16 sm:grid-cols-2 lg:grid-cols-3 self-stretch">
+    <div className="mx-auto mt-10 grid w-full max-w-6xl grid-cols-2 gap-3 sm:mt-16 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 self-stretch">
       {children}
     </div>
   );

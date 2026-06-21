@@ -242,181 +242,181 @@ export default function Home() {
         <HomeMarketingHeroToolsSection>
           <Link
             href="/jobs/daily-logs"
-            className="group card-pad-mobile flex flex-col rounded-xl border border-orange-500/25 bg-white/[0.04] p-6 text-left shadow-lg shadow-black/25 ring-1 ring-orange-500/15 transition-colors hover:border-orange-400/55 hover:bg-orange-950/20 hover:ring-orange-400/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-400/50"
+            className="group card-pad-mobile flex flex-col rounded-xl border border-orange-500/25 bg-white/[0.04] p-3 text-left shadow-lg shadow-black/25 sm:p-6 ring-1 ring-orange-500/15 transition-colors hover:border-orange-400/55 hover:bg-orange-950/20 hover:ring-orange-400/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-400/50"
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-500/15 text-orange-200 ring-1 ring-orange-400/25 transition-colors group-hover:bg-orange-500/25 group-hover:ring-orange-300/40">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl sm:h-11 sm:w-11 bg-orange-500/15 text-orange-200 ring-1 ring-orange-400/25 transition-colors group-hover:bg-orange-500/25 group-hover:ring-orange-300/40">
               <DailyLogsClipboardIcon className="h-6 w-6" />
             </div>
-            <h2 className="mt-4 text-base font-semibold text-white">
+            <h2 className="mt-2 text-sm font-semibold text-white sm:mt-4 sm:text-base">
               Daily Logs
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/80">
+            <p className="mt-1 hidden text-sm leading-relaxed text-white/80 sm:mt-2 sm:block">
               Create and view field daily logs for all jobs
             </p>
-            <span className="mt-4 text-sm font-medium text-orange-200 group-hover:text-orange-100">
+            <span className="mt-2 text-xs font-medium sm:mt-4 sm:text-sm text-orange-200 group-hover:text-orange-100">
               Open daily logs →
             </span>
           </Link>
 
           <Link
             href="/receipts"
-            className="group card-pad-mobile flex flex-col rounded-xl border border-emerald-500/30 bg-white/[0.04] p-6 text-left shadow-lg shadow-black/25 ring-1 ring-emerald-500/20 transition-colors hover:border-emerald-400/55 hover:bg-emerald-950/25 hover:ring-emerald-400/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400/50"
+            className="group card-pad-mobile flex flex-col rounded-xl border border-emerald-500/30 bg-white/[0.04] p-3 text-left shadow-lg shadow-black/25 sm:p-6 ring-1 ring-emerald-500/20 transition-colors hover:border-emerald-400/55 hover:bg-emerald-950/25 hover:ring-emerald-400/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400/50"
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-200 ring-1 ring-emerald-400/30 transition-colors group-hover:bg-emerald-500/30 group-hover:ring-emerald-300/45">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl sm:h-11 sm:w-11 bg-emerald-500/20 text-emerald-200 ring-1 ring-emerald-400/30 transition-colors group-hover:bg-emerald-500/30 group-hover:ring-emerald-300/45">
               <ReceiptDollarIcon className="h-6 w-6" />
             </div>
-            <h2 className="mt-4 text-base font-semibold text-white">
+            <h2 className="mt-2 text-sm font-semibold text-white sm:mt-4 sm:text-base">
               Receipts
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/80">
+            <p className="mt-1 hidden text-sm leading-relaxed text-white/80 sm:mt-2 sm:block">
               Capture and manage job receipts and expenses
             </p>
-            <span className="mt-4 text-sm font-medium text-emerald-200 group-hover:text-emerald-100">
+            <span className="mt-2 text-xs font-medium sm:mt-4 sm:text-sm text-emerald-200 group-hover:text-emerald-100">
               Open receipts →
             </span>
           </Link>
 
           <Link
             href="/inventory"
-            className="group card-pad-mobile flex flex-col rounded-xl border border-violet-500/35 bg-white/[0.04] p-6 text-left shadow-lg shadow-black/25 ring-1 ring-violet-500/20 transition-colors hover:border-violet-400/60 hover:bg-violet-950/30 hover:ring-violet-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400/50"
+            className="group card-pad-mobile flex flex-col rounded-xl border border-violet-500/35 bg-white/[0.04] p-3 text-left shadow-lg shadow-black/25 sm:p-6 ring-1 ring-violet-500/20 transition-colors hover:border-violet-400/60 hover:bg-violet-950/30 hover:ring-violet-400/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400/50"
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-500/20 text-violet-200 ring-1 ring-violet-400/35 transition-colors group-hover:bg-violet-500/30 group-hover:ring-violet-300/50">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl sm:h-11 sm:w-11 bg-violet-500/20 text-violet-200 ring-1 ring-violet-400/35 transition-colors group-hover:bg-violet-500/30 group-hover:ring-violet-300/50">
               <InventoryQrIcon className="h-6 w-6" />
             </div>
-            <h2 className="mt-4 text-base font-semibold text-white">
+            <h2 className="mt-2 text-sm font-semibold text-white sm:mt-4 sm:text-base">
               Inventory
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/80">
+            <p className="mt-1 hidden text-sm leading-relaxed text-white/80 sm:mt-2 sm:block">
               Track tools, materials and equipment with QR codes
             </p>
-            <span className="mt-4 text-sm font-medium text-violet-200 group-hover:text-violet-100">
+            <span className="mt-2 text-xs font-medium sm:mt-4 sm:text-sm text-violet-200 group-hover:text-violet-100">
               Open inventory →
             </span>
           </Link>
 
           <Link
             href="/tools/load-calculator"
-            className="group card-pad-mobile flex flex-col rounded-xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-lg shadow-black/25 ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/60 hover:bg-white/[0.07] hover:ring-[#E8C84A]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
+            className="group card-pad-mobile flex flex-col rounded-xl border border-white/12 bg-white/[0.04] p-3 text-left shadow-lg shadow-black/25 sm:p-6 ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/60 hover:bg-white/[0.07] hover:ring-[#E8C84A]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-500/15 text-sky-300 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-sky-500/25 group-hover:ring-[#E8C84A]/50">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl sm:h-11 sm:w-11 bg-sky-500/15 text-sky-300 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-sky-500/25 group-hover:ring-[#E8C84A]/50">
               <LightningIcon className="h-6 w-6" />
             </div>
-            <h2 className="mt-4 text-base font-semibold text-white">
+            <h2 className="mt-2 text-sm font-semibold text-white sm:mt-4 sm:text-base">
               Load Calculator
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/80">
+            <p className="mt-1 hidden text-sm leading-relaxed text-white/80 sm:mt-2 sm:block">
               Size your electrical service per NEC Article 220
             </p>
-            <span className="mt-4 text-sm font-medium text-[#E8C84A] group-hover:text-[#f0d56e]">
+            <span className="mt-2 text-xs font-medium sm:mt-4 sm:text-sm text-[#E8C84A] group-hover:text-[#f0d56e]">
               Open tool →
             </span>
           </Link>
 
           <Link
             href="/tools/nec-checker"
-            className="group card-pad-mobile flex flex-col rounded-xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-lg shadow-black/25 ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/60 hover:bg-white/[0.07] hover:ring-[#E8C84A]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
+            className="group card-pad-mobile flex flex-col rounded-xl border border-white/12 bg-white/[0.04] p-3 text-left shadow-lg shadow-black/25 sm:p-6 ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/60 hover:bg-white/[0.07] hover:ring-[#E8C84A]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-500/15 text-violet-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-violet-500/25 group-hover:ring-[#E8C84A]/50">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl sm:h-11 sm:w-11 bg-violet-500/15 text-violet-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-violet-500/25 group-hover:ring-[#E8C84A]/50">
               <BookCheckIcon className="h-6 w-6" />
             </div>
-            <h2 className="mt-4 text-base font-semibold text-white">
+            <h2 className="mt-2 text-sm font-semibold text-white sm:mt-4 sm:text-base">
               NEC Code Checker
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/80">
+            <p className="mt-1 hidden text-sm leading-relaxed text-white/80 sm:mt-2 sm:block">
               Check NEC 2023 compliance and get instant code answers
             </p>
-            <span className="mt-4 text-sm font-medium text-[#E8C84A] group-hover:text-[#f0d56e]">
+            <span className="mt-2 text-xs font-medium sm:mt-4 sm:text-sm text-[#E8C84A] group-hover:text-[#f0d56e]">
               Open tool →
             </span>
           </Link>
 
           <Link
             href="/tools/wifi-analyzer"
-            className="group card-pad-mobile flex flex-col rounded-xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-lg shadow-black/25 ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/60 hover:bg-white/[0.07] hover:ring-[#E8C84A]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
+            className="group card-pad-mobile flex flex-col rounded-xl border border-white/12 bg-white/[0.04] p-3 text-left shadow-lg shadow-black/25 sm:p-6 ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/60 hover:bg-white/[0.07] hover:ring-[#E8C84A]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-teal-500/15 text-teal-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-teal-500/25 group-hover:ring-[#E8C84A]/50">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl sm:h-11 sm:w-11 bg-teal-500/15 text-teal-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-teal-500/25 group-hover:ring-[#E8C84A]/50">
               <WifiIcon className="h-6 w-6" />
             </div>
-            <h2 className="mt-4 text-base font-semibold text-white">
+            <h2 className="mt-2 text-sm font-semibold text-white sm:mt-4 sm:text-base">
               Wi-Fi Analyzer
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/80">
+            <p className="mt-1 hidden text-sm leading-relaxed text-white/80 sm:mt-2 sm:block">
               AP counts, cable takeoff, and vendor recommendations
             </p>
-            <span className="mt-4 text-sm font-medium text-[#E8C84A] group-hover:text-[#f0d56e]">
+            <span className="mt-2 text-xs font-medium sm:mt-4 sm:text-sm text-[#E8C84A] group-hover:text-[#f0d56e]">
               Open tool →
             </span>
           </Link>
 
           <Link
             href="/tools/av-analyzer"
-            className="group card-pad-mobile flex flex-col rounded-xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-lg shadow-black/25 ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/60 hover:bg-white/[0.07] hover:ring-[#E8C84A]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
+            className="group card-pad-mobile flex flex-col rounded-xl border border-white/12 bg-white/[0.04] p-3 text-left shadow-lg shadow-black/25 sm:p-6 ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/60 hover:bg-white/[0.07] hover:ring-[#E8C84A]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-500/15 text-rose-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-rose-500/25 group-hover:ring-[#E8C84A]/50">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl sm:h-11 sm:w-11 bg-rose-500/15 text-rose-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-rose-500/25 group-hover:ring-[#E8C84A]/50">
               <SpeakerIcon className="h-6 w-6" />
             </div>
-            <h2 className="mt-4 text-base font-semibold text-white">
+            <h2 className="mt-2 text-sm font-semibold text-white sm:mt-4 sm:text-base">
               AV Analyzer
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/80">
+            <p className="mt-1 hidden text-sm leading-relaxed text-white/80 sm:mt-2 sm:block">
               Speaker counts, displays, wiring takeoff, and proposals
             </p>
-            <span className="mt-4 text-sm font-medium text-[#E8C84A] group-hover:text-[#f0d56e]">
+            <span className="mt-2 text-xs font-medium sm:mt-4 sm:text-sm text-[#E8C84A] group-hover:text-[#f0d56e]">
               Open tool →
             </span>
           </Link>
 
           <Link
             href="/tools/smarthome-analyzer"
-            className="group card-pad-mobile flex flex-col rounded-xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-lg shadow-black/25 ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/60 hover:bg-white/[0.07] hover:ring-[#E8C84A]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
+            className="group card-pad-mobile flex flex-col rounded-xl border border-white/12 bg-white/[0.04] p-3 text-left shadow-lg shadow-black/25 sm:p-6 ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/60 hover:bg-white/[0.07] hover:ring-[#E8C84A]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-cyan-500/25 group-hover:ring-[#E8C84A]/50">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl sm:h-11 sm:w-11 bg-cyan-500/15 text-cyan-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-cyan-500/25 group-hover:ring-[#E8C84A]/50">
               <SmartHomeIcon className="h-6 w-6" />
             </div>
-            <h2 className="mt-4 text-base font-semibold text-white">
+            <h2 className="mt-2 text-sm font-semibold text-white sm:mt-4 sm:text-base">
               Smart Home Analyzer
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/80">
+            <p className="mt-1 hidden text-sm leading-relaxed text-white/80 sm:mt-2 sm:block">
               Automation design, device counts, and network guidance
             </p>
-            <span className="mt-4 text-sm font-medium text-[#E8C84A] group-hover:text-[#f0d56e]">
+            <span className="mt-2 text-xs font-medium sm:mt-4 sm:text-sm text-[#E8C84A] group-hover:text-[#f0d56e]">
               Open tool →
             </span>
           </Link>
 
           <Link
             href="/tools/electrical-analyzer"
-            className="group card-pad-mobile flex flex-col rounded-xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-lg shadow-black/25 ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/60 hover:bg-white/[0.07] hover:ring-[#E8C84A]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
+            className="group card-pad-mobile flex flex-col rounded-xl border border-white/12 bg-white/[0.04] p-3 text-left shadow-lg shadow-black/25 sm:p-6 ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/60 hover:bg-white/[0.07] hover:ring-[#E8C84A]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-lime-500/15 text-lime-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-lime-500/25 group-hover:ring-[#E8C84A]/50">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl sm:h-11 sm:w-11 bg-lime-500/15 text-lime-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-lime-500/25 group-hover:ring-[#E8C84A]/50">
               <PanelScheduleIcon className="h-6 w-6" />
             </div>
-            <h2 className="mt-4 text-base font-semibold text-white">
+            <h2 className="mt-2 text-sm font-semibold text-white sm:mt-4 sm:text-base">
               Electrical Project Analyzer
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/80">
+            <p className="mt-1 hidden text-sm leading-relaxed text-white/80 sm:mt-2 sm:block">
               Room-by-room circuits, panel schedule, materials, and proposals
             </p>
-            <span className="mt-4 text-sm font-medium text-[#E8C84A] group-hover:text-[#f0d56e]">
+            <span className="mt-2 text-xs font-medium sm:mt-4 sm:text-sm text-[#E8C84A] group-hover:text-[#f0d56e]">
               Open tool →
             </span>
           </Link>
 
           <Link
             href="/tools/project-describer"
-            className="group card-pad-mobile flex flex-col rounded-xl border border-white/12 bg-white/[0.04] p-6 text-left shadow-lg shadow-black/25 ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/60 hover:bg-white/[0.07] hover:ring-[#E8C84A]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
+            className="group card-pad-mobile flex flex-col rounded-xl border border-white/12 bg-white/[0.04] p-3 text-left shadow-lg shadow-black/25 sm:p-6 ring-1 ring-white/[0.06] transition-colors hover:border-[#E8C84A]/60 hover:bg-white/[0.07] hover:ring-[#E8C84A]/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E8C84A]/50"
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-fuchsia-500/15 text-fuchsia-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-fuchsia-500/25 group-hover:ring-[#E8C84A]/50">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl sm:h-11 sm:w-11 bg-fuchsia-500/15 text-fuchsia-200 ring-1 ring-[#E8C84A]/20 transition-colors group-hover:bg-fuchsia-500/25 group-hover:ring-[#E8C84A]/50">
               <DescriberIcon className="h-6 w-6" />
             </div>
-            <h2 className="mt-4 text-base font-semibold text-white">
+            <h2 className="mt-2 text-sm font-semibold text-white sm:mt-4 sm:text-base">
               AI Project Describer
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-white/80">
+            <p className="mt-1 hidden text-sm leading-relaxed text-white/80 sm:mt-2 sm:block">
               Describe a job in text or voice — scope, proposals, BOM, and
               pre-filled Wi‑Fi / AV / smart home plans
             </p>
-            <span className="mt-4 text-sm font-medium text-[#E8C84A] group-hover:text-[#f0d56e]">
+            <span className="mt-2 text-xs font-medium sm:mt-4 sm:text-sm text-[#E8C84A] group-hover:text-[#f0d56e]">
               Open tool →
             </span>
           </Link>

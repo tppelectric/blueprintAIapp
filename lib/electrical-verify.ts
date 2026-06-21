@@ -227,30 +227,3 @@ export function revertHumanVerifyPatch(
   }
   return patch;
 }
-
-/** Clear human accept and legacy count-verify markers; keep final_count. */
-export function revertHumanVerifyPatch(
-  status: "unverified" | "removed" = "unverified",
-  opts?: {
-    stampInstances?: InstanceLocation[] | null;
-    origin_source?: SymbolOriginSource | string;
-  },
-): Record<string, unknown> {
-  const origin = parseOriginSource(opts?.origin_source);
-  const patch: Record<string, unknown> = {
-    verified_status: status,
-    verified_user_id: null,
-    verified_at: null,
-    verified_by: null,
-    verification_status: "pending",
-  };
-  const stamped = stampInstanceLocationsVerified(
-    opts?.stampInstances ?? null,
-    status,
-    origin,
-  );
-  if (stamped) {
-    patch.instance_locations = stamped;
-  }
-  return patch;
-}

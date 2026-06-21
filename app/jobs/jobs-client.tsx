@@ -610,11 +610,8 @@ export function JobsClient() {
         className="block p-4 pl-10 pt-10 sm:pl-11 sm:pt-11"
       >
         <div className="mb-1 space-y-0.5 sm:mb-1.5">
-          <p className="text-base font-semibold leading-snug text-white">
-            {j.job_number}
-          </p>
-          <p className="text-sm font-medium leading-snug text-white/90">
-            {j.job_name}
+          <p className="text-base font-semibold leading-snug break-words text-white">
+            {j.job_number} - {j.job_name}
           </p>
           {j.location_name?.trim() ? (
             <p className="text-xs text-white/60">

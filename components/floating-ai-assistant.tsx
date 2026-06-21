@@ -22,6 +22,10 @@ import {
   jobTagStorageId,
   type JobPickerRow,
 } from "@/lib/ai/job-tag";
+import {
+  isJobPagePathname,
+  resolveJobForAutoTag,
+} from "@/lib/ai/resolve-route-job";
 
 type TaggedJob = { id: string; label: string };
 
@@ -128,9 +132,17 @@ function getPageContext(pathname: string): AIPageContext {
   }
   if (pathname.startsWith("/jobs/")) {
     return {
-      page: "job_detail",
+      page: `job_detail:${parts[1]}`,
       pageTitle: "Job Detail",
       entityType: "job",
+      entityId: parts[1],
+    };
+  }
+  if (pathname.startsWith("/project/")) {
+    return {
+      page: `project:${parts[1]}`,
+      pageTitle: "Blueprint Project",
+      entityType: "project",
       entityId: parts[1],
     };
   }
@@ -337,7 +349,12 @@ export function FloatingAIAssistant() {
   const [jobs, setJobs] = useState<JobPickerRow[]>([]);
   const [jobSearch, setJobSearch] = useState("");
   const [jobsLoading, setJobsLoading] = useState(false);
+  const [jobPickerOpen, setJobPickerOpen] = useState(false);
+  const [conversationLoaded, setConversationLoaded] = useState(false);
+  const [autoTagSettled, setAutoTagSettled] = useState(false);
   const taggedJobRef = useRef<TaggedJob | null>(null);
+  const userClearedOnPathRef = useRef<string | null>(null);
+  const autoTagAttemptedRef = useRef<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -368,9 +385,18 @@ export function FloatingAIAssistant() {
   }, []);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !jobPickerOpen) return;
     void loadJobs();
-  }, [open, loadJobs]);
+  }, [open, jobPickerOpen, loadJobs]);
+
+  useEffect(() => {
+    if (!open) setJobPickerOpen(false);
+  }, [open]);
+
+  useEffect(() => {
+    autoTagAttemptedRef.current = null;
+    setAutoTagSettled(false);
+  }, [pathname]);
 
   const saveJobTagRemote = useCallback(
     async (next: TaggedJob | null) => {
@@ -400,23 +426,27 @@ export function FloatingAIAssistant() {
   );
 
   const selectJob = useCallback(
-    (job: JobPickerRow) => {
+    (job: JobPickerRow, opts?: { fromAutoTag?: boolean }) => {
       const next: TaggedJob = {
         id: jobTagStorageId(job),
         label: formatJobTagLabel(job),
       };
       setTaggedJob(next);
       setJobSearch("");
+      setJobPickerOpen(false);
+      if (!opts?.fromAutoTag) userClearedOnPathRef.current = null;
       void saveJobTagRemote(next);
     },
     [saveJobTagRemote],
   );
 
   const clearJobTag = useCallback(() => {
+    userClearedOnPathRef.current = pathname ?? null;
     setTaggedJob(null);
     setJobSearch("");
+    setJobPickerOpen(false);
     void saveJobTagRemote(null);
-  }, [saveJobTagRemote]);
+  }, [saveJobTagRemote, pathname]);
 
   const filteredJobs = useMemo(
     () => filterJobsForPicker(jobs, jobSearch),
@@ -588,6 +618,7 @@ export function FloatingAIAssistant() {
     setConversationTitle(null);
     setTaggedJob(null);
     setJobSearch("");
+    setConversationLoaded(false);
     void (async () => {
       try {
         const r = await fetch(
@@ -634,12 +665,61 @@ export function FloatingAIAssistant() {
         setTaggedJob(jtId && jtLabel ? { id: jtId, label: jtLabel } : null);
       } catch {
         /* table may not exist yet */
+      } finally {
+        if (!cancelled) setConversationLoaded(true);
       }
     })();
     return () => {
       cancelled = true;
     };
   }, [profile?.id, roleLoading, pageCtx.page]);
+
+  useEffect(() => {
+    if (!open || !conversationLoaded || taggedJob) return;
+    const path = pathname ?? "/";
+    if (userClearedOnPathRef.current === path) {
+      setAutoTagSettled(true);
+      return;
+    }
+    if (autoTagAttemptedRef.current === path) return;
+    if (!isJobPagePathname(path)) {
+      setAutoTagSettled(true);
+      return;
+    }
+
+    let cancelled = false;
+    autoTagAttemptedRef.current = path;
+    void (async () => {
+      try {
+        const sb = createBrowserClient();
+        const resolved = await resolveJobForAutoTag(sb, path);
+        if (cancelled || !resolved) return;
+        selectJob(resolved.row, { fromAutoTag: true });
+        showToast({
+          message: `Linked to ${resolved.label}`,
+          variant: "success",
+        });
+      } finally {
+        if (cancelled) {
+          if (autoTagAttemptedRef.current === path) {
+            autoTagAttemptedRef.current = null;
+          }
+        } else {
+          setAutoTagSettled(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    open,
+    conversationLoaded,
+    taggedJob,
+    pathname,
+    selectJob,
+    showToast,
+  ]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -821,7 +901,7 @@ export function FloatingAIAssistant() {
                     ×
                   </button>
                 </span>
-              ) : (
+              ) : jobPickerOpen ? (
                 <div className="mt-1.5 space-y-1">
                   <input
                     type="search"
@@ -852,7 +932,17 @@ export function FloatingAIAssistant() {
                     ))}
                   </select>
                 </div>
-              )}
+              ) : !isJobPagePathname(pathname ?? "/") ||
+                (conversationLoaded && autoTagSettled) ? (
+                <button
+                  type="button"
+                  onClick={() => setJobPickerOpen(true)}
+                  className="mt-1.5 inline-flex items-center rounded-full border border-dashed border-white/25 px-2 py-0.5 text-[10px] text-white/55 hover:border-[#E8C84A]/40 hover:text-[#E8C84A]"
+                  aria-label="Tag a job"
+                >
+                  + Job
+                </button>
+              ) : null}
             </div>
             <div className="flex shrink-0 items-center gap-1">
               <button

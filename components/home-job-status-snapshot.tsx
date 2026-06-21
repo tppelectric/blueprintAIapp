@@ -29,6 +29,81 @@ function overrideMapFromRows(rows: OverrideRow[]): Map<string, PipelineCountBuck
   return m;
 }
 
+type SyncPhase = "jobtread" | "mapping" | "done";
+
+/** Same call pattern as homepage-sync-widget `runSync("jobs")`. */
+async function runJobtreadJobsSync(): Promise<{ count?: number }> {
+  const res = await fetch(
+    "/api/integrations/jobtread/sync?target=jobs",
+    { method: "GET", credentials: "include" },
+  );
+  const data = (await res.json()) as {
+    ok?: boolean;
+    error?: string;
+    count?: number;
+  };
+  if (!res.ok || data.ok === false) {
+    throw new Error(data.error ?? "JobTread sync failed.");
+  }
+  return { count: data.count };
+}
+
+async function loadMappingData(): Promise<{
+  unrecognized: string[];
+  assignments: Record<string, PipelineCountBucket>;
+}> {
+  const [valsRes, ovrRes] = await Promise.all([
+    fetch("/api/jobs/invoice-status-values", { credentials: "include" }),
+    fetch("/api/jobs/pipeline-bucket-overrides", { credentials: "include" }),
+  ]);
+  if (!valsRes.ok) {
+    const t = await valsRes.text();
+    throw new Error(t || "Could not load invoice values.");
+  }
+  if (!ovrRes.ok) {
+    const t = await ovrRes.text();
+    throw new Error(t || "Could not load overrides.");
+  }
+  const valsBody = (await valsRes.json()) as { values?: string[] };
+  const ovrBody = (await ovrRes.json()) as { overrides?: OverrideRow[] };
+  const values = valsBody.values ?? [];
+  const overrides = ovrBody.overrides ?? [];
+  const map = overrideMapFromRows(overrides);
+  const unrecognized = values.filter(
+    (v) => bucketForValue(v, map) === "needs_update",
+  );
+  const assignments: Record<string, PipelineCountBucket> = {};
+  for (const v of unrecognized) {
+    assignments[v] = "needs_update";
+  }
+  return { unrecognized, assignments };
+}
+
+function SyncSpinner() {
+  return (
+    <svg
+      className="h-4 w-4 shrink-0 animate-spin text-[#E8C84A]"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+    >
+      <circle
+        className="opacity-25"
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="4"
+      />
+      <path
+        className="opacity-90"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+      />
+    </svg>
+  );
+}
+
 const STATUS_CONFIG: {
   status: string;
   label: string;
@@ -103,6 +178,7 @@ export function HomeJobStatusSnapshot() {
 
   const [syncOpen, setSyncOpen] = useState(false);
   const [syncLoading, setSyncLoading] = useState(false);
+  const [syncPhase, setSyncPhase] = useState<SyncPhase>("jobtread");
   const [syncError, setSyncError] = useState<string | null>(null);
   const [unrecognized, setUnrecognized] = useState<string[]>([]);
   const [assignments, setAssignments] = useState<
@@ -153,43 +229,32 @@ export function HomeJobStatusSnapshot() {
     };
   }, [roleLoading, isAllowed, refreshTick]);
 
+  const closeSyncModal = useCallback(() => {
+    setSyncOpen(false);
+    setSyncPhase("jobtread");
+    setSyncError(null);
+  }, []);
+
   const openSync = useCallback(async () => {
     setSyncOpen(true);
     setSyncError(null);
     setSyncLoading(true);
+    setSyncPhase("jobtread");
     setUnrecognized([]);
     setAssignments({});
     try {
-      const [valsRes, ovrRes] = await Promise.all([
-        fetch("/api/jobs/invoice-status-values", { credentials: "include" }),
-        fetch("/api/jobs/pipeline-bucket-overrides", {
-          credentials: "include",
-        }),
-      ]);
-      if (!valsRes.ok) {
-        const t = await valsRes.text();
-        throw new Error(t || "Could not load invoice values.");
-      }
-      if (!ovrRes.ok) {
-        const t = await ovrRes.text();
-        throw new Error(t || "Could not load overrides.");
-      }
-      const valsBody = (await valsRes.json()) as { values?: string[] };
-      const ovrBody = (await ovrRes.json()) as { overrides?: OverrideRow[] };
-      const values = valsBody.values ?? [];
-      const overrides = ovrBody.overrides ?? [];
-      const map = overrideMapFromRows(overrides);
-      const unrec = values.filter(
-        (v) => bucketForValue(v, map) === "needs_update",
-      );
-      const init: Record<string, PipelineCountBucket> = {};
-      for (const v of unrec) {
-        init[v] = "needs_update";
-      }
+      await runJobtreadJobsSync();
+      setRefreshTick((t) => t + 1);
+      setSyncPhase("mapping");
+      const { unrecognized: unrec, assignments: init } =
+        await loadMappingData();
       setUnrecognized(unrec);
       setAssignments(init);
+      setSyncPhase("done");
     } catch (e) {
       setSyncError(e instanceof Error ? e.message : "Sync failed.");
+      setUnrecognized([]);
+      setAssignments({});
     } finally {
       setSyncLoading(false);
     }
@@ -197,7 +262,7 @@ export function HomeJobStatusSnapshot() {
 
   const saveAssignments = useCallback(async () => {
     if (unrecognized.length === 0) {
-      setSyncOpen(false);
+      closeSyncModal();
       return;
     }
     setSaveLoading(true);
@@ -220,13 +285,14 @@ export function HomeJobStatusSnapshot() {
         throw new Error(t || "Save failed.");
       }
       setSyncOpen(false);
+      setSyncPhase("jobtread");
       setRefreshTick((t) => t + 1);
     } catch (e) {
       setSyncError(e instanceof Error ? e.message : "Save failed.");
     } finally {
       setSaveLoading(false);
     }
-  }, [assignments, unrecognized]);
+  }, [assignments, unrecognized, closeSyncModal]);
 
   if (roleLoading || !isAllowed) return null;
 
@@ -244,7 +310,8 @@ export function HomeJobStatusSnapshot() {
             <button
               type="button"
               onClick={() => void openSync()}
-              className="rounded-md border border-white/15 bg-white/[0.06] px-2 py-0.5 text-[11px] font-medium text-[#E8C84A] hover:bg-white/[0.1]"
+              disabled={syncOpen && syncLoading}
+              className="rounded-md border border-white/15 bg-white/[0.06] px-2 py-0.5 text-[11px] font-medium text-[#E8C84A] hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-40"
             >
               Sync
             </button>
@@ -320,8 +387,9 @@ export function HomeJobStatusSnapshot() {
               </h2>
               <button
                 type="button"
-                onClick={() => setSyncOpen(false)}
-                className="rounded-lg px-2 py-1 text-sm text-white/60 hover:bg-white/[0.08] hover:text-white"
+                onClick={closeSyncModal}
+                disabled={syncLoading}
+                className="rounded-lg px-2 py-1 text-sm text-white/60 hover:bg-white/[0.08] hover:text-white disabled:opacity-40"
                 aria-label="Close"
               >
                 ×
@@ -329,13 +397,17 @@ export function HomeJobStatusSnapshot() {
             </div>
             <div className="max-h-[calc(85vh-8rem)] overflow-y-auto px-4 py-3">
               {syncLoading ? (
-                <p className="text-sm text-white/55">Loading…</p>
+                <p className="flex items-center gap-2 text-sm text-white/55">
+                  <SyncSpinner />
+                  {syncPhase === "jobtread"
+                    ? "Syncing jobs from JobTread…"
+                    : "Loading bucket mappings…"}
+                </p>
               ) : syncError ? (
                 <p className="text-sm text-red-300">{syncError}</p>
               ) : unrecognized.length === 0 ? (
-                <p className="text-sm text-white/55">
-                  No unrecognized invoice status values. All distinct values map
-                  to a pipeline bucket via defaults or overrides.
+                <p className="text-sm text-emerald-200/90">
+                  All values mapped — pipeline is in sync
                 </p>
               ) : (
                 <>
@@ -377,15 +449,19 @@ export function HomeJobStatusSnapshot() {
             <div className="flex justify-end gap-2 border-t border-white/10 px-4 py-3">
               <button
                 type="button"
-                onClick={() => setSyncOpen(false)}
-                className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/80 hover:bg-white/[0.06]"
+                onClick={closeSyncModal}
+                disabled={syncLoading || saveLoading}
+                className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/80 hover:bg-white/[0.06] disabled:opacity-40"
               >
-                Cancel
+                {syncError ? "Close" : "Cancel"}
               </button>
               <button
                 type="button"
                 disabled={
-                  saveLoading || syncLoading || unrecognized.length === 0
+                  saveLoading ||
+                  syncLoading ||
+                  syncError != null ||
+                  unrecognized.length === 0
                 }
                 onClick={() => void saveAssignments()}
                 className="rounded-lg border border-[#E8C84A]/45 bg-[#E8C84A]/15 px-3 py-1.5 text-xs font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/25 disabled:cursor-not-allowed disabled:opacity-40"

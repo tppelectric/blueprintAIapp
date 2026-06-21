@@ -34,6 +34,11 @@ import {
   normalizeRoomLabel,
 } from "@/lib/room-item-match";
 import { EmptyState } from "@/components/app-polish";
+import { useUserRole } from "@/hooks/use-user-role";
+import {
+  formatVerifyStamp,
+  itemShowsAcceptedBadge,
+} from "@/lib/format-verify-stamp";
 
 const ITEM_DRAG_MIME = "application/x-blueprint-item";
 
@@ -296,7 +301,13 @@ function verificationBreakdown(items: ElectricalItemRow[]) {
   };
 }
 
-function ItemVerificationBadge({ item }: { item: ElectricalItemRow }) {
+function ItemVerificationBadge({
+  item,
+  verifyStamp,
+}: {
+  item: ElectricalItemRow;
+  verifyStamp?: string | null;
+}) {
   const claudeQty = Math.round(Number(item.quantity));
   const gptQty =
     item.gpt_count != null ? Math.round(Number(item.gpt_count)) : null;
@@ -326,14 +337,20 @@ function ItemVerificationBadge({ item }: { item: ElectricalItemRow }) {
       </span>
     );
   }
-  if (
-    vb === "accept" ||
-    vb === "resolve" ||
-    (status === "confirmed" && vb !== "override")
-  ) {
+  if (itemShowsAcceptedBadge(item)) {
     return (
-      <span className="shrink-0 rounded border border-emerald-500/45 bg-emerald-950/40 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-100">
-        ✅ Accepted
+      <span className="inline-flex shrink-0 flex-col items-end gap-0.5">
+        <span className="rounded border border-emerald-500/45 bg-emerald-950/40 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-100">
+          ✅ Accepted
+        </span>
+        {verifyStamp ? (
+          <span
+            className="max-w-[9rem] truncate text-[9px] font-normal leading-tight text-white/45"
+            title={verifyStamp}
+          >
+            {verifyStamp}
+          </span>
+        ) : null}
       </span>
     );
   }
@@ -379,6 +396,7 @@ function CompactItemRow({
   searchHighlightQuery,
   confidenceMuted,
   rowBorderClass,
+  verifyStamp,
 }: {
   item: ElectricalItemRow;
   manualMode: boolean;
@@ -408,6 +426,7 @@ function CompactItemRow({
   searchHighlightQuery?: string | null;
   confidenceMuted?: boolean;
   rowBorderClass?: string;
+  verifyStamp?: string | null;
 }) {
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState(item.description);
@@ -722,7 +741,7 @@ function CompactItemRow({
               </span>
             </span>
           ) : null}
-          <ItemVerificationBadge item={item} />
+          <ItemVerificationBadge item={item} verifyStamp={verifyStamp} />
         </div>
       </div>
       {item.category !== "plan_note" ? (
@@ -1567,6 +1586,7 @@ export function AnalysisResultsPanel({
   onCategoryJumpConsumed?: () => void;
 }) {
   const router = useRouter();
+  const { profile } = useUserRole();
   const patchRooms = onPatchRooms ?? (() => {});
   const [, bump] = useState(0);
   const refresh = useCallback(() => bump((x) => x + 1), []);
@@ -1604,6 +1624,56 @@ export function AnalysisResultsPanel({
   const deviceItems = useMemo(
     () => pageItems.filter((i) => i.category !== "plan_note"),
     [pageItems],
+  );
+
+  const [verifierNames, setVerifierNames] = useState<Record<string, string>>(
+    {},
+  );
+
+  const verifierIdsKey = useMemo(() => {
+    const ids = new Set<string>();
+    for (const item of pageItems) {
+      const uid = item.verified_user_id?.trim();
+      if (uid) ids.add(uid);
+    }
+    return [...ids].sort().join("|");
+  }, [pageItems]);
+
+  useEffect(() => {
+    if (!verifierIdsKey) {
+      setVerifierNames({});
+      return;
+    }
+    const userIds = verifierIdsKey.split("|").filter(Boolean);
+    let cancelled = false;
+    void fetch("/api/users/display-names", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ userIds }),
+    })
+      .then((r) => r.json())
+      .then((j: { names?: Record<string, string> }) => {
+        if (!cancelled && j.names) setVerifierNames(j.names);
+      })
+      .catch(() => {
+        if (!cancelled) setVerifierNames({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [verifierIdsKey]);
+
+  const verifyStampForItem = useCallback(
+    (item: ElectricalItemRow) =>
+      itemShowsAcceptedBadge(item)
+        ? formatVerifyStamp(
+            item,
+            profile?.id ?? null,
+            new Map(Object.entries(verifierNames)),
+          )
+        : null,
+    [profile?.id, verifierNames],
   );
 
   const searchQ = planSearchQuery.trim();
@@ -2015,11 +2085,11 @@ export function AnalysisResultsPanel({
 
   return (
     <aside
-      className="flex max-h-[50vh] shrink-0 flex-col border-t border-white/10 bg-[#071422]/90 lg:max-h-none lg:w-[min(100%,480px)] lg:border-l lg:border-t-0 xl:w-[500px]"
+      className="flex h-full min-h-0 w-full flex-col border-t border-white/10 bg-[#071422]/90 lg:max-h-none lg:w-[min(100%,480px)] lg:border-l lg:border-t-0 xl:w-[500px]"
       aria-label="Analysis results"
     >
       <div
-        className={`sticky top-0 z-20 shrink-0 border-b px-3 py-2.5 backdrop-blur-md ${summaryBarClass}`}
+        className={`z-20 shrink-0 border-b bg-[#071422] px-3 py-2.5 ${summaryBarClass}`}
       >
         <p className="text-center text-xs font-semibold leading-relaxed text-white/95">
           <span className="text-white/90">{summary.rooms} rooms</span>
@@ -2088,6 +2158,33 @@ export function AnalysisResultsPanel({
           </div>
         ) : null}
       </div>
+
+      {!assignmentOpen && pageItems.length > 0 ? (
+        <div className="z-10 shrink-0 border-b border-white/10 bg-[#071422] px-3 py-2">
+          <TakeoffSummaryCollapsible
+            deviceItems={deviceItems}
+            planNotes={planNotes}
+            pageRooms={pageRooms}
+            manualCounts={manualCounts}
+            manualMode={manualMode}
+            expanded={takeoffSummaryOpen}
+            onToggleExpanded={() => setTakeoffSummaryOpen((o) => !o)}
+            onExport={onOpenTakeoffExport}
+          />
+          {!manualMode ? (
+            <div className="mt-2 pb-1">
+              <CategoryFilterTabs
+                active={categoryTab}
+                onChange={setCategoryTab}
+                deviceItems={deviceItems}
+                planNotes={planNotes}
+                manualCounts={manualCounts}
+                manualMode={manualMode}
+              />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3">
@@ -2239,30 +2336,6 @@ export function AnalysisResultsPanel({
           />
         ) : (
           <>
-            {pageItems.length > 0 ? (
-              <TakeoffSummaryCollapsible
-                deviceItems={deviceItems}
-                planNotes={planNotes}
-                pageRooms={pageRooms}
-                manualCounts={manualCounts}
-                manualMode={manualMode}
-                expanded={takeoffSummaryOpen}
-                onToggleExpanded={() =>
-                  setTakeoffSummaryOpen((o) => !o)
-                }
-                onExport={onOpenTakeoffExport}
-              />
-            ) : null}
-            {pageItems.length > 0 ? (
-              <CategoryFilterTabs
-                active={categoryTab}
-                onChange={setCategoryTab}
-                deviceItems={deviceItems}
-                planNotes={planNotes}
-                manualCounts={manualCounts}
-                manualMode={manualMode}
-              />
-            ) : null}
             {pageItems.length > 0 ? (
               <div className="mb-3 flex flex-col gap-2">
                 <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
@@ -2455,6 +2528,7 @@ export function AnalysisResultsPanel({
                                 !passesConfidenceTier(item, confidenceTier)
                               }
                               rowBorderClass={itemRowVerificationBorder(item)}
+                              verifyStamp={verifyStampForItem(item)}
                             />
                           ))
                         )}
@@ -2543,6 +2617,7 @@ export function AnalysisResultsPanel({
                         !passesConfidenceTier(item, confidenceTier)
                       }
                       rowBorderClass={itemRowVerificationBorder(item)}
+                      verifyStamp={verifyStampForItem(item)}
                     />
                   ))}
                 </div>
@@ -2580,6 +2655,7 @@ export function AnalysisResultsPanel({
                         !passesConfidenceTier(item, confidenceTier)
                       }
                       rowBorderClass={itemRowVerificationBorder(item)}
+                      verifyStamp={verifyStampForItem(item)}
                     />
                   ))}
                 </div>

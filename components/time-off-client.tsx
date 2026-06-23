@@ -96,6 +96,29 @@ export function TimeOffClient() {
     [rows],
   );
 
+  /** All approved time off, soonest start first (admin summary). */
+  const approvedAll = useMemo(
+    () =>
+      rows
+        .filter((r) => r.status === "approved")
+        .sort((a, b) => a.start_date.localeCompare(b.start_date)),
+    [rows],
+  );
+
+  /** Per-employee approved totals (days + request count), most days first. */
+  const approvedTotals = useMemo(() => {
+    const m = new Map<string, { name: string; days: number; count: number }>();
+    for (const r of approvedAll) {
+      const key = r.employee_id ?? r.employee_name ?? "?";
+      const name = r.employee_name ?? r.employee_id?.slice(0, 8) ?? "—";
+      const cur = m.get(key) ?? { name, days: 0, count: 0 };
+      cur.days += daysInclusive(r.start_date, r.end_date);
+      cur.count += 1;
+      m.set(key, cur);
+    }
+    return [...m.values()].sort((a, b) => b.days - a.days);
+  }, [approvedAll]);
+
   useEffect(() => {
     if (!uid) return;
     const sb = createBrowserClient();
@@ -416,32 +439,85 @@ export function TimeOffClient() {
             </section>
 
             {canManageTeamTime ? (
-              <section className="mt-10 rounded-xl border border-white/10 bg-white/[0.02] p-4">
-                <h2 className="text-sm font-bold uppercase text-white/60">
-                  Calendar preview (approved & pending)
-                </h2>
-                <p className="mt-1 text-xs text-white/40">
-                  Full calendar:{" "}
-                  <Link href="/calendar" className="text-[#E8C84A] hover:underline">
-                    /calendar
+              <section className="mt-10">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <h2 className="text-sm font-bold uppercase tracking-wide text-emerald-200/90">
+                    Approved time off (all employees)
+                  </h2>
+                  <Link
+                    href="/calendar"
+                    className="text-xs text-[#E8C84A] hover:underline"
+                  >
+                    View on calendar →
                   </Link>
-                </p>
-                <ul className="mt-3 max-h-48 space-y-1 overflow-auto text-xs text-white/70">
-                  {rows
-                    .filter((r) => r.status !== "denied")
-                    .map((r) => (
-                      <li key={r.id}>
+                </div>
+
+                {approvedAll.length === 0 ? (
+                  <div className="mt-4">
+                    <EmptyState
+                      icon={<span aria-hidden>🌴</span>}
+                      title="No approved time off"
+                      description="Approved requests across the team will be summarized here."
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {approvedTotals.map((t) => (
                         <span
-                          className={
-                            r.status === "pending" ? "text-amber-200/90" : ""
-                          }
+                          key={t.name}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-xs text-emerald-100"
+                          title={`${t.count} approved request${t.count === 1 ? "" : "s"}`}
                         >
-                          {r.employee_name}: {r.start_date}–{r.end_date} ({r.request_type})
+                          <span className="font-semibold">{t.name}</span>
+                          <span className="tabular-nums text-emerald-200/80">
+                            {t.days}d
+                          </span>
                         </span>
-                        {r.status === "pending" ? " — pending" : ""}
-                      </li>
-                    ))}
-                </ul>
+                      ))}
+                    </div>
+
+                    <div className="mt-4 overflow-x-auto rounded-xl border border-white/10 bg-white/[0.03]">
+                      <table className="w-full min-w-[420px] border-collapse text-left text-sm">
+                        <thead>
+                          <tr className="border-b border-white/10 text-[11px] uppercase text-white/45">
+                            <th className="px-3 py-2 font-semibold">Employee</th>
+                            <th className="px-3 py-2 font-semibold">Dates</th>
+                            <th className="px-3 py-2 font-semibold">Type</th>
+                            <th className="px-3 py-2 text-right font-semibold">
+                              Days
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {approvedAll.map((r) => (
+                            <tr
+                              key={r.id}
+                              className="border-b border-white/5 last:border-0"
+                            >
+                              <td className="px-3 py-2 font-medium text-white">
+                                {r.employee_name ??
+                                  r.employee_id?.slice(0, 8) ??
+                                  "—"}
+                              </td>
+                              <td className="px-3 py-2 tabular-nums text-white/70">
+                                {r.start_date} → {r.end_date}
+                              </td>
+                              <td className="px-3 py-2">
+                                <span className={badgeType(r.request_type)}>
+                                  {r.request_type}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-right tabular-nums text-white/70">
+                                {daysInclusive(r.start_date, r.end_date)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
               </section>
             ) : null}
           </>

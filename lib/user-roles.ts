@@ -121,6 +121,22 @@ export function canManageTeamTime(role: UserRole | null): boolean {
   );
 }
 
+/**
+ * Create / edit schedule assignments. super_admin + office_manager always; any
+ * user with the `can_schedule` profile flag (e.g. foreman, lead tech). Mirrors
+ * the RLS on public.schedule_assignments (UI gate only — RLS is the enforcement).
+ */
+export function canScheduleAssignments(
+  role: UserRole | null,
+  canScheduleFlag?: boolean | null,
+): boolean {
+  return (
+    role === "super_admin" ||
+    role === "office_manager" ||
+    canScheduleFlag === true
+  );
+}
+
 /** Live team punch dashboard (`/team-clock`). */
 export function canViewTeamClock(role: UserRole | null): boolean {
   return role === "super_admin" || role === "admin";

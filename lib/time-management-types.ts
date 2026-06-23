@@ -35,6 +35,22 @@ export type TimeOffRequestRow = {
   created_at: string;
 };
 
+/** Row from `public.schedule_assignments`. */
+export type ScheduleAssignmentRow = {
+  id: string;
+  employee_id: string | null;
+  employee_name: string | null;
+  job_id: string | null;
+  job_name: string | null;
+  schedule_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 /** Row from `public.work_calendar`. */
 export type WorkCalendarRow = {
   id: string;

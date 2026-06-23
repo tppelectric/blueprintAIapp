@@ -312,13 +312,26 @@ export function WorkCalendarClient() {
             <div className="mt-1 grid grid-cols-7 gap-1">
               {monthGrid.map((cell) => {
                 const list = byDate.get(cell.date) ?? [];
-                const workN = list.filter((x) => x.event_type === "work").length;
-                const offN = list.filter((x) => x.event_type === "time_off").length;
-                const names = [
+                // Aggregate worked hours per employee for this day.
+                const empHours = new Map<string, number>();
+                let teamHours = 0;
+                for (const x of list) {
+                  if (x.event_type !== "work") continue;
+                  const nm = x.employee_name ?? x.employee_id ?? "?";
+                  const h = num(x.hours);
+                  empHours.set(nm, (empHours.get(nm) ?? 0) + h);
+                  teamHours += h;
+                }
+                const empList = [...empHours.entries()].sort(
+                  (a, b) => b[1] - a[1],
+                );
+                const offNames = [
                   ...new Set(
-                    list.map((x) => x.employee_name ?? x.employee_id ?? "?"),
+                    list
+                      .filter((x) => x.event_type === "time_off")
+                      .map((x) => x.employee_name ?? x.employee_id ?? "?"),
                   ),
-                ].slice(0, 4);
+                ];
                 return (
                   <button
                     key={cell.date}
@@ -331,24 +344,45 @@ export function WorkCalendarClient() {
                         : "border-white/5 bg-white/[0.02] opacity-50",
                     ].join(" ")}
                   >
-                    <span className="font-mono text-white/70">{cell.date.slice(8)}</span>
-                    <div className="mt-1 flex flex-wrap gap-0.5">
-                      {names.map((n) => (
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-white/70">
+                        {cell.date.slice(8)}
+                      </span>
+                      {teamHours > 0 ? (
+                        <span className="rounded bg-[#E8C84A]/15 px-1 text-[9px] font-bold tabular-nums text-[#E8C84A]">
+                          {fmtHours(teamHours)}h
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="mt-1 flex flex-col gap-0.5">
+                      {empList.slice(0, 4).map(([nm, h]) => (
                         <span
-                          key={n}
-                          className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[8px] font-bold text-white"
-                          style={{ backgroundColor: empColor(n) }}
-                          title={n}
+                          key={nm}
+                          className="flex items-center gap-1"
+                          title={`${nm}: ${fmtHours(h)}h`}
                         >
-                          {initials(n)}
+                          <span
+                            className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[7px] font-bold text-white"
+                            style={{ backgroundColor: empColor(nm) }}
+                          >
+                            {initials(nm)}
+                          </span>
+                          <span className="tabular-nums text-white/75">
+                            {fmtHours(h)}h
+                          </span>
                         </span>
                       ))}
+                      {empList.length > 4 ? (
+                        <span className="text-[9px] text-white/40">
+                          +{empList.length - 4} more
+                        </span>
+                      ) : null}
                     </div>
-                    <div className="mt-1 text-[9px] text-white/40">
-                      {workN ? `${workN} work` : ""}
-                      {workN && offN ? " · " : ""}
-                      {offN ? `${offN} off` : ""}
-                    </div>
+                    {offNames.length ? (
+                      <div className="mt-0.5 text-[9px] font-medium text-amber-300/80">
+                        {offNames.length} off
+                      </div>
+                    ) : null}
                   </button>
                 );
               })}
@@ -503,6 +537,11 @@ export function WorkCalendarClient() {
 function timeShort(t: string | null | undefined): string {
   if (!t) return "—";
   return t.slice(0, 5);
+}
+
+/** Compact hours: whole numbers as-is, else one decimal (8 -> "8", 8.5 -> "8.5"). */
+function fmtHours(h: number): string {
+  return h % 1 === 0 ? String(h) : h.toFixed(1);
 }
 
 function DayDetailList({

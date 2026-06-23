@@ -32,6 +32,7 @@ type TimeClockPayload = {
   activeSession: ActiveSession | null;
   weekHours: number;
   teamActive: TeamRow[] | null;
+  pendingApprovals?: number | null;
   jobs: { id: string; job_name: string; job_number: string }[];
 };
 
@@ -161,8 +162,15 @@ export function TimeClockSummaryCard({
 
   if (!data) return null;
 
-  const { role, showPunchInterface, activeSession, weekHours, teamActive, jobs } =
-    data;
+  const {
+    role,
+    showPunchInterface,
+    activeSession,
+    weekHours,
+    teamActive,
+    pendingApprovals,
+    jobs,
+  } = data;
   const isAdmin = role === "admin" || role === "super_admin";
 
   const selectCls =
@@ -222,7 +230,7 @@ export function TimeClockSummaryCard({
               PUNCH IN
             </button>
             <Link
-              href="/field"
+              href="/field/punch"
               className={`mt-2 block text-center text-xs font-medium text-[#E8C84A] hover:underline`}
             >
               Open full time clock
@@ -238,13 +246,13 @@ export function TimeClockSummaryCard({
             </p>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row">
               <Link
-                href="/field"
+                href="/field/punch"
                 className="flex h-12 flex-1 items-center justify-center rounded-lg bg-red-600 text-center text-base font-bold text-white shadow-sm transition-colors hover:bg-red-500"
               >
                 PUNCH OUT
               </Link>
               <Link
-                href="/field"
+                href="/field/punch"
                 className="flex h-11 flex-1 items-center justify-center rounded-lg bg-amber-500 text-center text-sm font-bold text-amber-950 shadow-sm transition-colors hover:bg-amber-400"
               >
                 Lunch / field
@@ -340,6 +348,15 @@ export function TimeClockSummaryCard({
         <p className={`mt-2 text-sm ${muted}`}>
           {n} employee{n === 1 ? "" : "s"} clocked in
         </p>
+        {pendingApprovals && pendingApprovals > 0 ? (
+          <Link
+            href="/timesheets"
+            className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#E8C84A]/15 px-2.5 py-1 text-xs font-semibold text-[#E8C84A] hover:bg-[#E8C84A]/25"
+          >
+            {pendingApprovals} timecard{pendingApprovals === 1 ? "" : "s"} to
+            approve →
+          </Link>
+        ) : null}
         {n > 0 ? (
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[280px] border-collapse text-left text-xs">

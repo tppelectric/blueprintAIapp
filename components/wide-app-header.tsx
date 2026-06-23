@@ -77,6 +77,20 @@ export function WideAppHeader({
           Inventory
         </Link>
       )}
+      {pathname.startsWith("/calendar") ? (
+        <span className={NAV_ACTIVE}>Calendar</span>
+      ) : (
+        <Link href="/calendar" className={NAV_IDLE}>
+          Calendar
+        </Link>
+      )}
+      {pathname.startsWith("/time-off") ? (
+        <span className={NAV_ACTIVE}>Time Off</span>
+      ) : (
+        <Link href="/time-off" className={NAV_IDLE}>
+          Time Off
+        </Link>
+      )}
       <HeaderToolsMenu idleClassName={NAV_IDLE} activeClassName={NAV_ACTIVE} />
       {extraLinks}
     </>

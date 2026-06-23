@@ -197,7 +197,16 @@ export async function GET(request: Request) {
     manualEntryByName: string | null;
   }> | null = null;
 
+  let pendingApprovals: number | null = null;
+
   if (role === "admin" || role === "super_admin") {
+    // Completed timecards awaiting approval (punch_out sets approval_status='pending').
+    const { count: pendingCount } = await supabase
+      .from("time_punches")
+      .select("id", { count: "exact", head: true })
+      .eq("approval_status", "pending");
+    pendingApprovals = pendingCount ?? 0;
+
     const { data: punches } = await supabase
       .from("time_punches")
       .select(
@@ -323,6 +332,7 @@ export async function GET(request: Request) {
     activeSession,
     weekHours: Math.round(weekHours * 100) / 100,
     teamActive,
+    pendingApprovals,
     dayPunches,
     dayTotals,
     jobs: (jobs ?? []).map((j) => ({

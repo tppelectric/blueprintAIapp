@@ -1,6 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createJobtreadJobComment } from "@/lib/jobtread-write";
-import { getStoredJobtreadApiKey } from "@/lib/jobtread-server-store";
+import {
+  createJobtreadJobComment,
+  createJobtreadJobFile,
+} from "@/lib/jobtread-write";
+import {
+  fetchJobtreadRow,
+  getStoredJobtreadApiKey,
+} from "@/lib/jobtread-server-store";
 import {
   isReceiptId,
   loadReceiptPushContext,
@@ -8,6 +14,31 @@ import {
 import { requireReceiptJobtreadPushFromRequest } from "@/lib/require-receipt-jobtread-push";
 
 export const dynamic = "force-dynamic";
+
+const RECEIPTS_BUCKET = "job-receipts";
+
+/** Infer an image MIME type from a storage path extension. */
+function mimeFromPath(path: string): string {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  if (ext === "png") return "image/png";
+  if (ext === "webp") return "image/webp";
+  if (ext === "pdf") return "application/pdf";
+  if (ext === "heic") return "image/heic";
+  return "image/jpeg";
+}
+
+/** Build a friendly file name for the JobTread attachment. */
+function attachmentName(
+  storagePath: string,
+  jobNumber: string | null,
+  vendor: string | null,
+): string {
+  const ext = storagePath.split(".").pop()?.toLowerCase() || "jpg";
+  const parts = ["Receipt"];
+  if (jobNumber?.trim()) parts.push(jobNumber.trim());
+  if (vendor?.trim()) parts.push(vendor.trim().replace(/[\\/:*?"<>|]+/g, "-"));
+  return `${parts.join(" - ").slice(0, 120)}.${ext}`;
+}
 
 export async function POST(
   request: NextRequest,
@@ -61,6 +92,49 @@ export async function POST(
       message: ctx.notePreview,
     });
 
+    // Attach the receipt image to the same job (best-effort: a storage/upload
+    // hiccup must not undo the note that already posted). Confirmed flow:
+    // createUploadRequest -> PUT bytes -> createFile (see lib/jobtread-write.ts).
+    let fileId: string | null = null;
+    let imageWarning: string | null = null;
+    try {
+      const storagePath = ctx.receipt.storage_path?.trim();
+      if (!storagePath) {
+        imageWarning = "Receipt has no stored image to attach.";
+      } else {
+        const orgId = (await fetchJobtreadRow())?.company_id?.trim() ?? "";
+        if (!orgId) {
+          imageWarning = "JobTread organization id is not configured.";
+        } else {
+          const { data: blob, error: dlErr } = await gate.ok.admin.storage
+            .from(RECEIPTS_BUCKET)
+            .download(storagePath);
+          if (dlErr || !blob) {
+            imageWarning = `Could not read receipt image: ${dlErr?.message ?? "not found"}.`;
+          } else {
+            const res = await createJobtreadJobFile({
+              grantKey,
+              organizationId: orgId,
+              jobtreadJobId: ctx.job.jobtread_id,
+              fileName: attachmentName(
+                storagePath,
+                ctx.job.job_number,
+                ctx.receipt.vendor_name,
+              ),
+              mimeType: mimeFromPath(storagePath),
+              blob,
+            });
+            fileId = res.fileId;
+          }
+        }
+      }
+    } catch (e) {
+      imageWarning =
+        e instanceof Error
+          ? `Image attach failed: ${e.message}`
+          : "Image attach failed.";
+    }
+
     const pushedAt = new Date().toISOString();
     const { error: updErr } = await gate.ok.admin
       .from("receipts")
@@ -78,6 +152,8 @@ export async function POST(
             "Comment posted to JobTread but local receipt row could not be updated. Run receipts_jobtread_push.sql if columns are missing.",
           commentId,
           message,
+          fileId,
+          imageWarning,
           updErr: updErr.message,
         },
         { status: 200 },
@@ -88,6 +164,8 @@ export async function POST(
       ok: true,
       commentId,
       message,
+      fileId,
+      imageWarning,
       pushedAt,
     });
   } catch (e) {

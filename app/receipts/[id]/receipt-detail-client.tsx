@@ -255,11 +255,19 @@ export function ReceiptDetailClient() {
         error?: string;
         pushedAt?: string;
         commentId?: string;
+        fileId?: string | null;
+        imageWarning?: string | null;
       };
       if (!res.ok || body.ok === false) {
         throw new Error(body.error ?? "Push failed.");
       }
-      setPushSuccess("Receipt note posted to JobTread.");
+      setPushSuccess(
+        body.fileId
+          ? "Receipt note + image posted to JobTread."
+          : body.imageWarning
+            ? `Note posted to JobTread. Image not attached: ${body.imageWarning}`
+            : "Receipt note posted to JobTread.",
+      );
       setReceipt((prev) =>
         prev
           ? {

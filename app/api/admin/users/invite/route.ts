@@ -11,7 +11,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 });
   }
 
-  let body: { email?: string; role?: string; full_name?: string };
+  let body: {
+    email?: string;
+    role?: string;
+    full_name?: string;
+    employee_number?: string;
+    show_punch_interface?: boolean;
+    can_schedule?: boolean;
+  };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -68,6 +75,9 @@ export async function POST(request: Request) {
       full_name,
       role,
       is_active: true,
+      employee_number: (body.employee_number ?? "").trim() || null,
+      show_punch_interface: body.show_punch_interface === true,
+      can_schedule: body.can_schedule === true,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "id" },

@@ -135,6 +135,9 @@ export function AdminUsersClient() {
   const [inviteRole, setInviteRole] = useState<UserRole>("estimator");
   const [inviteBusy, setInviteBusy] = useState(false);
   const [inviteMsg, setInviteMsg] = useState<string | null>(null);
+  const [inviteEmpNo, setInviteEmpNo] = useState("");
+  const [invitePunch, setInvitePunch] = useState(false);
+  const [inviteCanSchedule, setInviteCanSchedule] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [resetTarget, setResetTarget] = useState<AdminUserProfileRow | null>(
     null,
@@ -234,6 +237,9 @@ export function AdminUsersClient() {
           email: inviteEmail.trim(),
           full_name: inviteName.trim(),
           role: inviteRole,
+          employee_number: inviteEmpNo.trim(),
+          show_punch_interface: invitePunch,
+          can_schedule: inviteCanSchedule,
         }),
       });
       const j = (await r.json()) as { error?: string; ok?: boolean };
@@ -245,6 +251,9 @@ export function AdminUsersClient() {
       setInviteEmail("");
       setInviteName("");
       setInviteRole("estimator");
+      setInviteEmpNo("");
+      setInvitePunch(false);
+      setInviteCanSchedule(false);
       void load();
     } catch {
       setError("Invite failed.");
@@ -468,6 +477,34 @@ export function AdminUsersClient() {
                 ))}
               </select>
             </label>
+            <label className="block text-xs text-white/60">
+              Employee # (optional)
+              <input
+                className="mt-1 w-full rounded border border-white/15 bg-[#0a1628] px-3 py-2 text-sm text-white"
+                value={inviteEmpNo}
+                onChange={(e) => setInviteEmpNo(e.target.value)}
+              />
+            </label>
+            <div className="flex flex-col gap-2 sm:col-span-2">
+              <label className="flex items-center gap-2 text-xs text-white/70">
+                <input
+                  type="checkbox"
+                  className="accent-[#E8C84A]"
+                  checked={invitePunch}
+                  onChange={(e) => setInvitePunch(e.target.checked)}
+                />
+                Field punch access (time clock)
+              </label>
+              <label className="flex items-center gap-2 text-xs text-white/70">
+                <input
+                  type="checkbox"
+                  className="accent-[#E8C84A]"
+                  checked={inviteCanSchedule}
+                  onChange={(e) => setInviteCanSchedule(e.target.checked)}
+                />
+                Can schedule crew (foreman / lead tech)
+              </label>
+            </div>
           </div>
           <button
             type="button"

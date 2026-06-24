@@ -69,6 +69,9 @@ export function HomepageSyncWidget() {
   >({ customers: null, jobs: null, daily_logs: null });
   const [results, setResults] =
     useState<Record<SyncTarget, RowResult>>(INITIAL_RESULTS);
+  const [receiptsPending, setReceiptsPending] = useState<number | null>(null);
+  const [receiptsBusy, setReceiptsBusy] = useState(false);
+  const pendingReceiptIdsRef = useRef<string[]>([]);
   const successTimers = useRef<Partial<Record<SyncTarget, ReturnType<typeof setTimeout>>>>({});
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
@@ -174,10 +177,52 @@ export function HomepageSyncWidget() {
     }
   }, []);
 
+  /** Receipts assigned to a job but not yet pushed to JobTread. */
+  const loadReceiptsPending = useCallback(async () => {
+    try {
+      const sb = createBrowserClient();
+      const { data, error } = await sb
+        .from("receipts")
+        .select("id")
+        .not("job_id", "is", null)
+        .is("pushed_to_jobtread_at", null);
+      if (error) {
+        setReceiptsPending(null);
+        return;
+      }
+      pendingReceiptIdsRef.current = (data ?? []).map((r) => r.id as string);
+      setReceiptsPending(pendingReceiptIdsRef.current.length);
+    } catch {
+      setReceiptsPending(null);
+    }
+  }, []);
+
+  /** Bulk-push all pending receipts to JobTread via the guarded route. */
+  const pushAllReceipts = useCallback(async () => {
+    const ids = pendingReceiptIdsRef.current;
+    if (!ids.length) return;
+    setReceiptsBusy(true);
+    for (const id of ids) {
+      try {
+        await fetch(`/api/receipts/${encodeURIComponent(id)}/jobtread-push`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ confirm: true }),
+        });
+      } catch {
+        /* continue; count refreshes below */
+      }
+    }
+    setReceiptsBusy(false);
+    await loadReceiptsPending();
+  }, [loadReceiptsPending]);
+
   useEffect(() => {
     if (roleLoading || role !== "super_admin") return;
     void loadSettings();
-  }, [role, roleLoading, loadSettings]);
+    void loadReceiptsPending();
+  }, [role, roleLoading, loadSettings, loadReceiptsPending]);
 
   useEffect(() => {
     return () => {
@@ -422,6 +467,36 @@ export function HomepageSyncWidget() {
                 );
               })}
             </ul>
+
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3">
+              <div className="text-sm font-medium text-white/90">
+                🧾 Receipts → JobTread
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full border border-[#E8C84A]/35 bg-[#E8C84A]/10 px-2 py-0.5 text-xs font-semibold tabular-nums text-[#E8C84A]">
+                  {receiptsPending ?? "—"} pending
+                </span>
+                {receiptsPending && receiptsPending > 0 ? (
+                  <button
+                    type="button"
+                    disabled={receiptsBusy}
+                    onClick={() => void pushAllReceipts()}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/50 px-2.5 py-1 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/10 disabled:opacity-40"
+                  >
+                    {receiptsBusy ? (
+                      <>
+                        <SpinIcon className="h-3.5 w-3.5 animate-spin" />
+                        Pushing…
+                      </>
+                    ) : (
+                      <>Push all ↗</>
+                    )}
+                  </button>
+                ) : (
+                  <span className="text-xs text-emerald-400">✓ All synced</span>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>

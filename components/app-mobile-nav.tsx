@@ -474,6 +474,16 @@ function MobileMenuPortal({
             </span>
           </Link>
           <Link
+            href="/schedule"
+            className={linkClass(pathname.startsWith("/schedule"))}
+            onClick={onClose}
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden>🗓️</span>
+              Schedule
+            </span>
+          </Link>
+          <Link
             href="/my-requests"
             className={linkClass(pathname.startsWith("/my-requests"))}
             onClick={onClose}

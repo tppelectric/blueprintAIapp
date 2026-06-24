@@ -429,7 +429,7 @@ export function WorkCalendarClient() {
           </>
         ) : view === "week" ? (
           <>
-            {!loading && rows.length === 0 ? (
+            {!loading && rows.length === 0 && scheduled.length === 0 ? (
               <div className="mt-6">
                 <EmptyState
                   icon={<span aria-hidden>📅</span>}
@@ -452,10 +452,13 @@ export function WorkCalendarClient() {
                 </p>
               </div>
             ) : null}
-          {rows.length > 0 ? (
+          {rows.length > 0 || scheduled.length > 0 ? (
           <div className="mt-6 grid grid-cols-1 gap-2 md:grid-cols-7">
             {eachDateInRange(range.from, range.to).map((iso) => {
               const list = byDate.get(iso) ?? [];
+              const sched = filteredScheduled.filter(
+                (s) => s.schedule_date === iso,
+              );
               return (
                 <button
                   key={iso}
@@ -489,6 +492,18 @@ export function WorkCalendarClient() {
                       </li>
                     ))}
                   </ul>
+                  {sched.length ? (
+                    <ul className="mt-2 space-y-1 text-xs">
+                      {sched.map((s) => (
+                        <li
+                          key={s.id}
+                          className="border-l-2 border-sky-400/70 pl-2 text-sky-100/85"
+                        >
+                          📌 {s.employee_name ?? "—"} — {s.job_name ?? "—"}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </button>
               );
             })}

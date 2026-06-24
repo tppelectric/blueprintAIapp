@@ -310,7 +310,7 @@ export function WorkCalendarClient() {
           </p>
         ) : view === "month" ? (
           <>
-            {!loading && rows.length === 0 ? (
+            {!loading && rows.length === 0 && scheduled.length === 0 ? (
               <div className="mt-6">
                 <EmptyState
                   icon={<span aria-hidden>📅</span>}
@@ -334,7 +334,7 @@ export function WorkCalendarClient() {
                 </p>
               </div>
             ) : null}
-          {rows.length > 0 ? (
+          {rows.length > 0 || scheduled.length > 0 ? (
           <div className="mt-6 overflow-x-auto">
             <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold uppercase text-white/45">
               {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (

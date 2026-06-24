@@ -36,6 +36,9 @@ type JobOpt = {
   label: string;
   addressLine: string;
   status: string;
+  customerName: string;
+  /** Lowercased haystack: number, name, customer/contractor, address, location. */
+  search: string;
 };
 
 function formatJobAddress(j: Record<string, unknown>): string {
@@ -108,18 +111,32 @@ export function ReceiptsClient() {
       const { data: jd } = await sb
         .from("jobs")
         .select(
-          "id,job_name,job_number,address,city,state,zip,status",
+          "id,job_name,job_number,address,city,state,zip,status,location_name,customers(company_name,contact_name)",
         )
         .order("updated_at", { ascending: false })
         .limit(400);
       setJobs(
         (jd ?? []).map((j) => {
           const rec = j as Record<string, unknown>;
+          const custRaw = rec.customers;
+          const c = (
+            Array.isArray(custRaw) ? custRaw[0] : custRaw
+          ) as { company_name?: string | null; contact_name?: string | null } | null;
+          const customerName =
+            c?.company_name?.trim() || c?.contact_name?.trim() || "";
+          const locationName = String(rec.location_name ?? "").trim();
+          const label = formatJobLabel(rec);
+          const addressLine = formatJobAddress(rec);
           return {
             id: j.id as string,
-            label: formatJobLabel(rec),
-            addressLine: formatJobAddress(rec),
+            label,
+            addressLine,
             status: String(rec.status ?? "").trim() || "Lead",
+            customerName,
+            search: [label, addressLine, locationName, customerName]
+              .filter(Boolean)
+              .join(" ")
+              .toLowerCase(),
           };
         }),
       );
@@ -354,7 +371,7 @@ export function ReceiptsClient() {
     const q = assignJobSearch.trim().toLowerCase();
     const list = activeJobs;
     if (!q) return list;
-    return list.filter((j) => j.label.toLowerCase().includes(q));
+    return list.filter((j) => j.search.includes(q));
   }, [activeJobs, assignJobSearch]);
 
   const jobReceiptGroups = useMemo(() => {
@@ -952,12 +969,12 @@ export function ReceiptsClient() {
               Search active jobs, select one, then confirm.
             </p>
             <label className="mt-4 block text-xs text-white/50">
-              Search by job name
+              Search number, name, customer, address, location
               <input
                 className="app-input mt-1 w-full text-sm"
                 value={assignJobSearch}
                 onChange={(e) => setAssignJobSearch(e.target.value)}
-                placeholder="Type to filter…"
+                placeholder="e.g. 2290, Banta, Bancroft, Basement…"
                 autoComplete="off"
               />
             </label>
@@ -973,6 +990,7 @@ export function ReceiptsClient() {
                 {assignModalJobs.map((j) => (
                   <option key={j.id} value={j.id}>
                     {j.label}
+                    {j.customerName ? ` — ${j.customerName}` : ""}
                   </option>
                 ))}
               </select>

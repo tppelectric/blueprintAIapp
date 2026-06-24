@@ -374,6 +374,35 @@ export function ReceiptsClient() {
     return list.filter((j) => j.search.includes(q));
   }, [activeJobs, assignJobSearch]);
 
+  /**
+   * Smart Assign: rank jobs by how many tokens from the receipt's own text
+   * (notes / description / vendor) appear in each job's search haystack
+   * (number, name, customer, address, location). Top matches surface as
+   * one-tap suggestions.
+   */
+  const assignSuggestions = useMemo(() => {
+    if (!assignId) return [];
+    const r = receipts.find((x) => x.id === assignId);
+    if (!r) return [];
+    const hay = [r.notes, r.description, r.vendor_name]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    const tokens = [
+      ...new Set(hay.split(/[^a-z0-9]+/).filter((t) => t.length >= 3)),
+    ];
+    if (!tokens.length) return [];
+    return activeJobs
+      .map((j) => ({
+        job: j,
+        score: tokens.reduce((n, t) => n + (j.search.includes(t) ? 1 : 0), 0),
+      }))
+      .filter((s) => s.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3)
+      .map((s) => s.job);
+  }, [assignId, receipts, activeJobs]);
+
   const jobReceiptGroups = useMemo(() => {
     const map = new Map<string, ReceiptRow[]>();
     for (const r of receipts) {
@@ -968,6 +997,34 @@ export function ReceiptsClient() {
             <p className="mt-1 text-xs text-white/45">
               Search active jobs, select one, then confirm.
             </p>
+            {assignSuggestions.length > 0 ? (
+              <div className="mt-4 rounded-lg border border-[#E8C84A]/25 bg-[#E8C84A]/[0.06] p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#E8C84A]">
+                  ✨ Suggested matches
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {assignSuggestions.map((j) => (
+                    <button
+                      key={j.id}
+                      type="button"
+                      onClick={() => setAssignJob(j.id)}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
+                        assignJob === j.id
+                          ? "border-[#E8C84A] bg-[#E8C84A]/20 text-[#E8C84A]"
+                          : "border-white/20 text-white/85 hover:bg-white/10"
+                      }`}
+                    >
+                      {j.label}
+                      {j.customerName ? ` — ${j.customerName}` : ""}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-[11px] text-white/40">
+                  From this receipt&apos;s vendor &amp; notes. Tap to select,
+                  then Confirm.
+                </p>
+              </div>
+            ) : null}
             <label className="mt-4 block text-xs text-white/50">
               Search number, name, customer, address, location
               <input

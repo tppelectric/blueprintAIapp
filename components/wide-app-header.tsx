@@ -91,6 +91,13 @@ export function WideAppHeader({
           Time Off
         </Link>
       )}
+      {pathname.startsWith("/schedule") ? (
+        <span className={NAV_ACTIVE}>Schedule</span>
+      ) : (
+        <Link href="/schedule" className={NAV_IDLE}>
+          Schedule
+        </Link>
+      )}
       <HeaderToolsMenu idleClassName={NAV_IDLE} activeClassName={NAV_ACTIVE} />
       {extraLinks}
     </>

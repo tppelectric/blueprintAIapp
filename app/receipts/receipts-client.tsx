@@ -22,7 +22,13 @@ import {
 import { createBrowserClient } from "@/lib/supabase/client";
 import { useReceiptThumbIntersection } from "@/hooks/use-receipt-thumb-intersection";
 
-type TabKey = "all" | "unassigned" | "by_job" | "by_person" | "mine";
+type TabKey =
+  | "all"
+  | "unassigned"
+  | "pending_push"
+  | "by_job"
+  | "by_person"
+  | "mine";
 
 const INACTIVE_JOB_STATUSES = new Set([
   "Completed",
@@ -309,6 +315,8 @@ export function ReceiptsClient() {
       return myId
         ? receipts.filter((r) => r.uploaded_by === myId)
         : [];
+    if (tab === "pending_push")
+      return receipts.filter((r) => r.job_id && !r.pushed_to_jobtread_at);
     if (tab === "by_job" || tab === "by_person") return [];
     return receipts;
   }, [receipts, tab, myId]);
@@ -803,6 +811,9 @@ export function ReceiptsClient() {
             [
               ["all", "All"],
               ["unassigned", "Unassigned"],
+              ...(canPush
+                ? ([["pending_push", "Pending push"]] as [TabKey, string][])
+                : []),
               ["by_job", "By job"],
               ...(isAdmin
                 ? ([["by_person", "By person"]] as [TabKey, string][])
@@ -826,6 +837,11 @@ export function ReceiptsClient() {
               {k === "unassigned" && unassignedCount > 0 ? (
                 <span className="ml-1.5 inline-flex min-w-[1.25rem] justify-center rounded-full bg-red-500/90 px-1.5 text-[11px] font-bold text-white">
                   {unassignedCount}
+                </span>
+              ) : null}
+              {k === "pending_push" && counts.pendingPush > 0 ? (
+                <span className="ml-1.5 inline-flex min-w-[1.25rem] justify-center rounded-full bg-[#E8C84A] px-1.5 text-[11px] font-bold text-[#0a1628]">
+                  {counts.pendingPush}
                 </span>
               ) : null}
             </button>
@@ -959,6 +975,12 @@ export function ReceiptsClient() {
                 icon={<span aria-hidden>✅</span>}
                 title="No unassigned receipts"
                 description="Every captured receipt is linked to a job, or you have not uploaded any yet."
+              />
+            ) : tab === "pending_push" ? (
+              <EmptyState
+                icon={<span aria-hidden>✅</span>}
+                title="Nothing pending push"
+                description="All assigned receipts have been pushed to JobTread."
               />
             ) : (
               <EmptyState

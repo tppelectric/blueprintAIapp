@@ -19,7 +19,10 @@ import {
   startOfWeekMonday,
   toIsoDate,
 } from "@/lib/time-calendar-helpers";
-import type { WorkCalendarRow } from "@/lib/time-management-types";
+import type {
+  ScheduleAssignmentRow,
+  WorkCalendarRow,
+} from "@/lib/time-management-types";
 import { createBrowserClient } from "@/lib/supabase/client";
 
 type ViewMode = "month" | "week" | "day";
@@ -38,6 +41,7 @@ export function WorkCalendarClient() {
   const [view, setView] = useState<ViewMode>("month");
   const [cursor, setCursor] = useState(() => new Date());
   const [rows, setRows] = useState<WorkCalendarRow[]>([]);
+  const [scheduled, setScheduled] = useState<ScheduleAssignmentRow[]>([]);
   const [jobs, setJobs] = useState<{ id: string; job_name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -73,17 +77,27 @@ export function WorkCalendarClient() {
     setError(null);
     try {
       const sb = createBrowserClient();
-      const [{ data, error: qe }, { data: jd }] = await Promise.all([
-        sb
-          .from("work_calendar")
-          .select("*")
-          .gte("calendar_date", range.from)
-          .lte("calendar_date", range.to)
-          .order("calendar_date", { ascending: true }),
-        sb.from("jobs").select("id,job_name").order("updated_at", { ascending: false }),
-      ]);
+      const [{ data, error: qe }, { data: jd }, { data: sd }] =
+        await Promise.all([
+          sb
+            .from("work_calendar")
+            .select("*")
+            .gte("calendar_date", range.from)
+            .lte("calendar_date", range.to)
+            .order("calendar_date", { ascending: true }),
+          sb
+            .from("jobs")
+            .select("id,job_name")
+            .order("updated_at", { ascending: false }),
+          sb
+            .from("schedule_assignments")
+            .select("*")
+            .gte("schedule_date", range.from)
+            .lte("schedule_date", range.to),
+        ]);
       if (qe) throw qe;
       setRows((data ?? []) as WorkCalendarRow[]);
+      setScheduled((sd ?? []) as ScheduleAssignmentRow[]);
       setJobs(
         (jd ?? []).map((j) => ({
           id: j.id as string,
@@ -124,6 +138,16 @@ export function WorkCalendarClient() {
     }
     return m;
   }, [filtered]);
+
+  const scheduledByDate = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of scheduled) {
+      if (filterEmployee && s.employee_id !== filterEmployee) continue;
+      if (filterJob && s.job_id !== filterJob) continue;
+      m.set(s.schedule_date, (m.get(s.schedule_date) ?? 0) + 1);
+    }
+    return m;
+  }, [scheduled, filterEmployee, filterJob]);
 
   const employees = useMemo(() => {
     const m = new Map<string, string>();
@@ -381,6 +405,11 @@ export function WorkCalendarClient() {
                     {offNames.length ? (
                       <div className="mt-0.5 text-[9px] font-medium text-amber-300/80">
                         {offNames.length} off
+                      </div>
+                    ) : null}
+                    {(scheduledByDate.get(cell.date) ?? 0) > 0 ? (
+                      <div className="mt-0.5 text-[9px] font-medium text-sky-300/80">
+                        📌 {scheduledByDate.get(cell.date)} scheduled
                       </div>
                     ) : null}
                   </button>

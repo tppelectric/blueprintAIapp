@@ -50,6 +50,11 @@ function isClosedJobtreadStatus(status: string | null | undefined): boolean {
 }
 
 /** Plain-text note posted to JobTread via createComment. */
+/** JobTread comment message length cap (leave headroom under the API limit). */
+const NOTE_MAX_CHARS = 3800;
+/** Most line items to itemize in the note (the photo carries full detail). */
+const NOTE_MAX_LINE_ITEMS = 40;
+
 export function buildReceiptJobtreadNote(
   receipt: Pick<
     ReceiptRow,
@@ -58,6 +63,7 @@ export function buildReceiptJobtreadNote(
     | "receipt_date"
     | "receipt_category"
     | "description"
+    | "line_items"
   >,
   job: Pick<ReceiptPushJobRow, "job_number" | "job_name">,
 ): string {
@@ -70,7 +76,34 @@ export function buildReceiptJobtreadNote(
     `Category: ${receipt.receipt_category?.trim() || "—"}`,
     `Description: ${receipt.description?.trim() || "—"}`,
   ];
-  return lines.join("\n");
+
+  const items = Array.isArray(receipt.line_items) ? receipt.line_items : [];
+  if (items.length) {
+    lines.push("", `Line items (${items.length}):`);
+    for (const it of items.slice(0, NOTE_MAX_LINE_ITEMS)) {
+      const qty =
+        it.quantity != null && Number.isFinite(Number(it.quantity))
+          ? `${it.quantity}x `
+          : "";
+      const desc = (it.description ?? "").trim() || "—";
+      const amt =
+        it.total != null
+          ? formatReceiptCurrency(it.total)
+          : it.unit_price != null
+            ? formatReceiptCurrency(it.unit_price)
+            : "";
+      lines.push(`- ${qty}${desc}${amt ? ` — ${amt}` : ""}`);
+    }
+    if (items.length > NOTE_MAX_LINE_ITEMS) {
+      lines.push(`…and ${items.length - NOTE_MAX_LINE_ITEMS} more (see photo)`);
+    }
+  }
+
+  let note = lines.join("\n");
+  if (note.length > NOTE_MAX_CHARS) {
+    note = `${note.slice(0, NOTE_MAX_CHARS - 1)}…`;
+  }
+  return note;
 }
 
 export function getReceiptPushBlockReason(args: {

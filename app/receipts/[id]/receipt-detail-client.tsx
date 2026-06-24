@@ -666,8 +666,8 @@ export function ReceiptDetailClient() {
                     {pushPreview?.notePreview ?? "—"}
                   </pre>
                   <p className="mt-3 text-[11px] text-white/40">
-                    Text note only. Receipt image attach is not included yet
-                    (TODO: createUploadRequest + createFile once confirmed).
+                    The note above plus the receipt photo are posted to the
+                    JobTread job.
                   </p>
                   {pushError && pushPreview ? (
                     <p className="mt-3 text-sm text-red-300">{pushError}</p>

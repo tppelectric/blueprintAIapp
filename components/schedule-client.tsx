@@ -314,7 +314,7 @@ export function ScheduleClient() {
 
             <section className="mt-10">
               <h2 className="text-sm font-bold uppercase tracking-wide text-[#E8C84A]">
-                Upcoming
+                Upcoming{assignments.length ? ` (${assignments.length})` : ""}
               </h2>
               {byDate.length === 0 ? (
                 <div className="mt-4">

@@ -363,6 +363,11 @@ export function HomepageSyncWidget() {
                   jobs · {results.daily_logs.count} logs
                 </>
               ) : null}
+              {receiptsPending && receiptsPending > 0 ? (
+                <span className="ml-2 font-semibold text-[#E8C84A]">
+                  · {receiptsPending} receipts to push
+                </span>
+              ) : null}
             </span>
           ) : null}
           <svg

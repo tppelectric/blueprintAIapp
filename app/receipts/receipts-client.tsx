@@ -22,7 +22,7 @@ import {
 import { createBrowserClient } from "@/lib/supabase/client";
 import { useReceiptThumbIntersection } from "@/hooks/use-receipt-thumb-intersection";
 
-type TabKey = "all" | "unassigned" | "by_job" | "mine";
+type TabKey = "all" | "unassigned" | "by_job" | "by_person" | "mine";
 
 const INACTIVE_JOB_STATUSES = new Set([
   "Completed",
@@ -292,9 +292,35 @@ export function ReceiptsClient() {
       return myId
         ? receipts.filter((r) => r.uploaded_by === myId)
         : [];
-    if (tab === "by_job") return [];
+    if (tab === "by_job" || tab === "by_person") return [];
     return receipts;
   }, [receipts, tab, myId]);
+
+  /** Per-uploader breakdown (who uploaded, how many, totals, open items). */
+  const uploaderBreakdown = useMemo(() => {
+    const m = new Map<
+      string,
+      {
+        id: string;
+        count: number;
+        total: number;
+        unassigned: number;
+        pendingPush: number;
+      }
+    >();
+    for (const r of receipts) {
+      const id = r.uploaded_by;
+      const cur =
+        m.get(id) ??
+        { id, count: 0, total: 0, unassigned: 0, pendingPush: 0 };
+      cur.count += 1;
+      cur.total += Number(r.total_amount) || 0;
+      if (!r.job_id) cur.unassigned += 1;
+      else if (!r.pushed_to_jobtread_at) cur.pendingPush += 1;
+      m.set(id, cur);
+    }
+    return [...m.values()].sort((a, b) => b.count - a.count);
+  }, [receipts]);
 
   const jobStatsById = useMemo(() => {
     const m = new Map<string, { count: number; total: number }>();
@@ -732,8 +758,11 @@ export function ReceiptsClient() {
               ["all", "All"],
               ["unassigned", "Unassigned"],
               ["by_job", "By job"],
+              ...(isAdmin
+                ? ([["by_person", "By person"]] as [TabKey, string][])
+                : []),
               ["mine", "My receipts"],
-            ] as const
+            ] as [TabKey, string][]
           ).map(([k, label]) => (
             <button
               key={k}
@@ -760,6 +789,54 @@ export function ReceiptsClient() {
         <div className="mt-6 min-w-0 space-y-4">
           {loading ? (
             <ReceiptListSkeleton count={6} />
+          ) : tab === "by_person" ? (
+            uploaderBreakdown.length === 0 ? (
+              <EmptyState
+                icon={<span aria-hidden>👤</span>}
+                title="No receipts yet"
+                description="Once employees capture receipts, a per-person breakdown shows here."
+              />
+            ) : (
+              <div className="space-y-3">
+                {uploaderBreakdown.map((u) => (
+                  <div
+                    key={u.id}
+                    className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-xl border border-white/10 bg-white/[0.03] p-4"
+                  >
+                    <p className="min-w-[10rem] flex-1 font-semibold text-white">
+                      {displayProfileName(profiles[u.id] ?? {})}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+                      <span className="text-white/70">
+                        <span className="font-bold text-white">{u.count}</span>{" "}
+                        receipt{u.count === 1 ? "" : "s"}
+                      </span>
+                      <span className="text-white/70">
+                        <span className="font-bold text-[#E8C84A]">
+                          {formatReceiptCurrency(u.total)}
+                        </span>
+                      </span>
+                      <span
+                        className={
+                          u.unassigned > 0 ? "text-red-300" : "text-white/45"
+                        }
+                      >
+                        {u.unassigned} unassigned
+                      </span>
+                      <span
+                        className={
+                          u.pendingPush > 0
+                            ? "text-[#E8C84A]"
+                            : "text-white/45"
+                        }
+                      >
+                        {u.pendingPush} pending push
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
           ) : tab === "by_job" ? (
             jobReceiptGroups.length === 0 ? (
               <EmptyState

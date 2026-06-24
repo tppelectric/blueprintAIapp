@@ -84,18 +84,31 @@ export function ScheduleClient() {
 
       const { data: jd } = await sb
         .from("jobs")
-        .select("id,job_name,job_number,status")
+        .select(
+          "id,job_name,job_number,status,location_name,address,customers(company_name,contact_name)",
+        )
         .order("updated_at", { ascending: false })
         .limit(400);
       setJobs(
         (jd ?? []).map((j) => {
           const rec = j as Record<string, unknown>;
           const label = jobLabel(rec);
+          const custRaw = rec.customers;
+          const c = (
+            Array.isArray(custRaw) ? custRaw[0] : custRaw
+          ) as { company_name?: string | null; contact_name?: string | null } | null;
+          const customer =
+            c?.company_name?.trim() || c?.contact_name?.trim() || "";
+          const loc = String(rec.location_name ?? "").trim();
+          const addr = String(rec.address ?? "").trim();
           return {
             id: j.id as string,
             label,
             status: String(rec.status ?? "").trim() || "Lead",
-            search: label.toLowerCase(),
+            search: [label, customer, loc, addr]
+              .filter(Boolean)
+              .join(" ")
+              .toLowerCase(),
           };
         }),
       );
@@ -255,7 +268,7 @@ export function ScheduleClient() {
                   </label>
                   <div className="sm:col-span-2">
                     <label className="text-xs text-white/50">
-                      Job — search number, name
+                      Job — search number, name, customer, address
                       <input
                         className="app-input mt-1 w-full text-sm"
                         value={jobSearch}

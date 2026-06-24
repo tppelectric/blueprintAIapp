@@ -512,7 +512,7 @@ export function WorkCalendarClient() {
           </>
         ) : (
           <>
-            {!loading && rows.length === 0 ? (
+            {!loading && rows.length === 0 && scheduled.length === 0 ? (
               <div className="mt-6">
                 <EmptyState
                   icon={<span aria-hidden>📅</span>}
@@ -535,7 +535,7 @@ export function WorkCalendarClient() {
                 </p>
               </div>
             ) : null}
-          {rows.length > 0 ? (
+          {rows.length > 0 || scheduled.length > 0 ? (
           <div className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] p-4">
             <ul className="space-y-3 text-sm">
               {(byDate.get(range.from) ?? []).map((r) => (
@@ -554,6 +554,29 @@ export function WorkCalendarClient() {
                 </li>
               ))}
             </ul>
+            {filteredScheduled.filter((s) => s.schedule_date === range.from)
+              .length ? (
+              <div className="mt-3 border-t border-white/10 pt-3">
+                <p className="text-xs font-bold uppercase text-sky-300/90">
+                  📌 Scheduled
+                </p>
+                <ul className="mt-2 space-y-2 text-sm">
+                  {filteredScheduled
+                    .filter((s) => s.schedule_date === range.from)
+                    .map((s) => (
+                      <li key={s.id} className="text-sky-100/85">
+                        {s.employee_name ?? "—"} —{" "}
+                        <span className="text-sky-100/70">
+                          {s.job_name ?? "—"}
+                        </span>
+                        {s.notes ? (
+                          <span className="text-white/45"> · {s.notes}</span>
+                        ) : null}
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            ) : null}
           </div>
           ) : null}
           </>

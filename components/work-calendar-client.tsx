@@ -139,15 +139,23 @@ export function WorkCalendarClient() {
     return m;
   }, [filtered]);
 
+  const filteredScheduled = useMemo(
+    () =>
+      scheduled.filter((s) => {
+        if (filterEmployee && s.employee_id !== filterEmployee) return false;
+        if (filterJob && s.job_id !== filterJob) return false;
+        return true;
+      }),
+    [scheduled, filterEmployee, filterJob],
+  );
+
   const scheduledByDate = useMemo(() => {
     const m = new Map<string, number>();
-    for (const s of scheduled) {
-      if (filterEmployee && s.employee_id !== filterEmployee) continue;
-      if (filterJob && s.job_id !== filterJob) continue;
+    for (const s of filteredScheduled) {
       m.set(s.schedule_date, (m.get(s.schedule_date) ?? 0) + 1);
     }
     return m;
-  }, [scheduled, filterEmployee, filterJob]);
+  }, [filteredScheduled]);
 
   const employees = useMemo(() => {
     const m = new Map<string, string>();
@@ -554,7 +562,11 @@ export function WorkCalendarClient() {
                   Close
                 </button>
               </div>
-              <DayDetailList date={dayDetail} rows={filtered} />
+              <DayDetailList
+                date={dayDetail}
+                rows={filtered}
+                scheduled={filteredScheduled}
+              />
             </div>
           </div>
         ) : null}
@@ -576,15 +588,43 @@ function fmtHours(h: number): string {
 function DayDetailList({
   date,
   rows,
+  scheduled,
 }: {
   date: string;
   rows: WorkCalendarRow[];
+  scheduled: ScheduleAssignmentRow[];
 }) {
   const dayRows = rows.filter((r) => r.calendar_date === date);
   const work = dayRows.filter((r) => r.event_type === "work");
   const off = dayRows.filter((r) => r.event_type === "time_off");
+  const sched = scheduled.filter((s) => s.schedule_date === date);
   return (
     <div className="mt-4 space-y-4 text-sm">
+      <section>
+        <h3 className="text-xs font-bold uppercase text-sky-300/90">
+          📌 Scheduled
+        </h3>
+        {sched.length === 0 ? (
+          <p className="mt-1 text-white/45">No one scheduled.</p>
+        ) : (
+          <ul className="mt-2 space-y-2">
+            {sched.map((s) => (
+              <li
+                key={s.id}
+                className="rounded-lg border border-sky-400/25 bg-sky-950/20 p-3"
+              >
+                <p className="font-medium text-sky-50">
+                  {s.employee_name ?? "—"}
+                </p>
+                <p className="text-xs text-sky-100/70">{s.job_name ?? "—"}</p>
+                {s.notes ? (
+                  <p className="mt-1 text-xs text-white/45">{s.notes}</p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
       <section>
         <h3 className="text-xs font-bold uppercase text-sky-200/90">Working</h3>
         {work.length === 0 ? (

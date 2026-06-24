@@ -15,7 +15,10 @@ import {
   type ReceiptRow,
 } from "@/lib/receipts-types";
 import { parseReceiptRow } from "@/lib/receipts-parse";
-import { canManageReceiptsAdmin } from "@/lib/user-roles";
+import {
+  canManageReceiptsAdmin,
+  canPushReceiptToJobtread,
+} from "@/lib/user-roles";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { useReceiptThumbIntersection } from "@/hooks/use-receipt-thumb-intersection";
 
@@ -64,6 +67,7 @@ export function ReceiptsClient() {
   const { showToast } = useAppToast();
   const { role, profile } = useUserRole();
   const isAdmin = canManageReceiptsAdmin(role);
+  const canPush = canPushReceiptToJobtread(role);
   const myId = profile?.id ?? null;
 
   const [tab, setTab] = useState<TabKey>("all");
@@ -150,6 +154,75 @@ export function ReceiptsClient() {
   const unassignedCount = useMemo(
     () => receipts.filter((r) => !r.job_id).length,
     [receipts],
+  );
+
+  /** Status summary for the dashboard bar. */
+  const counts = useMemo(() => {
+    let assigned = 0;
+    let unassigned = 0;
+    let pushed = 0;
+    let pendingPush = 0;
+    for (const r of receipts) {
+      if (r.job_id) {
+        assigned += 1;
+        if (r.pushed_to_jobtread_at) pushed += 1;
+        else pendingPush += 1;
+      } else {
+        unassigned += 1;
+      }
+    }
+    return { total: receipts.length, assigned, unassigned, pushed, pendingPush };
+  }, [receipts]);
+
+  /** Push a single receipt to JobTread from the list (reuses the guarded route). */
+  const pushReceipt = useCallback(
+    async (r: ReceiptRow) => {
+      if (
+        !window.confirm(
+          "Push this receipt to JobTread? The note + photo will post to the linked job.",
+        )
+      ) {
+        return;
+      }
+      setReceiptActionId(r.id);
+      try {
+        const res = await fetch(
+          `/api/receipts/${encodeURIComponent(r.id)}/jobtread-push`,
+          {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ confirm: true }),
+          },
+        );
+        const body = (await res.json()) as {
+          ok?: boolean;
+          error?: string;
+          fileId?: string | null;
+          imageWarning?: string | null;
+        };
+        if (!res.ok || body.ok === false) {
+          throw new Error(body.error ?? "Push failed.");
+        }
+        showToast({
+          message: body.fileId
+            ? "Pushed to JobTread (note + image)."
+            : body.imageWarning
+              ? `Note pushed. Image: ${body.imageWarning}`
+              : "Pushed to JobTread.",
+          variant: "success",
+        });
+        void load();
+      } catch (e) {
+        showToast({
+          message: e instanceof Error ? e.message : "Push failed.",
+          variant: "error",
+        });
+      } finally {
+        setReceiptActionId(null);
+      }
+    },
+    [load, showToast],
   );
 
   const filtered = useMemo(() => {
@@ -436,6 +509,21 @@ export function ReceiptsClient() {
           >
             View
           </Link>
+          {r.job_id ? (
+            r.pushed_to_jobtread_at ? (
+              <span className="rounded-lg bg-emerald-500/15 px-3 py-2 text-center text-xs font-semibold text-emerald-200/95">
+                ✓ Pushed to JobTread
+              </span>
+            ) : canPush ? (
+              <button
+                type="button"
+                className="rounded-lg border border-emerald-400/50 px-3 py-2 text-center text-xs font-semibold text-emerald-200 hover:bg-emerald-500/10"
+                onClick={() => void pushReceipt(r)}
+              >
+                Push to JobTread
+              </button>
+            ) : null
+          ) : null}
           {!r.job_id ? (
             <button
               type="button"
@@ -494,6 +582,30 @@ export function ReceiptsClient() {
         <p className="mt-1 text-sm text-white/55">
           Capture, review, and assign expense receipts to jobs.
         </p>
+
+        {!loading && counts.total > 0 ? (
+          <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-5">
+            {(
+              [
+                ["Total", counts.total, "text-white"],
+                ["Unassigned", counts.unassigned, "text-red-300"],
+                ["Assigned", counts.assigned, "text-white"],
+                ["Pushed", counts.pushed, "text-emerald-300"],
+                ["Pending push", counts.pendingPush, "text-[#E8C84A]"],
+              ] as const
+            ).map(([label, n, color]) => (
+              <div
+                key={label}
+                className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5"
+              >
+                <p className={`text-xl font-bold tabular-nums ${color}`}>{n}</p>
+                <p className="text-[11px] uppercase tracking-wide text-white/45">
+                  {label}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         <div className="mt-6" data-receipt-capture-anchor>
           <ReceiptCapture title="📷 Capture receipt" onSaved={() => void load()} />

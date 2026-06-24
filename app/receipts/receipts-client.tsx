@@ -738,23 +738,43 @@ export function ReceiptsClient() {
           <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-5">
             {(
               [
-                ["Total", counts.total, "text-white"],
-                ["Unassigned", counts.unassigned, "text-red-300"],
-                ["Assigned", counts.assigned, "text-white"],
-                ["Pushed", counts.pushed, "text-emerald-300"],
-                ["Pending push", counts.pendingPush, "text-[#E8C84A]"],
-              ] as const
-            ).map(([label, n, color]) => (
-              <div
-                key={label}
-                className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5"
-              >
-                <p className={`text-xl font-bold tabular-nums ${color}`}>{n}</p>
-                <p className="text-[11px] uppercase tracking-wide text-white/45">
-                  {label}
-                </p>
-              </div>
-            ))}
+                ["Total", counts.total, "text-white", "all"],
+                ["Unassigned", counts.unassigned, "text-red-300", "unassigned"],
+                ["Assigned", counts.assigned, "text-white", null],
+                ["Pushed", counts.pushed, "text-emerald-300", null],
+                [
+                  "Pending push",
+                  counts.pendingPush,
+                  "text-[#E8C84A]",
+                  canPush ? "pending_push" : null,
+                ],
+              ] as [string, number, string, TabKey | null][]
+            ).map(([label, n, color, target]) => {
+              const inner = (
+                <>
+                  <p className={`text-xl font-bold tabular-nums ${color}`}>{n}</p>
+                  <p className="text-[11px] uppercase tracking-wide text-white/45">
+                    {label}
+                  </p>
+                </>
+              );
+              const base =
+                "rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-left";
+              return target ? (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setTab(target)}
+                  className={`${base} transition-colors hover:border-[#E8C84A]/50`}
+                >
+                  {inner}
+                </button>
+              ) : (
+                <div key={label} className={base}>
+                  {inner}
+                </div>
+              );
+            })}
           </div>
         ) : null}
 

@@ -64,10 +64,10 @@ export function LinkToJobDialog({
         sb
           .from("jobs")
           .select(
-            "id,job_name,job_number,status,job_type,updated_at,customer_id,customers(company_name,contact_name)",
+            "id,job_name,job_number,status,job_type,updated_at,customer_id,location_name,address,customers(company_name,contact_name)",
           )
           .order("updated_at", { ascending: false })
-          .limit(80),
+          .limit(400),
         sb
           .from("customers")
           .select("id,company_name,contact_name,email,phone,created_at")
@@ -91,10 +91,17 @@ export function LinkToJobDialog({
   const filteredJobs = jobs.filter((j) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
-    return (
-      j.job_name.toLowerCase().includes(q) ||
-      j.job_number.toLowerCase().includes(q)
-    );
+    const rec = j as unknown as Record<string, unknown>;
+    const hay = [
+      j.job_name,
+      j.job_number,
+      customerLabel(j),
+      rec.location_name,
+      rec.address,
+    ]
+      .map((x) => String(x ?? "").toLowerCase())
+      .join(" ");
+    return hay.includes(q);
   });
 
   const linkToJob = async (jobId: string) => {
@@ -241,7 +248,7 @@ export function LinkToJobDialog({
             className="mt-1 w-full rounded-lg border border-white/15 bg-[#071422] px-3 py-2 text-sm text-white"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Name or job number"
+            placeholder="Name, number, customer, location, address"
           />
         </label>
 

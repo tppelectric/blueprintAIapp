@@ -6,7 +6,7 @@ import { DarkListSkeleton, EmptyState } from "@/components/app-polish";
 import { WideAppHeader } from "@/components/wide-app-header";
 import { useAppToast } from "@/components/toast-provider";
 import { useUserRole } from "@/hooks/use-user-role";
-import { toIsoDate } from "@/lib/time-calendar-helpers";
+import { addDays, toIsoDate } from "@/lib/time-calendar-helpers";
 import { userDisplayName } from "@/lib/user-display-name";
 import type { ScheduleAssignmentRow } from "@/lib/time-management-types";
 import { createBrowserClient } from "@/lib/supabase/client";
@@ -62,6 +62,7 @@ export function ScheduleClient() {
   const [busy, setBusy] = useState(false);
 
   const today = toIsoDate(new Date());
+  const tomorrow = toIsoDate(addDays(new Date(), 1));
   const [empId, setEmpId] = useState("");
   const [date, setDate] = useState(today);
   const [jobId, setJobId] = useState("");
@@ -318,7 +319,14 @@ export function ScheduleClient() {
                 <div className="mt-4 space-y-6">
                   {byDate.map(([d, rows]) => (
                     <div key={d}>
-                      <p className="text-sm font-semibold text-white/80">
+                      <p
+                        className={`text-sm font-semibold ${d === today ? "text-[#E8C84A]" : "text-white/80"}`}
+                      >
+                        {d === today
+                          ? "Today · "
+                          : d === tomorrow
+                            ? "Tomorrow · "
+                            : ""}
                         {prettyDate(d)}
                       </p>
                       <div className="mt-2 space-y-2">

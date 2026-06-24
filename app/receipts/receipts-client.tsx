@@ -82,6 +82,8 @@ export function ReceiptsClient() {
   const [assignJobSearch, setAssignJobSearch] = useState("");
   const [receiptActionId, setReceiptActionId] = useState<string | null>(null);
   const [editing, setEditing] = useState<ReceiptRow | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const { bindReceiptThumb, getOrFetchThumbUrl } = useReceiptThumbIntersection(
     thumbs,
@@ -173,6 +175,64 @@ export function ReceiptsClient() {
     }
     return { total: receipts.length, assigned, unassigned, pushed, pendingPush };
   }, [receipts]);
+
+  /** Receipts that can be pushed: assigned to a job and not yet pushed. */
+  const pushableReceipts = useMemo(
+    () => receipts.filter((r) => r.job_id && !r.pushed_to_jobtread_at),
+    [receipts],
+  );
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  /** Push many receipts sequentially via the guarded route; summarize result. */
+  const bulkPush = useCallback(
+    async (ids: string[]) => {
+      if (!ids.length) return;
+      if (
+        !window.confirm(
+          `Push ${ids.length} receipt${ids.length === 1 ? "" : "s"} to JobTread? The note + photo posts to each linked job.`,
+        )
+      ) {
+        return;
+      }
+      setBulkBusy(true);
+      let ok = 0;
+      let fail = 0;
+      for (const id of ids) {
+        try {
+          const res = await fetch(
+            `/api/receipts/${encodeURIComponent(id)}/jobtread-push`,
+            {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ confirm: true }),
+            },
+          );
+          const body = (await res.json()) as { ok?: boolean };
+          if (!res.ok || body.ok === false) fail += 1;
+          else ok += 1;
+        } catch {
+          fail += 1;
+        }
+      }
+      setBulkBusy(false);
+      setSelected(new Set());
+      showToast({
+        message: `Synced ${ok} receipt${ok === 1 ? "" : "s"} to JobTread${fail ? ` · ${fail} failed` : ""}.`,
+        variant: fail ? "error" : "success",
+      });
+      void load();
+    },
+    [load, showToast],
+  );
 
   /** Push a single receipt to JobTread from the list (reuses the guarded route). */
   const pushReceipt = useCallback(
@@ -503,6 +563,17 @@ export function ReceiptsClient() {
           ) : null}
         </div>
         <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:min-w-[9.5rem]">
+          {canPush && r.job_id && !r.pushed_to_jobtread_at ? (
+            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-medium text-white/70 hover:bg-white/[0.06]">
+              <input
+                type="checkbox"
+                checked={selected.has(r.id)}
+                onChange={() => toggleSelect(r.id)}
+                className="accent-[#E8C84A]"
+              />
+              Select to sync
+            </label>
+          ) : null}
           <Link
             href={`/receipts/${r.id}`}
             className="rounded-lg border border-white/20 px-3 py-2 text-center text-xs font-semibold text-white/80 hover:bg-white/10"
@@ -604,6 +675,47 @@ export function ReceiptsClient() {
                 </p>
               </div>
             ))}
+          </div>
+        ) : null}
+
+        {canPush && !loading && pushableReceipts.length > 0 ? (
+          <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#E8C84A]/30 bg-[#E8C84A]/[0.06] px-3 py-2.5">
+            <span className="text-xs font-medium text-white/75">
+              {pushableReceipts.length} pending push to JobTread
+              {selected.size > 0 ? ` · ${selected.size} selected` : ""}
+            </span>
+            <div className="ml-auto flex flex-wrap gap-2">
+              {selected.size > 0 ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={bulkBusy}
+                    onClick={() => void bulkPush([...selected])}
+                    className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
+                  >
+                    {bulkBusy ? "Syncing…" : `Sync ${selected.size} selected`}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={bulkBusy}
+                    onClick={() => setSelected(new Set())}
+                    className="rounded-lg border border-white/20 px-3 py-1.5 text-xs font-semibold text-white/75 hover:bg-white/10 disabled:opacity-50"
+                  >
+                    Clear
+                  </button>
+                </>
+              ) : null}
+              <button
+                type="button"
+                disabled={bulkBusy}
+                onClick={() =>
+                  void bulkPush(pushableReceipts.map((r) => r.id))
+                }
+                className="rounded-lg border border-emerald-400/50 px-3 py-1.5 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/10 disabled:opacity-50"
+              >
+                {bulkBusy ? "Syncing…" : `Sync all (${pushableReceipts.length})`}
+              </button>
+            </div>
           </div>
         ) : null}
 

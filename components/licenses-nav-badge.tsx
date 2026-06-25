@@ -21,7 +21,11 @@ export function LicensesNavBadge() {
     const load = async () => {
       try {
         const sb = createBrowserClient();
-        const { data, error } = await sb.from("licenses").select("*");
+        const { data, error } = await sb
+          .from("licenses")
+          .select(
+            "id,license_status,expiry_date,requires_ce,ce_hours_required,ce_hours_completed,ce_renewal_deadline",
+          );
         if (cancelled || error) {
           if (!cancelled) setN(null);
           return;

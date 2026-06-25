@@ -108,7 +108,11 @@ export function TeamCommandCenterCard({
         const sb = createBrowserClient();
         const [unassignedReceiptCount, licRes] = await Promise.all([
           fetchUnassignedReceiptsCount(sb),
-          sb.from("licenses").select("*"),
+          sb
+            .from("licenses")
+            .select(
+              "id,license_status,expiry_date,requires_ce,ce_hours_required,ce_hours_completed,ce_renewal_deadline",
+            ),
         ]);
         if (cancelled) return;
         setUnassignedReceipts(unassignedReceiptCount);
@@ -129,7 +133,9 @@ export function TeamCommandCenterCard({
         }
 
         if (!roleLoading && canViewAdminRequestQueue(role)) {
-          const irRes = await sb.from("internal_requests").select("*");
+          const irRes = await sb
+            .from("internal_requests")
+            .select("id,status,priority,created_at,resolved_at");
           if (!irRes.error && irRes.data) {
             const irRows = irRes.data.map((r) =>
               mapInternalRequestRow(r as Record<string, unknown>),

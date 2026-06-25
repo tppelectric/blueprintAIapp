@@ -10,13 +10,10 @@ import { addDays, toIsoDate } from "@/lib/time-calendar-helpers";
 import { userDisplayName } from "@/lib/user-display-name";
 import type { ScheduleAssignmentRow } from "@/lib/time-management-types";
 import { createBrowserClient } from "@/lib/supabase/client";
-
-const INACTIVE_JOB_STATUSES = new Set([
-  "Completed",
-  "Cancelled",
-  "Closed",
-  "Lost",
-]);
+import {
+  JobSearchPicker,
+  type JobPickerOption,
+} from "@/components/job-search-picker";
 
 type AssignableUser = {
   id: string;
@@ -25,20 +22,6 @@ type AssignableUser = {
   first_name: string | null;
   last_name: string | null;
 };
-
-type JobOpt = {
-  id: string;
-  label: string;
-  status: string;
-  search: string;
-};
-
-function jobLabel(j: { job_number?: unknown; job_name?: unknown }): string {
-  const a = String(j.job_number ?? "").trim();
-  const b = String(j.job_name ?? "").trim();
-  if (a && b) return `${a} · ${b}`;
-  return a || b || "Job";
-}
 
 function prettyDate(iso: string): string {
   const d = new Date(`${iso}T00:00:00`);
@@ -55,7 +38,6 @@ export function ScheduleClient() {
   const { profile } = useUserRole();
 
   const [assignments, setAssignments] = useState<ScheduleAssignmentRow[]>([]);
-  const [jobs, setJobs] = useState<JobOpt[]>([]);
   const [users, setUsers] = useState<AssignableUser[]>([]);
   const [canSchedule, setCanSchedule] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -65,8 +47,7 @@ export function ScheduleClient() {
   const tomorrow = toIsoDate(addDays(new Date(), 1));
   const [empId, setEmpId] = useState("");
   const [date, setDate] = useState(today);
-  const [jobId, setJobId] = useState("");
-  const [jobSearch, setJobSearch] = useState("");
+  const [job, setJob] = useState<JobPickerOption | null>(null);
   const [notes, setNotes] = useState("");
 
   const load = useCallback(async () => {
@@ -81,37 +62,6 @@ export function ScheduleClient() {
         .order("schedule_date", { ascending: true });
       if (ae) throw ae;
       setAssignments((aData ?? []) as ScheduleAssignmentRow[]);
-
-      const { data: jd } = await sb
-        .from("jobs")
-        .select(
-          "id,job_name,job_number,status,location_name,address,customers(company_name,contact_name)",
-        )
-        .order("updated_at", { ascending: false })
-        .limit(400);
-      setJobs(
-        (jd ?? []).map((j) => {
-          const rec = j as Record<string, unknown>;
-          const label = jobLabel(rec);
-          const custRaw = rec.customers;
-          const c = (
-            Array.isArray(custRaw) ? custRaw[0] : custRaw
-          ) as { company_name?: string | null; contact_name?: string | null } | null;
-          const customer =
-            c?.company_name?.trim() || c?.contact_name?.trim() || "";
-          const loc = String(rec.location_name ?? "").trim();
-          const addr = String(rec.address ?? "").trim();
-          return {
-            id: j.id as string,
-            label,
-            status: String(rec.status ?? "").trim() || "Lead",
-            search: [label, customer, loc, addr]
-              .filter(Boolean)
-              .join(" ")
-              .toLowerCase(),
-          };
-        }),
-      );
 
       // Scheduler gate: 200 => can schedule (+ user list); 403 => read-only.
       try {
@@ -143,17 +93,6 @@ export function ScheduleClient() {
     void load();
   }, [load]);
 
-  const activeJobs = useMemo(
-    () => jobs.filter((j) => !INACTIVE_JOB_STATUSES.has(j.status)),
-    [jobs],
-  );
-
-  const jobOptions = useMemo(() => {
-    const q = jobSearch.trim().toLowerCase();
-    if (!q) return activeJobs;
-    return activeJobs.filter((j) => j.search.includes(q));
-  }, [activeJobs, jobSearch]);
-
   const byDate = useMemo(() => {
     const m = new Map<string, ScheduleAssignmentRow[]>();
     for (const a of assignments) {
@@ -165,7 +104,7 @@ export function ScheduleClient() {
   }, [assignments]);
 
   const createAssignment = async () => {
-    if (!empId || !date || !jobId) {
+    if (!empId || !date || !job) {
       showToast({
         message: "Pick an employee, date, and job.",
         variant: "error",
@@ -173,15 +112,14 @@ export function ScheduleClient() {
       return;
     }
     const emp = users.find((u) => u.id === empId);
-    const job = jobs.find((j) => j.id === jobId);
     setBusy(true);
     try {
       const sb = createBrowserClient();
       const { error } = await sb.from("schedule_assignments").insert({
         employee_id: empId,
         employee_name: emp ? userDisplayName(emp) : null,
-        job_id: jobId,
-        job_name: job?.label ?? null,
+        job_id: job.id,
+        job_name: job.label,
         schedule_date: date,
         notes: notes.trim() || null,
         created_by: profile?.id ?? null,
@@ -275,29 +213,14 @@ export function ScheduleClient() {
                     />
                   </label>
                   <div className="sm:col-span-2">
-                    <label className="text-xs text-white/50">
+                    <p className="text-xs text-white/50">
                       Job — search number, name, customer, address
-                      <input
-                        className="app-input mt-1 w-full text-sm"
-                        value={jobSearch}
-                        onChange={(e) => setJobSearch(e.target.value)}
-                        placeholder="Type to filter…"
-                        autoComplete="off"
-                      />
-                    </label>
-                    <select
-                      className="app-input mt-2 w-full text-sm"
+                    </p>
+                    <JobSearchPicker
+                      value={job?.id ?? null}
+                      onChange={setJob}
                       size={5}
-                      value={jobId}
-                      onChange={(e) => setJobId(e.target.value)}
-                    >
-                      <option value="">— Choose job —</option>
-                      {jobOptions.map((j) => (
-                        <option key={j.id} value={j.id}>
-                          {j.label}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </div>
                   <label className="text-xs text-white/50 sm:col-span-2">
                     Notes (optional)
@@ -311,7 +234,7 @@ export function ScheduleClient() {
                 </div>
                 <button
                   type="button"
-                  disabled={busy || !empId || !jobId || !date}
+                  disabled={busy || !empId || !job || !date}
                   onClick={() => void createAssignment()}
                   className="btn-primary btn-h-11 mt-4 disabled:opacity-50"
                 >

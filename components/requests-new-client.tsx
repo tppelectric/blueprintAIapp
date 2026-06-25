@@ -13,8 +13,8 @@ import type {
 } from "@/lib/internal-request-types";
 import { REQUEST_TYPE_OPTIONS } from "@/lib/internal-request-types";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { JobSearchPicker } from "@/components/job-search-picker";
 
-type JobOpt = { id: string; job_name: string; job_number: string };
 type AssetOpt = {
   id: string;
   name: string;
@@ -97,19 +97,17 @@ export function RequestsNewClient() {
   const [toolSearch, setToolSearch] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const [jobs, setJobs] = useState<JobOpt[]>([]);
   const [assets, setAssets] = useState<AssetOpt[]>([]);
 
   const loadMeta = useCallback(async () => {
     try {
       const sb = createBrowserClient();
-      const [jRes, aRes] = await Promise.all([
-        sb.from("jobs").select("id,job_name,job_number").limit(250),
-        sb.from("assets").select("id,name,asset_number,asset_type").limit(800),
-      ]);
-      setJobs((jRes.data ?? []) as JobOpt[]);
+      const { data: aData } = await sb
+        .from("assets")
+        .select("id,name,asset_number,asset_type")
+        .limit(800);
       setAssets(
-        (aRes.data ?? []).map((a) => ({
+        (aData ?? []).map((a) => ({
           id: String(a.id),
           name: String(a.name ?? ""),
           asset_number: String(a.asset_number ?? ""),
@@ -117,7 +115,6 @@ export function RequestsNewClient() {
         })),
       );
     } catch {
-      setJobs([]);
       setAssets([]);
     }
   }, []);
@@ -416,21 +413,15 @@ export function RequestsNewClient() {
           <option value="emergency">Emergency</option>
         </select>
       </label>
-      <label className="block text-xs text-white/55">
+      <div className="block text-xs text-white/55">
         Link to job (optional)
-        <select
-          className="mt-1 w-full rounded-lg border border-white/15 bg-[#071422] px-3 py-2 text-sm text-white"
-          value={jobId}
-          onChange={(e) => setJobId(e.target.value)}
-        >
-          <option value="">— None —</option>
-          {jobs.map((j) => (
-            <option key={j.id} value={j.id}>
-              {j.job_number} · {j.job_name}
-            </option>
-          ))}
-        </select>
-      </label>
+        <JobSearchPicker
+          value={jobId || null}
+          onChange={(opt) => setJobId(opt?.id ?? "")}
+          includeInactive
+          size={5}
+        />
+      </div>
       <label className="block text-xs text-white/55">
         Photos (optional)
         <input

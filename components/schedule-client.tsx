@@ -231,6 +231,14 @@ export function ScheduleClient() {
           </Link>
           .
         </p>
+        {profile?.role === "super_admin" || profile?.role === "admin" ? (
+          <Link
+            href="/schedule/reconciliation"
+            className="mt-2 inline-block text-sm font-medium text-[#E8C84A] hover:underline"
+          >
+            📊 Reconciliation (scheduled vs actual) →
+          </Link>
+        ) : null}
 
         {loading ? (
           <DarkListSkeleton className="mt-8" rows={6} />

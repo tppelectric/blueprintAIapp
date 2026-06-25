@@ -18,6 +18,8 @@ export async function POST(request: Request) {
     employee_number?: string;
     show_punch_interface?: boolean;
     can_schedule?: boolean;
+    /** true = email a registration invite now; false/omitted = add as pending (no email). */
+    sendInvite?: boolean;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -51,26 +53,43 @@ export async function POST(request: Request) {
 
   const redirectTo = origin ? `${origin.replace(/\/$/, "")}/auth/callback` : undefined;
 
-  const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
-    data: { full_name },
-    redirectTo,
-  });
+  const sendInvite = body.sendInvite === true;
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+  let userId: string | undefined;
+  if (sendInvite) {
+    // Emails a registration invite immediately.
+    const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
+      data: { full_name },
+      redirectTo,
+    });
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    userId = data.user?.id;
+  } else {
+    // Add as PENDING — no email sent. email_confirm:true so a later
+    // recovery/login link works; createUser never sends an email.
+    const { data, error } = await admin.auth.admin.createUser({
+      email,
+      email_confirm: true,
+      user_metadata: { full_name },
+    });
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    userId = data.user?.id;
   }
 
-  const invited = data.user;
-  if (!invited?.id) {
+  if (!userId) {
     return NextResponse.json(
-      { error: "Invite did not return a user id." },
+      { error: "User creation did not return an id." },
       { status: 500 },
     );
   }
 
   const { error: profileErr } = await admin.from("user_profiles").upsert(
     {
-      id: invited.id,
+      id: userId,
       email,
       full_name,
       role,
@@ -93,5 +112,5 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json({ ok: true, userId: invited.id });
+  return NextResponse.json({ ok: true, userId, pending: !sendInvite });
 }

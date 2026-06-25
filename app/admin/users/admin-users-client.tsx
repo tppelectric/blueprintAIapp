@@ -138,6 +138,7 @@ export function AdminUsersClient() {
   const [inviteEmpNo, setInviteEmpNo] = useState("");
   const [invitePunch, setInvitePunch] = useState(false);
   const [inviteCanSchedule, setInviteCanSchedule] = useState(false);
+  const [inviteSendEmail, setInviteSendEmail] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [resetTarget, setResetTarget] = useState<AdminUserProfileRow | null>(
     null,
@@ -240,20 +241,26 @@ export function AdminUsersClient() {
           employee_number: inviteEmpNo.trim(),
           show_punch_interface: invitePunch,
           can_schedule: inviteCanSchedule,
+          sendInvite: inviteSendEmail,
         }),
       });
       const j = (await r.json()) as { error?: string; ok?: boolean };
       if (!r.ok) {
-        setError(j.error ?? "Invite failed.");
+        setError(j.error ?? "Could not add employee.");
         return;
       }
-      setInviteMsg("Invitation sent.");
+      setInviteMsg(
+        inviteSendEmail
+          ? "Invitation email sent."
+          : "Employee added (pending). Use “Send invite” on their row when ready.",
+      );
       setInviteEmail("");
       setInviteName("");
       setInviteRole("estimator");
       setInviteEmpNo("");
       setInvitePunch(false);
       setInviteCanSchedule(false);
+      setInviteSendEmail(false);
       void load();
     } catch {
       setError("Invite failed.");
@@ -383,6 +390,35 @@ export function AdminUsersClient() {
     }
   };
 
+  /** Send a registration / login link to a pending (never-signed-in) user. */
+  const sendInviteLink = async (u: AdminUserProfileRow) => {
+    setPatchingUserId(u.id);
+    try {
+      const r = await fetch("/api/admin/users/reset-password", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: u.id }),
+      });
+      const j = (await r.json()) as { error?: string; email?: string };
+      if (!r.ok) {
+        showToast({
+          message: j.error ?? "Could not send invite.",
+          variant: "error",
+        });
+        return;
+      }
+      showToast({
+        message: `Invite / login link sent to ${j.email ?? u.email}`,
+        variant: "success",
+      });
+    } catch {
+      showToast({ message: "Could not send invite.", variant: "error" });
+    } finally {
+      setPatchingUserId(null);
+    }
+  };
+
   const formatCreated = (iso: string) => {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return "—";
@@ -504,6 +540,16 @@ export function AdminUsersClient() {
                 />
                 Can schedule crew (foreman / lead tech)
               </label>
+              <label className="mt-1 flex items-center gap-2 border-t border-white/10 pt-2 text-xs text-white/70">
+                <input
+                  type="checkbox"
+                  className="accent-[#E8C84A]"
+                  checked={inviteSendEmail}
+                  onChange={(e) => setInviteSendEmail(e.target.checked)}
+                />
+                Send registration email now (otherwise add as pending — invite
+                later)
+              </label>
             </div>
           </div>
           <button
@@ -512,7 +558,11 @@ export function AdminUsersClient() {
             onClick={() => void sendInvite()}
             className="mt-4 rounded-lg bg-[#E8C84A] px-4 py-2 text-sm font-semibold text-[#0a1628] disabled:opacity-40"
           >
-            {inviteBusy ? "Sending…" : "Send invite"}
+            {inviteBusy
+              ? "Saving…"
+              : inviteSendEmail
+                ? "Add & send invite"
+                : "Add employee (pending)"}
           </button>
           {inviteMsg ? (
             <p className="mt-2 text-sm text-emerald-200/90">{inviteMsg}</p>
@@ -602,6 +652,17 @@ export function AdminUsersClient() {
                             className="px-3 py-3 text-right"
                             onClick={(e) => e.stopPropagation()}
                           >
+                            {!u.last_sign_in_at ? (
+                              <button
+                                type="button"
+                                title="Send registration / login link"
+                                disabled={patchingUserId === u.id}
+                                onClick={() => void sendInviteLink(u)}
+                                className="mr-1 rounded border border-emerald-400/40 px-2 py-1 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/10 disabled:opacity-40"
+                              >
+                                ✉ Invite
+                              </button>
+                            ) : null}
                             <button
                               type="button"
                               title="Reset password"

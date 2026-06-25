@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { requireSuperAdmin } from "@/lib/require-super-admin";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 
@@ -53,23 +54,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "User not found." }, { status: 404 });
   }
 
-  const { data, error } = await admin.auth.admin.generateLink({
-    type: "recovery",
+  // generateLink only CREATES a link (no send). resetPasswordForEmail actually
+  // SENDS the email via the project's configured email/SMTP. Works for existing
+  // users incl. pending ones created via createUser (email_confirm:true).
+  const anon = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
+  );
+  const { error } = await anon.auth.resetPasswordForEmail(
     email,
-    options: redirectTo ? { redirectTo } : undefined,
-  });
+    redirectTo ? { redirectTo } : undefined,
+  );
 
   if (error) {
     return NextResponse.json(
-      { error: error.message ?? "Could not generate recovery link." },
+      { error: error.message ?? "Could not send email." },
       { status: 502 },
     );
   }
 
-  return NextResponse.json({
-    ok: true,
-    email,
-    /** Present when link generation succeeds (for debugging); email is sent per project SMTP. */
-    hasLink: Boolean(data?.properties?.action_link),
-  });
+  return NextResponse.json({ ok: true, email });
 }

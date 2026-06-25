@@ -8,6 +8,10 @@ import { DailyLogPdfActions } from "@/components/daily-log-pdf-actions";
 import { WideAppHeader } from "@/components/wide-app-header";
 import { useAppToast } from "@/components/toast-provider";
 import {
+  JobSearchCombo,
+  type JobPickerOption,
+} from "@/components/job-search-picker";
+import {
   endOfMonth,
   endOfWeekSunday,
   extractMaterialLines,
@@ -188,7 +192,7 @@ export function DailyLogsClient() {
   >([]);
   const [importing, setImporting] = useState(false);
   const [linkingLogId, setLinkingLogId] = useState<string | null>(null);
-  const [linkJobId, setLinkJobId] = useState("");
+  const [linkJob, setLinkJob] = useState<JobPickerOption | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const actionsMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -232,19 +236,18 @@ export function DailyLogsClient() {
   }, [showToast]);
 
   const linkLogToJob = async (logId: string) => {
-    const jid = linkJobId.trim();
+    const jid = linkJob?.id ?? "";
     if (!jid) {
       showToast({ message: "Choose a job.", variant: "error" });
       return;
     }
-    const j = jobs.find((x) => x.id === jid);
     try {
       const sb = createBrowserClient();
       const { error } = await sb
         .from("daily_logs")
         .update({
           job_id: jid,
-          job_name: j ? `${j.job_number} · ${j.job_name}` : null,
+          job_name: linkJob?.label ?? null,
         })
         .eq("id", logId);
       if (error) {
@@ -255,7 +258,7 @@ export function DailyLogsClient() {
       }
       showToast({ message: "Daily log linked to job.", variant: "success" });
       setLinkingLogId(null);
-      setLinkJobId("");
+      setLinkJob(null);
       void load();
     } catch (e) {
       showToast({
@@ -906,7 +909,7 @@ export function DailyLogsClient() {
                                       onClick={() => {
                                         setOpenMenuId(null);
                                         setLinkingLogId(l.id);
-                                        setLinkJobId(jobs[0]?.id ?? "");
+                                        setLinkJob(null);
                                       }}
                                     >
                                       Link to job
@@ -917,20 +920,14 @@ export function DailyLogsClient() {
                             </div>
                             {!l.job_id && linkingLogId === l.id ? (
                               <div className="mt-2 flex flex-col gap-2">
-                                <select
-                                  className="app-input w-full max-w-[12rem] text-xs"
-                                  value={linkJobId}
-                                  onChange={(e) =>
-                                    setLinkJobId(e.target.value)
-                                  }
-                                >
-                                  <option value="">Select job…</option>
-                                  {jobs.map((j) => (
-                                    <option key={j.id} value={j.id}>
-                                      {j.job_number} · {j.job_name}
-                                    </option>
-                                  ))}
-                                </select>
+                                <div className="w-full max-w-[12rem]">
+                                  <JobSearchCombo
+                                    value={linkJob?.id ?? null}
+                                    onChange={setLinkJob}
+                                    includeInactive
+                                    className="app-input w-full text-xs"
+                                  />
+                                </div>
                                 <div className="flex flex-wrap gap-1">
                                   <button
                                     type="button"
@@ -944,7 +941,7 @@ export function DailyLogsClient() {
                                     className="rounded border border-white/20 px-2 py-1 text-[10px] text-white/80"
                                     onClick={() => {
                                       setLinkingLogId(null);
-                                      setLinkJobId("");
+                                      setLinkJob(null);
                                     }}
                                   >
                                     Cancel
@@ -1025,18 +1022,12 @@ export function DailyLogsClient() {
                         <div className="mt-3 border-t border-white/10 pt-3">
                           {linkingLogId === l.id ? (
                             <div className="flex flex-col gap-2">
-                              <select
+                              <JobSearchCombo
+                                value={linkJob?.id ?? null}
+                                onChange={setLinkJob}
+                                includeInactive
                                 className="app-input w-full text-sm"
-                                value={linkJobId}
-                                onChange={(e) => setLinkJobId(e.target.value)}
-                              >
-                                <option value="">Select job…</option>
-                                {jobs.map((j) => (
-                                  <option key={j.id} value={j.id}>
-                                    {j.job_number} · {j.job_name}
-                                  </option>
-                                ))}
-                              </select>
+                              />
                               <div className="flex gap-2">
                                 <button
                                   type="button"
@@ -1050,7 +1041,7 @@ export function DailyLogsClient() {
                                   className="rounded-lg border border-white/20 px-3 py-1.5 text-xs text-white/80"
                                   onClick={() => {
                                     setLinkingLogId(null);
-                                    setLinkJobId("");
+                                    setLinkJob(null);
                                   }}
                                 >
                                   Cancel
@@ -1063,7 +1054,7 @@ export function DailyLogsClient() {
                               className="text-sm font-semibold text-[#E8C84A] hover:underline"
                               onClick={() => {
                                 setLinkingLogId(l.id);
-                                setLinkJobId(jobs[0]?.id ?? "");
+                                setLinkJob(null);
                               }}
                             >
                               Link to Job

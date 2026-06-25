@@ -12,20 +12,16 @@ import {
 import type { ScanReceiptResult } from "@/lib/receipt-scan-types";
 import { parseReceiptRow } from "@/lib/receipts-parse";
 import { createBrowserClient } from "@/lib/supabase/client";
+import {
+  JobSearchCombo,
+  type JobPickerOption,
+} from "@/components/job-search-picker";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs";
 
-const JOB_STATUSES = ["Lead", "Quoted", "Active", "On Hold"] as const;
-
-type JobOpt = { id: string; job_name: string; job_number: string };
-
-function formatJobLabel(j: JobOpt): string {
-  const a = j.job_number.trim();
-  const b = j.job_name.trim();
-  if (a && b) return `${a} · ${b}`;
-  return a || b || "";
-}
+const FIELD_INPUT =
+  "mt-1 w-full rounded-lg border border-white/20 bg-[#071422] px-3 py-2.5 text-sm text-white placeholder:text-white/35 outline-none focus:border-[#E8C84A]/60";
 
 /** `receipts.ai_confidence`: 0–1, two decimals; null if unknown. */
 function receiptConfidenceToDb(raw: number): number | null {
@@ -75,6 +71,8 @@ export type ReceiptCaptureProps = {
   /** When true, start hidden until user opens (e.g. dialog). */
   collapsible?: boolean;
   title?: string;
+  /** Compact mobile layout for /field/receipts — same save/scan logic. */
+  variant?: "default" | "field";
 };
 
 export function ReceiptCapture({
@@ -83,14 +81,16 @@ export function ReceiptCapture({
   onSaved,
   collapsible = false,
   title = "Capture receipt",
+  variant = "default",
 }: ReceiptCaptureProps) {
+  const isField = variant === "field";
   const { showToast } = useAppToast();
   const cameraRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [expanded, setExpanded] = useState(!collapsible);
 
-  const [jobs, setJobs] = useState<JobOpt[]>([]);
   const [assignedJobId, setAssignedJobId] = useState<string | null>(null);
+  const [assignedJob, setAssignedJob] = useState<JobPickerOption | null>(null);
   const [punchSuggestion, setPunchSuggestion] = useState<{
     jobId: string | null;
     jobName: string;
@@ -114,6 +114,7 @@ export function ReceiptCapture({
   const [confidence, setConfidence] = useState(0);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showMoreDetails, setShowMoreDetails] = useState(false);
   type ReceiptProgress =
     | {
         pct: number;
@@ -138,37 +139,6 @@ export function ReceiptCapture({
     receiptCount: number;
     totalSpend: number;
   } | null>(null);
-
-  const loadJobs = useCallback(async () => {
-    try {
-      const sb = createBrowserClient();
-      let q = await sb
-        .from("jobs")
-        .select("id,job_name,job_number")
-        .in("status", [...JOB_STATUSES])
-        .order("updated_at", { ascending: false });
-      if (q.error) {
-        q = await sb
-          .from("jobs")
-          .select("id,job_name,job_number")
-          .order("updated_at", { ascending: false });
-      }
-      if (q.error) throw q.error;
-      setJobs(
-        (q.data ?? []).map((j) => ({
-          id: j.id as string,
-          job_name: String(j.job_name ?? ""),
-          job_number: String(j.job_number ?? ""),
-        })),
-      );
-    } catch {
-      setJobs([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadJobs();
-  }, [loadJobs]);
 
   useEffect(
     () => () => {
@@ -445,6 +415,7 @@ export function ReceiptCapture({
     clearScanCreepTimer();
     if (!opts?.keepProgressBar) setReceiptProgress(null);
     setPhase("idle");
+    setShowMoreDetails(false);
     setFile(null);
     setPreviewUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
@@ -578,13 +549,13 @@ export function ReceiptCapture({
 
       const rec = parseReceiptRow(inserted as Record<string, unknown>);
 
-      const linkedJob = jobIdValue
-        ? jobs.find((j) => j.id === jobIdValue)
-        : undefined;
-      const jobLabelForToast = linkedJob ? formatJobLabel(linkedJob) : null;
+      const jobLabelForToast =
+        assignedJob && assignedJob.id === jobIdValue ? assignedJob.label : null;
       showToast({
-        message: jobLabelForToast
-          ? `Receipt saved — linked to ${jobLabelForToast}.`
+        message: jobIdValue
+          ? jobLabelForToast
+            ? `Receipt saved — linked to ${jobLabelForToast}.`
+            : "Receipt saved — linked to the selected job."
           : "Saved to unassigned receipts.",
         variant: "success",
       });
@@ -628,13 +599,21 @@ export function ReceiptCapture({
     }
   };
 
-  const inputCls = "app-input mt-1 w-full text-sm";
-  const labelCls = "text-xs font-semibold text-white/50";
+  const inputCls = isField ? FIELD_INPUT : "app-input mt-1 w-full text-sm";
+  const labelCls = isField
+    ? "text-[11px] font-semibold uppercase tracking-wide text-white/50"
+    : "text-xs font-semibold text-white/50";
 
   const body = (
-    <div className="space-y-4">
+    <div className={isField ? "space-y-3" : "space-y-4"}>
       {showSuggestBanner && punchSuggestion?.jobId ? (
-        <div className="rounded-xl border border-[#E8C84A]/40 bg-[#E8C84A]/10 px-4 py-3 text-sm text-white/90">
+        <div
+          className={
+            isField
+              ? "rounded-lg border border-[#E8C84A]/40 bg-[#E8C84A]/10 px-3 py-2 text-xs text-white/90"
+              : "rounded-xl border border-[#E8C84A]/40 bg-[#E8C84A]/10 px-4 py-3 text-sm text-white/90"
+          }
+        >
           <p>
             This looks like it might be for{" "}
             <span className="font-semibold text-[#E8C84A]">
@@ -677,6 +656,55 @@ export function ReceiptCapture({
       ) : null}
 
       {phase === "idle" || phase === "reading" ? (
+        isField ? (
+          <div className="space-y-2">
+            <input
+              ref={cameraRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (f) void processFile(f);
+              }}
+            />
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*,application/pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (f) void processFile(f);
+              }}
+            />
+            {phase === "reading" ? (
+              <p className="py-2 text-center text-sm text-[#E8C84A]">
+                Reading receipt…
+              </p>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => cameraRef.current?.click()}
+                  className="flex min-h-[2.75rem] w-full items-center justify-center rounded-xl bg-[#E8C84A] text-sm font-bold text-[#0a1628] active:opacity-90"
+                >
+                  Take photo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  className="w-full py-1 text-center text-xs font-medium text-white/55 underline decoration-white/25 underline-offset-2 active:text-white/75"
+                >
+                  Upload from gallery
+                </button>
+              </>
+            )}
+          </div>
+        ) : (
         <div
           onDragOver={(e) => e.preventDefault()}
           onDrop={onDrop}
@@ -731,6 +759,7 @@ export function ReceiptCapture({
             </div>
           )}
         </div>
+        )
       ) : null}
 
       {receiptProgress ? (
@@ -778,29 +807,37 @@ export function ReceiptCapture({
       ) : null}
 
       {phase === "review" && previewUrl ? (
-        <div className="space-y-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+        <div
+          className={
+            isField
+              ? "space-y-3 rounded-lg border border-white/15 bg-[#071422]/60 p-3"
+              : "space-y-4 rounded-xl border border-white/10 bg-white/[0.03] p-4"
+          }
+        >
           {assignedJobId?.trim() && jobExpenseCtx ? (
-            <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/25 px-3 py-2 text-sm text-white/90">
+            <div
+              className={
+                isField
+                  ? "rounded-lg border border-emerald-500/30 bg-emerald-950/25 px-2.5 py-2 text-xs text-white/90"
+                  : "rounded-lg border border-emerald-500/30 bg-emerald-950/25 px-3 py-2 text-sm text-white/90"
+              }
+            >
               <p className="font-semibold text-emerald-200">
                 {jobExpenseCtx.label}
               </p>
-              {jobExpenseCtx.address ? (
+              {jobExpenseCtx.address && !isField ? (
                 <p className="mt-1 text-xs text-white/60">
                   {jobExpenseCtx.address}
                 </p>
               ) : null}
-              <p className="mt-2 text-xs text-white/70">
+              <p className={isField ? "mt-1 text-[11px] text-white/60" : "mt-2 text-xs text-white/70"}>
                 {jobExpenseCtx.receiptCount} receipt
-                {jobExpenseCtx.receiptCount === 1 ? "" : "s"} on file · Running
-                total{" "}
-                <span className="font-semibold text-[#E8C84A]">
-                  $
-                  {jobExpenseCtx.totalSpend.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
-                </span>{" "}
-                <span className="text-white/45">(before this one)</span>
+                {jobExpenseCtx.receiptCount === 1 ? "" : "s"} · $
+                {jobExpenseCtx.totalSpend.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}{" "}
+                prior
               </p>
             </div>
           ) : null}
@@ -808,116 +845,236 @@ export function ReceiptCapture({
           <img
             src={previewUrl}
             alt="Receipt"
-            className="mx-auto max-h-48 rounded-lg border border-white/10 object-contain"
+            className={
+              isField
+                ? "mx-auto max-h-36 w-full rounded-lg border border-white/10 object-contain"
+                : "mx-auto max-h-48 rounded-lg border border-white/10 object-contain"
+            }
           />
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <label className={labelCls}>Vendor name</label>
-              <input
-                className={inputCls}
-                value={vendorName}
-                onChange={(e) => setVendorName(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Date</label>
-              <input
-                type="date"
-                className={inputCls}
-                value={receiptDate}
-                onChange={(e) => setReceiptDate(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Category</label>
-              <select
-                className={inputCls}
-                value={category}
-                onChange={(e) =>
-                  setCategory(e.target.value as ReceiptCategory)
-                }
-              >
-                {RECEIPT_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="sm:col-span-2">
-              <label className={labelCls}>Total amount</label>
-              <input
-                type="number"
-                step="0.01"
-                className={`${inputCls} text-2xl font-bold text-[#E8C84A]`}
-                value={totalAmount}
-                onChange={(e) => setTotalAmount(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Subtotal</label>
-              <input
-                type="number"
-                step="0.01"
-                className={inputCls}
-                value={subtotal}
-                onChange={(e) => setSubtotal(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Tax amount</label>
-              <input
-                type="number"
-                step="0.01"
-                className={inputCls}
-                value={taxAmount}
-                onChange={(e) => setTaxAmount(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Payment method</label>
-              <input
-                className={inputCls}
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Job assignment</label>
-              <select
-                className={inputCls}
-                value={assignedJobId ?? ""}
-                onChange={(e) =>
-                  setAssignedJobId(e.target.value.trim() || null)
-                }
-              >
-                <option value="">— Unassigned —</option>
-                {jobs.map((j) => (
-                  <option key={j.id} value={j.id}>
-                    {formatJobLabel(j)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className={labelCls}>Card type</label>
-              <input
-                className={inputCls}
-                value={cardType}
-                onChange={(e) => setCardType(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Card last four</label>
-              <input
-                className={inputCls}
-                value={cardLastFour}
-                onChange={(e) => setCardLastFour(e.target.value)}
-                maxLength={4}
-              />
-            </div>
+          <div className={isField ? "grid gap-2.5" : "grid gap-3 sm:grid-cols-2"}>
+            {isField ? (
+              <>
+                <div>
+                  <label className={labelCls}>Total amount</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    inputMode="decimal"
+                    className={`${inputCls} text-xl font-bold text-[#E8C84A]`}
+                    value={totalAmount}
+                    onChange={(e) => setTotalAmount(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Vendor</label>
+                  <input
+                    className={inputCls}
+                    value={vendorName}
+                    onChange={(e) => setVendorName(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Job</label>
+                  <JobSearchCombo
+                    value={assignedJobId}
+                    onChange={(opt) => {
+                      setAssignedJob(opt);
+                      setAssignedJobId(opt?.id ?? null);
+                    }}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Category</label>
+                  <select
+                    className={inputCls}
+                    value={category}
+                    onChange={(e) =>
+                      setCategory(e.target.value as ReceiptCategory)
+                    }
+                  >
+                    {RECEIPT_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelCls}>Date</label>
+                  <input
+                    type="date"
+                    className={inputCls}
+                    value={receiptDate}
+                    onChange={(e) => setReceiptDate(e.target.value)}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="sm:col-span-2">
+                  <label className={labelCls}>Vendor name</label>
+                  <input
+                    className={inputCls}
+                    value={vendorName}
+                    onChange={(e) => setVendorName(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Date</label>
+                  <input
+                    type="date"
+                    className={inputCls}
+                    value={receiptDate}
+                    onChange={(e) => setReceiptDate(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Category</label>
+                  <select
+                    className={inputCls}
+                    value={category}
+                    onChange={(e) =>
+                      setCategory(e.target.value as ReceiptCategory)
+                    }
+                  >
+                    {RECEIPT_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className={labelCls}>Total amount</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className={`${inputCls} text-2xl font-bold text-[#E8C84A]`}
+                    value={totalAmount}
+                    onChange={(e) => setTotalAmount(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Subtotal</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className={inputCls}
+                    value={subtotal}
+                    onChange={(e) => setSubtotal(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Tax amount</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className={inputCls}
+                    value={taxAmount}
+                    onChange={(e) => setTaxAmount(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Payment method</label>
+                  <input
+                    className={inputCls}
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Job assignment</label>
+                  <JobSearchCombo
+                    value={assignedJobId}
+                    onChange={(opt) => {
+                      setAssignedJob(opt);
+                      setAssignedJobId(opt?.id ?? null);
+                    }}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Card type</label>
+                  <input
+                    className={inputCls}
+                    value={cardType}
+                    onChange={(e) => setCardType(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Card last four</label>
+                  <input
+                    className={inputCls}
+                    value={cardLastFour}
+                    onChange={(e) => setCardLastFour(e.target.value)}
+                    maxLength={4}
+                  />
+                </div>
+              </>
+            )}
+            {isField && showMoreDetails ? (
+              <>
+                <div>
+                  <label className={labelCls}>Subtotal</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className={inputCls}
+                    value={subtotal}
+                    onChange={(e) => setSubtotal(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Tax</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className={inputCls}
+                    value={taxAmount}
+                    onChange={(e) => setTaxAmount(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Payment</label>
+                  <input
+                    className={inputCls}
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Card type</label>
+                  <input
+                    className={inputCls}
+                    value={cardType}
+                    onChange={(e) => setCardType(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Card last 4</label>
+                  <input
+                    className={inputCls}
+                    value={cardLastFour}
+                    onChange={(e) => setCardLastFour(e.target.value)}
+                    maxLength={4}
+                  />
+                </div>
+              </>
+            ) : null}
           </div>
 
+          {isField ? (
+            <button
+              type="button"
+              className="text-xs font-medium text-[#E8C84A] underline decoration-[#E8C84A]/40 underline-offset-2"
+              onClick={() => setShowMoreDetails((v) => !v)}
+            >
+              {showMoreDetails ? "Hide details" : "More details"}
+            </button>
+          ) : null}
+
+          {!isField ? (
           <div>
             <label className={labelCls}>Line items</label>
             <ul className="mt-2 space-y-2">
@@ -1021,35 +1178,49 @@ export function ReceiptCapture({
               + Add line
             </button>
           </div>
+          ) : null}
 
           <div>
             <label className={labelCls}>Notes</label>
             <textarea
-              className="app-input mt-1 min-h-[4rem] w-full resize-y text-sm"
+              className={
+                isField
+                  ? `${FIELD_INPUT} min-h-[3rem] resize-none`
+                  : "app-input mt-1 min-h-[4rem] w-full resize-y text-sm"
+              }
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
+              rows={isField ? 2 : undefined}
             />
           </div>
 
           {confidence > 0 ? (
-            <p className="text-xs text-white/45">
-              Model confidence: {Math.round(confidence * 100)}%
+            <p className="text-[11px] text-white/45">
+              AI confidence: {Math.round(confidence * 100)}%
             </p>
           ) : null}
 
-          <div className="flex flex-wrap gap-2">
+          <div className={isField ? "flex gap-2" : "flex flex-wrap gap-2"}>
             <button
               type="button"
               disabled={saving}
               onClick={() => void saveReceipt()}
-              className="btn-primary btn-h-11"
+              className={
+                isField
+                  ? "flex min-h-[2.75rem] flex-1 items-center justify-center rounded-xl bg-[#E8C84A] text-sm font-bold text-[#0a1628] disabled:opacity-50"
+                  : "btn-primary btn-h-11"
+              }
             >
               {saving ? "Saving…" : "Save receipt"}
             </button>
             <button
               type="button"
               onClick={() => resetCapture()}
-              className="btn-secondary btn-h-11"
+              className={
+                isField
+                  ? "flex min-h-[2.75rem] items-center justify-center rounded-xl border border-white/20 px-4 text-sm font-medium text-white/80 active:bg-white/5"
+                  : "btn-secondary btn-h-11"
+              }
             >
               Cancel
             </button>
@@ -1073,6 +1244,10 @@ export function ReceiptCapture({
         {expanded ? <div className="mt-4">{body}</div> : null}
       </div>
     );
+  }
+
+  if (isField) {
+    return body;
   }
 
   return (

@@ -10,7 +10,11 @@ import { useUserRole } from "@/hooks/use-user-role";
 import { mapAssetRow, mapLocationRow, mapMaterialRow } from "@/lib/inventory-mappers";
 import type { AssetLocationRow, AssetRow, MaterialRow } from "@/lib/inventory-types";
 import { formatEmployeeName } from "@/lib/inventory-employee";
-import { parseScanPayload } from "@/lib/inventory-qr";
+import {
+  buildScanRouteQuery,
+  parseScanPayload,
+  scanRoutePath,
+} from "@/lib/inventory-qr";
 import { insertInventoryTransaction } from "@/lib/inventory-tx";
 import {
   enqueueInventoryOp,
@@ -20,8 +24,23 @@ import {
 import { flushInventoryOfflineQueue } from "@/lib/inventory-offline-flush";
 import { isUuid } from "@/lib/is-uuid";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { JobSearchCombo } from "@/components/job-search-picker";
 
-export function InventoryScanClient() {
+type RecentToolActivity = {
+  id: string;
+  transaction_type: string;
+  created_at: string;
+  assetLabel: string;
+};
+
+export type InventoryScanClientProps = {
+  variant?: "default" | "field";
+};
+
+export function InventoryScanClient({
+  variant = "default",
+}: InventoryScanClientProps) {
+  const isField = variant === "field";
   const { showToast } = useAppToast();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -66,14 +85,41 @@ export function InventoryScanClient() {
     | { kind: "mat_job"; qty: number; jobId: string }
   >({ kind: "none" });
 
-  const [jobs, setJobs] = useState<{ id: string; label: string }[]>([]);
+  const [checkoutJobId, setCheckoutJobId] = useState("");
+  const [recentActivity, setRecentActivity] = useState<RecentToolActivity[]>(
+    [],
+  );
+  const [recentLoading, setRecentLoading] = useState(false);
+
+  const truckLocations = useMemo(
+    () => locations.filter((l) => l.location_type === "truck"),
+    [locations],
+  );
+
+  const pushScanRoute = useCallback(
+    (p: {
+      assetId?: string;
+      locationId?: string;
+      materialId?: string;
+    }) => {
+      const q = buildScanRouteQuery(p, variant);
+      if (!q) return false;
+      router.replace(`${scanRoutePath(variant)}?${q}`);
+      return true;
+    },
+    [router, variant],
+  );
 
   const refreshOfflineCount = useCallback(() => {
     setOfflinePending(peekOfflineQueue().length);
   }, []);
 
   const applyQuery = useCallback(() => {
-    const id = searchParams.get("id")?.trim() || null;
+    const tag =
+      searchParams.get("tag")?.trim() ||
+      searchParams.get("item")?.trim() ||
+      null;
+    const id = searchParams.get("id")?.trim() || tag || null;
     const loc = searchParams.get("location")?.trim() || null;
     const mat = searchParams.get("material")?.trim() || null;
     const num = searchParams.get("number")?.trim() || null;
@@ -96,23 +142,11 @@ export function InventoryScanClient() {
   const loadContext = useCallback(async () => {
     try {
       const sb = createBrowserClient();
-      const [{ data: locs }, { data: jobRows }, { data: matRows }] =
-        await Promise.all([
-          sb.from("asset_locations").select("*").order("name"),
-          sb
-            .from("jobs")
-            .select("id,job_name,job_number")
-            .order("updated_at", { ascending: false })
-            .limit(200),
-          sb.from("materials_inventory").select("*").order("name").limit(500),
-        ]);
+      const [{ data: locs }, { data: matRows }] = await Promise.all([
+        sb.from("asset_locations").select("*").order("name"),
+        sb.from("materials_inventory").select("*").order("name").limit(500),
+      ]);
       setLocations((locs ?? []).map((r) => mapLocationRow(r as Record<string, unknown>)));
-      setJobs(
-        (jobRows ?? []).map((j) => ({
-          id: j.id as string,
-          label: `${String(j.job_number ?? "").trim() || "—"} · ${String(j.job_name ?? "").trim() || "Job"}`,
-        })),
-      );
       setAllMaterials(
         (matRows ?? []).map((r) => mapMaterialRow(r as Record<string, unknown>)),
       );
@@ -125,6 +159,77 @@ export function InventoryScanClient() {
   useEffect(() => {
     void loadContext();
   }, [loadContext]);
+
+  const loadRecentActivity = useCallback(async () => {
+    if (!isField || !userId) {
+      setRecentActivity([]);
+      return;
+    }
+    setRecentLoading(true);
+    try {
+      const sb = createBrowserClient();
+      const { data, error } = await sb
+        .from("asset_transactions")
+        .select(
+          "id, transaction_type, created_at, assets(name, asset_number)",
+        )
+        .eq("employee_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      setRecentActivity(
+        (data ?? []).map((row) => {
+          const r = row as {
+            id: string;
+            transaction_type: string;
+            created_at: string;
+            assets?: { name?: string; asset_number?: string } | null;
+          };
+          const a = r.assets;
+          const num = String(a?.asset_number ?? "").trim();
+          const name = String(a?.name ?? "").trim();
+          const assetLabel =
+            num && name ? `${num} · ${name}` : num || name || "Tool";
+          return {
+            id: r.id,
+            transaction_type: r.transaction_type,
+            created_at: r.created_at,
+            assetLabel,
+          };
+        }),
+      );
+    } catch {
+      setRecentActivity([]);
+    } finally {
+      setRecentLoading(false);
+    }
+  }, [isField, userId]);
+
+  useEffect(() => {
+    void loadRecentActivity();
+  }, [loadRecentActivity]);
+
+  useEffect(() => {
+    if (!isField) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await fetch("/api/receipts/suggest-job", {
+          credentials: "include",
+        });
+        const j = (await r.json()) as {
+          suggested?: { jobId: string | null } | null;
+        };
+        if (cancelled || !r.ok || !j.suggested?.jobId) return;
+        setCheckoutJobId(j.suggested.jobId);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isField]);
 
   const loadEntity = useCallback(async () => {
     setAsset(null);
@@ -288,17 +393,13 @@ export function InventoryScanClient() {
     if (code?.data && code.data !== lastDecoded) {
       setLastDecoded(code.data);
       const p = parseScanPayload(code.data);
-      const qs = new URLSearchParams();
-      if (p.assetId) qs.set("id", p.assetId);
-      if (p.locationId) qs.set("location", p.locationId);
-      if (p.materialId) qs.set("material", p.materialId);
-      if ([...qs.keys()].length > 0) {
-        router.replace(`/inventory/scan?${qs.toString()}`);
+      if (pushScanRoute(p)) {
         showToast({ message: "QR recognized.", variant: "success" });
+        stopCamera();
       }
     }
     rafRef.current = requestAnimationFrame(tick);
-  }, [lastDecoded, router, showToast]);
+  }, [lastDecoded, pushScanRoute, showToast, stopCamera]);
 
   const startCamera = async () => {
     setLastDecoded(null);
@@ -330,17 +431,10 @@ export function InventoryScanClient() {
   const applyManual = () => {
     const raw = manual.trim();
     const p = parseScanPayload(raw);
-    const qs = new URLSearchParams();
-    if (p.assetId) qs.set("id", p.assetId);
-    if (p.locationId) qs.set("location", p.locationId);
-    if (p.materialId) qs.set("material", p.materialId);
-    if ([...qs.keys()].length > 0) {
-      router.replace(`/inventory/scan?${qs.toString()}`);
-      return;
-    }
+    if (pushScanRoute(p)) return;
     if (raw && !/^https?:\/\//i.test(raw)) {
       router.replace(
-        `/inventory/scan?number=${encodeURIComponent(raw)}`,
+        `${scanRoutePath(variant)}?number=${encodeURIComponent(raw)}`,
       );
       return;
     }
@@ -385,9 +479,12 @@ export function InventoryScanClient() {
         employee_name: employeeName,
         transaction_type: "checkout",
         from_location_id: a.location_id,
+        job_id:
+          isField && checkoutJobId.trim() ? checkoutJobId.trim() : null,
       });
       showToast({ message: "Checked out to you.", variant: "success" });
       void loadEntity();
+      void loadRecentActivity();
     } catch (e) {
       showToast({
         message: e instanceof Error ? e.message : "Failed.",
@@ -435,6 +532,7 @@ export function InventoryScanClient() {
       showToast({ message: "Checked in.", variant: "success" });
       setModal({ kind: "none" });
       void loadEntity();
+      void loadRecentActivity();
     } catch (e) {
       showToast({
         message: e instanceof Error ? e.message : "Failed.",
@@ -464,6 +562,7 @@ export function InventoryScanClient() {
       showToast({ message: "Location updated.", variant: "success" });
       setModal({ kind: "none" });
       void loadEntity();
+      void loadRecentActivity();
     } catch (e) {
       showToast({
         message: e instanceof Error ? e.message : "Failed.",
@@ -647,147 +746,272 @@ export function InventoryScanClient() {
     ? locations.find((x) => x.id === asset.location_id)
     : null;
 
-  return (
-    <div className="flex min-h-screen flex-col">
-      <WideAppHeader active="inventory" showTppSubtitle />
-      <main className="mx-auto w-full min-w-0 max-w-lg flex-1 px-4 py-6">
-        <Link
-          href="/inventory"
-          className="text-sm text-violet-300 hover:underline"
-        >
-          ← Inventory
-        </Link>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-xl font-semibold text-white">Scan QR</h1>
-          {offlinePending > 0 ? (
-            <span className="rounded-full bg-amber-500/25 px-3 py-1 text-xs font-bold text-amber-100">
-              {offlinePending} offline
-            </span>
-          ) : null}
-        </div>
-        <p className="mt-1 text-sm text-white/55">
-          Point at a code or paste URL, UUID, or asset number (e.g. TPP-001).
-        </p>
+  const accentHeading = isField ? "text-[#E8C84A]" : "text-violet-300";
+  const accentMono = isField ? "text-[#E8C84A]" : "text-violet-200";
+  const scanBorder = isField
+    ? "border-[#E8C84A]/40 ring-[#E8C84A]/20"
+    : "border-violet-500/40 ring-violet-500/20";
+  const scanDash = isField ? "border-[#E8C84A]/70" : "border-violet-300/80";
+  const fieldInput =
+    "mt-1 w-full rounded-lg border border-white/20 bg-[#071422] px-3 py-2 text-sm text-white placeholder:text-white/35 outline-none focus:border-[#E8C84A]/60";
 
-        <div className="relative mt-6 aspect-[4/3] w-full overflow-hidden rounded-2xl border-2 border-violet-500/40 bg-black ring-2 ring-violet-500/20">
-          <video
-            ref={videoRef}
-            className="h-full w-full object-cover"
-            playsInline
-            muted
-            autoPlay
-          />
-          <div
-            className="pointer-events-none absolute inset-8 rounded-lg border-2 border-dashed border-violet-300/80"
-            aria-hidden
-          />
-          <canvas ref={canvasRef} className="hidden" />
-        </div>
+  const formatTxLabel = (t: string) => {
+    if (t === "checkout") return "Checked out";
+    if (t === "checkin") return "Checked in";
+    if (t === "move") return "Moved";
+    return t.replace(/_/g, " ");
+  };
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          {!scanning ? (
-            <button
-              type="button"
-              className="flex-1 rounded-xl bg-violet-500 py-4 text-base font-bold text-white hover:bg-violet-400"
-              onClick={() => void startCamera()}
-            >
-              Start camera
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="flex-1 rounded-xl border border-white/25 py-4 text-base font-semibold text-white hover:bg-white/10"
-              onClick={stopCamera}
-            >
-              Stop camera
-            </button>
-          )}
-        </div>
-
-        <div className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] p-4">
-          <label className="text-xs font-semibold text-white/50">
-            Manual entry
-          </label>
-          <textarea
-            className="app-input mt-2 min-h-[4rem] w-full text-sm"
-            placeholder="Paste scan URL, UUID, or asset number"
-            value={manual}
-            onChange={(e) => setManual(e.target.value)}
-          />
-          <button
-            type="button"
-            className="btn-primary btn-h-11 mt-2 w-full"
-            onClick={applyManual}
+  const mainContent = (
+    <>
+      {!isField ? (
+        <>
+          <Link
+            href="/inventory"
+            className="text-sm text-violet-300 hover:underline"
           >
-            Apply
-          </button>
-        </div>
+            ← Inventory
+          </Link>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <h1 className="text-xl font-semibold text-white">Scan QR</h1>
+            {offlinePending > 0 ? (
+              <span className="rounded-full bg-amber-500/25 px-3 py-1 text-xs font-bold text-amber-100">
+                {offlinePending} offline
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-1 text-sm text-white/55">
+            Point at a code or paste URL, UUID, or asset number (e.g. TPP-001).
+          </p>
+        </>
+      ) : offlinePending > 0 ? (
+        <span className="inline-block rounded-full bg-amber-500/25 px-2.5 py-0.5 text-[11px] font-bold text-amber-100">
+          {offlinePending} offline queued
+        </span>
+      ) : null}
 
-        {asset ? (
-          <section className="mt-8 rounded-xl border border-white/10 bg-white/[0.04] p-4">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-violet-300">
-              Asset
-            </h2>
-            <p className="mt-2 font-semibold text-white">{asset.name}</p>
-            <p className="font-mono text-sm text-violet-200">{asset.asset_number}</p>
-            <p className="mt-2 text-sm text-white/70">
-              Status: <span className="text-white">{asset.status}</span>
-            </p>
-            <p className="text-sm text-white/70">
-              Location:{" "}
-              <span className="text-white">{loc?.name ?? "—"}</span>
-            </p>
-            <div className="mt-4 grid gap-2">
-              {asset.status === "available" &&
-              (asset.asset_type === "tool" ||
-                asset.asset_type === "equipment" ||
-                asset.asset_type === "material") ? (
-                <button
-                  type="button"
-                  className="rounded-lg bg-emerald-600 py-4 text-base font-semibold text-white"
-                  onClick={() => void checkOut(asset)}
-                >
-                  ✅ Check Out — assign to me
-                </button>
-              ) : null}
-              {asset.status === "checked_out" ? (
-                <button
-                  type="button"
-                  className="rounded-lg bg-amber-500 py-4 text-base font-bold text-[#0a1628]"
-                  onClick={() =>
-                    setModal({
-                      kind: "checkin",
-                      locationId: asset.location_id ?? locations[0]?.id ?? "",
-                    })
-                  }
-                >
-                  📦 Check In
-                </button>
-              ) : null}
+      {(!isField || !asset) && (
+        <>
+          <div
+            className={`relative ${isField ? "mt-2 aspect-[3/2]" : "mt-6 aspect-[4/3]"} w-full overflow-hidden rounded-xl border-2 bg-black ring-2 ${scanBorder}`}
+          >
+            <video
+              ref={videoRef}
+              className="h-full w-full object-cover"
+              playsInline
+              muted
+              autoPlay
+            />
+            <div
+              className={`pointer-events-none absolute inset-6 rounded-lg border-2 border-dashed ${scanDash}`}
+              aria-hidden
+            />
+            <canvas ref={canvasRef} className="hidden" />
+          </div>
+
+          <div className={`${isField ? "mt-2" : "mt-4"} flex flex-wrap gap-2`}>
+            {!scanning ? (
               <button
                 type="button"
-                className="rounded-lg border border-white/20 py-4 text-base text-white/85"
+                className={
+                  isField
+                    ? "flex min-h-[2.75rem] flex-1 items-center justify-center rounded-xl bg-[#E8C84A] text-sm font-bold text-[#0a1628] active:opacity-90"
+                    : "flex-1 rounded-xl bg-violet-500 py-4 text-base font-bold text-white hover:bg-violet-400"
+                }
+                onClick={() => void startCamera()}
+              >
+                {isField ? "Scan QR" : "Start camera"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={
+                  isField
+                    ? "flex min-h-[2.75rem] flex-1 items-center justify-center rounded-xl border border-white/25 text-sm font-semibold text-white active:bg-white/10"
+                    : "flex-1 rounded-xl border border-white/25 py-4 text-base font-semibold text-white hover:bg-white/10"
+                }
+                onClick={stopCamera}
+              >
+                Stop camera
+              </button>
+            )}
+          </div>
+
+          <div
+            className={
+              isField
+                ? "mt-2 rounded-lg border border-white/10 bg-[#071422]/60 p-2.5"
+                : "mt-6 rounded-xl border border-white/10 bg-white/[0.03] p-4"
+            }
+          >
+            <label className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
+              Manual entry
+            </label>
+            <textarea
+              className={
+                isField
+                  ? `${fieldInput} mt-1 min-h-[2.5rem] resize-none`
+                  : "app-input mt-2 min-h-[4rem] w-full text-sm"
+              }
+              placeholder="Paste scan URL, UUID, or asset number"
+              value={manual}
+              onChange={(e) => setManual(e.target.value)}
+            />
+            <button
+              type="button"
+              className={
+                isField
+                  ? "mt-2 flex min-h-[2.5rem] w-full items-center justify-center rounded-lg bg-white/10 text-sm font-semibold text-white active:bg-white/15"
+                  : "btn-primary btn-h-11 mt-2 w-full"
+              }
+              onClick={applyManual}
+            >
+              Apply
+            </button>
+          </div>
+        </>
+      )}
+
+      {isField && asset ? (
+        <Link
+          href="/field/tools"
+          className="block text-center text-xs font-medium text-[#E8C84A] underline decoration-[#E8C84A]/40 underline-offset-2"
+        >
+          Scan another
+        </Link>
+      ) : null}
+
+      {asset ? (
+        <section
+          className={
+            isField
+              ? "rounded-lg border border-white/15 bg-[#071422]/60 p-3"
+              : "mt-8 rounded-xl border border-white/10 bg-white/[0.04] p-4"
+          }
+        >
+          <h2
+            className={`text-[11px] font-bold uppercase tracking-wide ${accentHeading}`}
+          >
+            {isField ? "Tool" : "Asset"}
+          </h2>
+          <p className="mt-1.5 font-semibold text-white">{asset.name}</p>
+          <p className={`font-mono text-sm ${accentMono}`}>
+            {asset.asset_number}
+          </p>
+          <p className="mt-2 text-xs text-white/70">
+            Status: <span className="text-white">{asset.status}</span>
+          </p>
+          <p className="text-xs text-white/70">
+            Location: <span className="text-white">{loc?.name ?? "—"}</span>
+          </p>
+          {asset.assigned_to_name ? (
+            <p className="text-xs text-white/70">
+              Assigned:{" "}
+              <span className="text-white">{asset.assigned_to_name}</span>
+            </p>
+          ) : null}
+
+          {isField && asset.status === "available" ? (
+            <div className="mt-3">
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                Link to job (optional)
+              </p>
+              <JobSearchCombo
+                value={checkoutJobId || null}
+                onChange={(opt) => setCheckoutJobId(opt?.id ?? "")}
+                includeInactive
+                className={fieldInput}
+              />
+            </div>
+          ) : null}
+
+          <div
+            className={`mt-3 ${isField ? "grid grid-cols-2 gap-2" : "grid gap-2"}`}
+          >
+            {asset.status === "available" &&
+            (asset.asset_type === "tool" ||
+              asset.asset_type === "equipment" ||
+              asset.asset_type === "material") ? (
+              <button
+                type="button"
+                className={
+                  isField
+                    ? "col-span-2 flex min-h-[2.75rem] items-center justify-center rounded-xl bg-emerald-600 text-sm font-semibold text-white active:bg-emerald-500"
+                    : "rounded-lg bg-emerald-600 py-4 text-base font-semibold text-white"
+                }
+                onClick={() => void checkOut(asset)}
+              >
+                Check out
+              </button>
+            ) : null}
+            {asset.status === "checked_out" ? (
+              <button
+                type="button"
+                className={
+                  isField
+                    ? "col-span-2 flex min-h-[2.75rem] items-center justify-center rounded-xl bg-[#E8C84A] text-sm font-bold text-[#0a1628]"
+                    : "rounded-lg bg-amber-500 py-4 text-base font-bold text-[#0a1628]"
+                }
                 onClick={() =>
                   setModal({
-                    kind: "move",
+                    kind: "checkin",
                     locationId: asset.location_id ?? locations[0]?.id ?? "",
                   })
                 }
               >
-                📍 Move
+                Check in
               </button>
+            ) : null}
+            {isField && truckLocations.length > 0 ? (
               <button
                 type="button"
-                className="rounded-lg border border-orange-400/50 py-4 text-base text-orange-200"
-                onClick={() => void reportRepair(asset)}
+                className="flex min-h-[2.75rem] items-center justify-center rounded-xl border border-white/20 text-sm font-medium text-white active:bg-white/5"
+                onClick={() =>
+                  setModal({
+                    kind: "move",
+                    locationId:
+                      truckLocations[0]?.id ??
+                      asset.location_id ??
+                      locations[0]?.id ??
+                      "",
+                  })
+                }
               >
-                🔧 Report issue
+                To truck
               </button>
-            </div>
-          </section>
-        ) : null}
+            ) : null}
+            <button
+              type="button"
+              className={
+                isField
+                  ? "flex min-h-[2.75rem] items-center justify-center rounded-xl border border-white/20 text-sm font-medium text-white active:bg-white/5"
+                  : "rounded-lg border border-white/20 py-4 text-base text-white/85"
+              }
+              onClick={() =>
+                setModal({
+                  kind: "move",
+                  locationId: asset.location_id ?? locations[0]?.id ?? "",
+                })
+              }
+            >
+              {isField ? "Move" : "📍 Move"}
+            </button>
+            <button
+              type="button"
+              className={
+                isField
+                  ? "col-span-2 flex min-h-[2.5rem] items-center justify-center rounded-xl border border-orange-400/40 text-sm text-orange-200"
+                  : "rounded-lg border border-orange-400/50 py-4 text-base text-orange-200"
+              }
+              onClick={() => void reportRepair(asset)}
+            >
+              Report issue
+            </button>
+          </div>
+        </section>
+      ) : null}
 
-        {location ? (
+      {!isField && location ? (
           <section className="mt-8 rounded-xl border border-white/10 bg-white/[0.04] p-4">
             <h2 className="text-sm font-bold uppercase tracking-wide text-violet-300">
               Location
@@ -841,7 +1065,7 @@ export function InventoryScanClient() {
           </section>
         ) : null}
 
-        {material ? (
+        {!isField && material ? (
           <section className="mt-8 rounded-xl border border-white/10 bg-white/[0.04] p-4">
             <h2 className="text-sm font-bold uppercase tracking-wide text-violet-300">
               Material
@@ -858,7 +1082,7 @@ export function InventoryScanClient() {
                   setModal({
                     kind: "mat_job",
                     qty: 1,
-                    jobId: jobs[0]?.id ?? "",
+                    jobId: "",
                   })
                 }
               >
@@ -893,22 +1117,35 @@ export function InventoryScanClient() {
         !location &&
         !material &&
         (assetId || assetNumber || locationId || materialId) ? (
-          <div className="mt-8 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-8 text-center">
-            <p className="text-base font-semibold text-white">Item not found</p>
-            <p className="mt-2 text-sm text-white/55">
-              The ID may be wrong, the item was removed, or you do not have
-              access. Try scanning again or open the dashboard to verify.
+          <div
+            className={
+              isField
+                ? "rounded-lg border border-white/15 bg-[#071422]/60 px-3 py-6 text-center"
+                : "mt-8 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-8 text-center"
+            }
+          >
+            <p className="text-sm font-semibold text-white">Item not found</p>
+            <p className="mt-2 text-xs text-white/55">
+              The ID may be wrong or the item was removed. Try scanning again.
             </p>
-            <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
+            <div className="mt-4 flex flex-col gap-2">
               <Link
-                href="/inventory"
-                className="btn-primary btn-h-11 inline-flex justify-center"
+                href={isField ? "/inventory/tools" : "/inventory"}
+                className={
+                  isField
+                    ? "inline-flex min-h-[2.5rem] items-center justify-center rounded-xl bg-[#E8C84A] text-sm font-bold text-[#0a1628]"
+                    : "btn-primary btn-h-11 inline-flex justify-center"
+                }
               >
-                Open inventory
+                {isField ? "All tools" : "Open inventory"}
               </Link>
               <Link
-                href="/inventory/scan"
-                className="btn-secondary btn-h-11 inline-flex justify-center"
+                href={scanRoutePath(variant)}
+                className={
+                  isField
+                    ? "inline-flex min-h-[2.5rem] items-center justify-center rounded-xl border border-white/20 text-sm text-white/80"
+                    : "btn-secondary btn-h-11 inline-flex justify-center"
+                }
               >
                 Clear scan
               </Link>
@@ -917,13 +1154,56 @@ export function InventoryScanClient() {
         ) : null}
 
         {!assetId && !assetNumber && !locationId && !materialId ? (
-          <p className="mt-8 text-center text-sm text-white/45">
+          <p
+            className={
+              isField
+                ? "text-center text-xs text-white/45"
+                : "mt-8 text-center text-sm text-white/45"
+            }
+          >
             Scan a code to see actions.
           </p>
         ) : null}
-      </main>
+    </>
+  );
 
-      {modal.kind !== "none" ? (
+  const recentSection =
+    isField ? (
+      <section className="overflow-hidden rounded-lg border border-white/15">
+        <h2 className="bg-[#071422] px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-white/50">
+          Recent activity
+        </h2>
+        {recentLoading ? (
+          <p className="bg-[#060d18] px-3 py-3 text-xs text-white/50">
+            Loading…
+          </p>
+        ) : recentActivity.length === 0 ? (
+          <p className="bg-[#060d18] px-3 py-3 text-xs text-white/50">
+            No recent tool activity.
+          </p>
+        ) : (
+          <ul className="divide-y divide-white/10 bg-[#060d18]">
+            {recentActivity.map((row) => (
+              <li key={row.id} className="px-3 py-2.5 text-xs">
+                <p className="font-medium text-white">{row.assetLabel}</p>
+                <p className="text-white/55">
+                  {formatTxLabel(row.transaction_type)} ·{" "}
+                  {new Date(row.created_at).toLocaleString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    ) : null;
+
+  const modalLayer =
+    modal.kind !== "none" ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 sm:items-center">
           <div className="w-full max-w-sm rounded-xl border border-white/15 bg-[#0a1628] p-5">
             {(modal.kind === "checkin" || modal.kind === "move") && asset ? (
@@ -1038,20 +1318,15 @@ export function InventoryScanClient() {
                       : "Use on job"}
                 </h3>
                 {modal.kind === "mat_job" ? (
-                  <select
-                    className="app-input mt-3 w-full text-sm"
-                    value={modal.jobId}
-                    onChange={(e) =>
-                      setModal({ ...modal, jobId: e.target.value })
-                    }
-                  >
-                    <option value="">Job…</option>
-                    {jobs.map((j) => (
-                      <option key={j.id} value={j.id}>
-                        {j.label}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="mt-3">
+                    <JobSearchCombo
+                      value={modal.jobId || null}
+                      onChange={(opt) =>
+                        setModal({ ...modal, jobId: opt?.id ?? "" })
+                      }
+                      includeInactive
+                    />
+                  </div>
                 ) : null}
                 <input
                   type="number"
@@ -1085,7 +1360,25 @@ export function InventoryScanClient() {
             ) : null}
           </div>
         </div>
-      ) : null}
+      ) : null;
+
+  if (isField) {
+    return (
+      <div className="space-y-3">
+        {mainContent}
+        {recentSection}
+        {modalLayer}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-screen flex-col">
+      <WideAppHeader active="inventory" showTppSubtitle />
+      <main className="mx-auto w-full min-w-0 max-w-lg flex-1 px-4 py-6">
+        {mainContent}
+      </main>
+      {modalLayer}
     </div>
   );
 }

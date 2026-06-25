@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
 
 /** Standard job option with a prebuilt search haystack. */
@@ -152,6 +152,125 @@ export function JobSearchPicker({
       </select>
       {!loading && filtered.length === 0 ? (
         <p className="mt-1 text-xs text-amber-200/80">No jobs match.</p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Compact typeahead variant for tight contexts (field cards, small modals): a
+ * single input with a floating results dropdown — no permanent listbox. Same
+ * rich matching (number, name, customer/contractor, location, address).
+ * `onChange` returns the full option (or null when cleared).
+ */
+export function JobSearchCombo({
+  value,
+  onChange,
+  includeInactive = false,
+  placeholder = "Search job — number, name, customer, address…",
+  className = "app-input w-full text-sm",
+  maxRows = 8,
+}: {
+  value: string | null;
+  onChange: (option: JobPickerOption | null) => void;
+  includeInactive?: boolean;
+  placeholder?: string;
+  className?: string;
+  maxRows?: number;
+}) {
+  const { jobs, loading } = useJobPickerOptions(includeInactive);
+  const [q, setQ] = useState("");
+  const [touched, setTouched] = useState(false);
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  const selected = useMemo(
+    () => jobs.find((j) => j.id === value) ?? null,
+    [jobs, value],
+  );
+
+  const filtered = useMemo(() => {
+    const t = touched ? q.trim().toLowerCase() : "";
+    const base = !t ? jobs : jobs.filter((j) => j.search.includes(t));
+    return base.slice(0, maxRows);
+  }, [jobs, q, touched, maxRows]);
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setTouched(false);
+        setQ("");
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  const choose = (opt: JobPickerOption | null) => {
+    onChange(opt);
+    setTouched(false);
+    setQ("");
+    setOpen(false);
+  };
+
+  const display = touched ? q : selected ? selected.label : "";
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <input
+        className={className}
+        value={display}
+        placeholder={loading ? "Loading jobs…" : placeholder}
+        autoComplete="off"
+        onFocus={() => {
+          setOpen(true);
+          if (selected) {
+            setTouched(true);
+            setQ("");
+          }
+        }}
+        onChange={(e) => {
+          setQ(e.target.value);
+          setTouched(true);
+          setOpen(true);
+        }}
+      />
+      {value ? (
+        <button
+          type="button"
+          aria-label="Clear job"
+          onClick={() => choose(null)}
+          className="absolute right-2 top-1/2 -translate-y-1/2 px-1 text-white/40 hover:text-white/80"
+        >
+          ×
+        </button>
+      ) : null}
+      {open ? (
+        <ul className="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-white/15 bg-[#0a1628] py-1 shadow-xl">
+          {filtered.length === 0 ? (
+            <li className="px-3 py-2 text-xs text-amber-200/80">
+              {loading ? "Loading jobs…" : "No jobs match."}
+            </li>
+          ) : (
+            filtered.map((j) => (
+              <li key={j.id}>
+                <button
+                  type="button"
+                  onClick={() => choose(j)}
+                  className={`block w-full px-3 py-2 text-left text-sm hover:bg-white/10 ${
+                    j.id === value ? "text-[#E8C84A]" : "text-white/85"
+                  }`}
+                >
+                  {j.label}
+                  {j.customerName ? (
+                    <span className="text-white/45"> — {j.customerName}</span>
+                  ) : null}
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
       ) : null}
     </div>
   );

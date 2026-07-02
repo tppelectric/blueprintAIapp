@@ -758,7 +758,7 @@ export function TimesheetsClient() {
                   title="No active punches"
                   description="Nobody is clocked in right now. When team members punch in from the field, they will appear here."
                   actionLabel="Open field punch"
-                  actionHref="/field"
+                  actionHref="/field/punch"
                 />
               </div>
             ) : (
@@ -1092,6 +1092,18 @@ export function TimesheetsClient() {
                 className="btn-secondary btn-h-11 border-[#E8C84A]/35 text-[#E8C84A]"
               >
                 Export payroll CSV
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  window.open(
+                    `/api/timesheets/timecards/pdf?from=${activeFrom}&to=${activeTo}`,
+                    "_blank",
+                  )
+                }
+                className="btn-secondary btn-h-11 border-[#E8C84A]/35 text-[#E8C84A]"
+              >
+                Time cards PDF
               </button>
               <button
                 type="button"

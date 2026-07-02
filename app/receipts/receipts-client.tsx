@@ -20,6 +20,7 @@ import {
   canPushReceiptToJobtread,
 } from "@/lib/user-roles";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { JobSearchCombo } from "@/components/job-search-picker";
 import { useReceiptThumbIntersection } from "@/hooks/use-receipt-thumb-intersection";
 
 type TabKey =
@@ -88,7 +89,6 @@ export function ReceiptsClient() {
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [assignId, setAssignId] = useState<string | null>(null);
   const [assignJob, setAssignJob] = useState("");
-  const [assignJobSearch, setAssignJobSearch] = useState("");
   const [receiptActionId, setReceiptActionId] = useState<string | null>(null);
   const [editing, setEditing] = useState<ReceiptRow | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -363,24 +363,6 @@ export function ReceiptsClient() {
     () => jobs.filter((j) => !INACTIVE_JOB_STATUSES.has(j.status)),
     [jobs],
   );
-
-  const jobsForEditSelect = useMemo(() => {
-    return (currentJobId: string | null) => {
-      const set = new Map(activeJobs.map((j) => [j.id, j]));
-      if (currentJobId) {
-        const cur = jobs.find((x) => x.id === currentJobId);
-        if (cur && !set.has(cur.id)) set.set(cur.id, cur);
-      }
-      return [...set.values()];
-    };
-  }, [activeJobs, jobs]);
-
-  const assignModalJobs = useMemo(() => {
-    const q = assignJobSearch.trim().toLowerCase();
-    const list = activeJobs;
-    if (!q) return list;
-    return list.filter((j) => j.search.includes(q));
-  }, [activeJobs, assignJobSearch]);
 
   /**
    * Smart Assign: rank jobs by how many tokens from the receipt's own text
@@ -1067,43 +1049,16 @@ export function ReceiptsClient() {
                 </p>
               </div>
             ) : null}
-            <label className="mt-4 block text-xs text-white/50">
-              Search number, name, customer, address, location
-              <input
-                className="app-input mt-1 w-full text-sm"
-                value={assignJobSearch}
-                onChange={(e) => setAssignJobSearch(e.target.value)}
+            <div className="mt-4">
+              <p className="mb-1 block text-xs text-white/50">
+                Search number, name, customer, address, location
+              </p>
+              <JobSearchCombo
+                value={assignJob || null}
+                onChange={(opt) => setAssignJob(opt?.id ?? "")}
                 placeholder="e.g. 2290, Banta, Bancroft, Basement…"
-                autoComplete="off"
               />
-            </label>
-            <label className="mt-3 block text-xs text-white/50">
-              Job
-              <select
-                className="app-input mt-1 max-h-48 w-full text-sm"
-                size={6}
-                value={assignJob}
-                onChange={(e) => setAssignJob(e.target.value)}
-              >
-                <option value="">— Choose job —</option>
-                {assignModalJobs.map((j) => (
-                  <option key={j.id} value={j.id}>
-                    {j.label}
-                    {j.customerName ? ` — ${j.customerName}` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {assignModalJobs.length === 0 && activeJobs.length > 0 ? (
-              <p className="mt-2 text-xs text-amber-200/80">
-                No jobs match that search.
-              </p>
-            ) : null}
-            {activeJobs.length === 0 ? (
-              <p className="mt-2 text-xs text-white/45">
-                No active jobs loaded. Completed / cancelled jobs are hidden.
-              </p>
-            ) : null}
+            </div>
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 type="button"
@@ -1189,26 +1144,16 @@ export function ReceiptsClient() {
                   ))}
                 </select>
               </label>
-              <label className="block text-xs text-white/50">
+              <div className="block text-xs text-white/50">
                 Job assignment
-                <select
-                  className="app-input mt-1 w-full text-sm"
-                  value={editing.job_id ?? ""}
-                  onChange={(e) =>
-                    setEditing({
-                      ...editing,
-                      job_id: e.target.value.trim() || null,
-                    })
+                <JobSearchCombo
+                  value={editing.job_id ?? null}
+                  onChange={(opt) =>
+                    setEditing({ ...editing, job_id: opt?.id ?? null })
                   }
-                >
-                  <option value="">— Unassigned —</option>
-                  {jobsForEditSelect(editing.job_id).map((j) => (
-                    <option key={j.id} value={j.id}>
-                      {j.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  includeInactive
+                />
+              </div>
               <label className="block text-xs text-white/50">
                 Description
                 <textarea

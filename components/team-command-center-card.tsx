@@ -106,20 +106,35 @@ export function TeamCommandCenterCard({
     const load = async () => {
       try {
         const sb = createBrowserClient();
-        const [unassignedReceiptCount, licRes] = await Promise.all([
+        const canSeeRequests = !roleLoading && canViewAdminRequestQueue(role);
+        // Fire every independent read concurrently (was a serial await chain).
+        const [
+          unassignedReceiptCount,
+          pendingTimeOffCount,
+          licRes,
+          irRes,
+          vRes,
+        ] = await Promise.all([
           fetchUnassignedReceiptsCount(sb),
+          fetchPendingTimeOffRequestCount(sb),
           sb
             .from("licenses")
             .select(
               "id,license_status,expiry_date,requires_ce,ce_hours_required,ce_hours_completed,ce_renewal_deadline",
             ),
+          canSeeRequests
+            ? sb
+                .from("internal_requests")
+                .select("id,status,priority,created_at,resolved_at")
+            : Promise.resolve(null),
+          sb.from("assets").select("*").eq("asset_type", "vehicle"),
         ]);
         if (cancelled) return;
+
         setUnassignedReceipts(unassignedReceiptCount);
-        const pendingTimeOffCount = await fetchPendingTimeOffRequestCount(sb);
-        if (cancelled) return;
         setPendingTimeOff(pendingTimeOffCount);
-        if (!licRes.error && licRes.data) {
+
+        if (licRes && !licRes.error && licRes.data) {
           const rows = licRes.data.map((r) =>
             mapLicenseRow(r as Record<string, unknown>),
           );
@@ -132,34 +147,20 @@ export function TeamCommandCenterCard({
           setLicPursuit(null);
         }
 
-        if (!roleLoading && canViewAdminRequestQueue(role)) {
-          const irRes = await sb
-            .from("internal_requests")
-            .select("id,status,priority,created_at,resolved_at");
-          if (!irRes.error && irRes.data) {
-            const irRows = irRes.data.map((r) =>
-              mapInternalRequestRow(r as Record<string, unknown>),
-            );
-            const open = irRows.filter((r) => !isTerminalStatus(r.status));
-            setIrNew(open.filter((r) => r.status === "new").length);
-            setIrUrgent(urgentOpenCount(irRows));
-            setIrOverdue(overdueOpenCount(irRows));
-          } else {
-            setIrNew(null);
-            setIrUrgent(null);
-            setIrOverdue(null);
-          }
+        if (canSeeRequests && irRes && !irRes.error && irRes.data) {
+          const irRows = irRes.data.map((r) =>
+            mapInternalRequestRow(r as Record<string, unknown>),
+          );
+          const open = irRows.filter((r) => !isTerminalStatus(r.status));
+          setIrNew(open.filter((r) => r.status === "new").length);
+          setIrUrgent(urgentOpenCount(irRows));
+          setIrOverdue(overdueOpenCount(irRows));
         } else {
           setIrNew(null);
           setIrUrgent(null);
           setIrOverdue(null);
         }
 
-        const vRes = await sb
-          .from("assets")
-          .select("*")
-          .eq("asset_type", "vehicle");
-        if (cancelled) return;
         if (vRes.error || !vRes.data) {
           setFleetAttentionCount(null);
         } else {

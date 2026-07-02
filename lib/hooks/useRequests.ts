@@ -15,7 +15,10 @@ const SWR_OPTS = {
 
 async function fetchDashboardInternalRequests(): Promise<InternalRequestRow[]> {
   const sb = createBrowserClient();
-  const { data, error } = await sb.from("internal_requests").select("*");
+  // Only counts are derived downstream (admin card): status, priority, created_at.
+  const { data, error } = await sb
+    .from("internal_requests")
+    .select("id,status,priority,created_at,resolved_at");
   if (error) {
     throw new Error(error.message);
   }
